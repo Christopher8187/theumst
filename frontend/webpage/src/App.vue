@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { apiFetch, dashboardUrl } from "@shared/urls";
+import { apiFetch, dashboardUrl } from "../../urls.js";
 import { closeLanguageMenus, setLanguage, toggleLanguageMenu } from "./language";
 import { pageNameFromPath, pages } from "./pageMeta";
 import { updateSessionUI } from "./session";

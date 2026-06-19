@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "./i18n";
-import { apiFetch, apiUrl, webpageUrl } from "@shared/urls";
+import { apiFetch, apiUrl, webpageUrl } from "../../urls.js";
 
 const { lang, t, setLang } = useI18n();
 

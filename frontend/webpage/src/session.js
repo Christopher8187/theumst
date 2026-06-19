@@ -1,4 +1,4 @@
-import { apiFetch, dashboardUrl } from "@shared/urls";
+import { apiFetch, dashboardUrl } from "../../urls.js";
 
 export async function updateSessionUI() {
   const card = document.querySelector("[data-home-user]");

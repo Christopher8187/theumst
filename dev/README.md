@@ -48,3 +48,16 @@ bash dev/check_local_nginx_server.sh
 ```
 
 If Nginx reports missing `.local/nginx/logs` or `.local/nginx/temp/...`, this version creates those folders automatically before testing the config.
+
+## Routing shape
+
+Nginx is intentionally small now: it only terminates/redirects HTTP(S) and proxies every normal request to FastAPI. FastAPI decides whether a URL is an API route, auth route, dashboard route, image route, or main webpage route.
+
+Local development still uses:
+
+- FastAPI on `http://localhost:8000`
+- Main webpage Vite app on `http://localhost:5173`
+- Dashboard Vite app on `http://localhost:5174`
+
+For nginx/local-server testing, open `http://localhost:8080`; nginx forwards that request to FastAPI.
+

@@ -212,45 +212,6 @@ else
 fi
 export NGINX_PATH NGINX_BIN
 
-umst_write_fallback_mime_types() {
-    mkdir -p "$LOCAL_NGINX_PREFIX/conf"
-    cat > "$LOCAL_NGINX_PREFIX/conf/mime.types" <<'MIME'
-types {
-    text/html html htm;
-    text/css css;
-    application/javascript js mjs;
-    application/json json;
-    image/png png;
-    image/jpeg jpg jpeg;
-    image/svg+xml svg;
-    image/gif gif;
-    image/webp webp;
-    font/woff woff;
-    font/woff2 woff2;
-}
-MIME
-}
-
-umst_local_mime_types_path() {
-    if umst_is_windows; then
-        local win_mime="$(dirname "$NGINX_BIN")/conf/mime.types"
-        if [ -f "$win_mime" ]; then
-            umst_to_nginx_path "$win_mime"
-            return 0
-        fi
-    fi
-    if [ -f /etc/nginx/mime.types ]; then
-        printf '%s\n' /etc/nginx/mime.types
-        return 0
-    fi
-    if [ -f /usr/local/nginx/conf/mime.types ]; then
-        printf '%s\n' /usr/local/nginx/conf/mime.types
-        return 0
-    fi
-    umst_write_fallback_mime_types
-    umst_to_nginx_path "$LOCAL_NGINX_PREFIX/conf/mime.types"
-}
-
 umst_prepare_local_nginx_dirs() {
     # Windows nginx opens its default error log before it fully reads our config,
     # so these default prefix folders must exist even though the generated config
@@ -260,18 +221,14 @@ umst_prepare_local_nginx_dirs() {
 
 umst_write_local_nginx_conf() {
     umst_prepare_local_nginx_dirs
-    local root_path pid_path access_log error_log mime_types conf_text
-    root_path="$(umst_to_nginx_path "$ROOT")"
+    local pid_path access_log error_log conf_text
     pid_path="$(umst_to_nginx_path "$LOCAL_NGINX_PREFIX/nginx.pid")"
     access_log="$(umst_to_nginx_path "$LOCAL_LOG_DIR/nginx.access.log")"
     error_log="$(umst_to_nginx_path "$LOCAL_LOG_DIR/nginx.error.log")"
-    mime_types="$(umst_local_mime_types_path)"
     conf_text="$(cat "$LOCAL_NGINX_TEMPLATE")"
-    conf_text="${conf_text//__ROOT__/$root_path}"
     conf_text="${conf_text//__PID__/$pid_path}"
     conf_text="${conf_text//__ACCESS_LOG__/$access_log}"
     conf_text="${conf_text//__ERROR_LOG__/$error_log}"
-    conf_text="${conf_text//__MIME_TYPES__/$mime_types}"
     printf '%s\n' "$conf_text" > "$LOCAL_NGINX_CONF"
 }
 

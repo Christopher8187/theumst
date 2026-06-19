@@ -8,7 +8,7 @@ from pathlib import Path
 
 import psycopg2
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,11 +18,23 @@ from psycopg2.extras import RealDictCursor
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env", override=True)
 
-WEBPAGE_DIST = ROOT / "frontend" / "webpage" / "dist"
-DASHBOARD_DIST = ROOT / "frontend" / "dashboard" / "dist"
-SHARED_PUBLIC = ROOT / "frontend" / "public"
+FRONTEND = ROOT / "frontend"
+WEBPAGE_DIST = FRONTEND / "webpage" / "dist"
+DASHBOARD_DIST = FRONTEND / "dashboard" / "dist"
+PUBLIC_IMAGES = FRONTEND / "public" / "images"
 COOKIE = "theumst_session"
 SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
+
+DEV_URLS = {
+    "app": "theumst backend",
+    "health": "/health",
+    "api": "/api",
+    "local_webpage": "http://localhost:5173",
+    "local_dashboard": "http://localhost:5174",
+}
+
+WEBPAGE_HTML_ROUTES = {"news", "about", "wiki", "get", "login", "signup"}
+BLOCKED_WEB_PATH_PREFIXES = ("backend/", "config/", "dev/")
 
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 app = FastAPI()
@@ -44,9 +56,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-if (SHARED_PUBLIC / "images").exists():
-    app.mount("/images", StaticFiles(directory=SHARED_PUBLIC / "images"), name="images")
+if PUBLIC_IMAGES.exists():
+    app.mount("/images", StaticFiles(directory=PUBLIC_IMAGES), name="images")
 
+
+def safe_dist_file(dist: Path, path: str):
+    target = (dist / path).resolve()
+    return target if target.is_file() and dist.resolve() in target.parents else None
+
+
+def serve_vue_app(dist: Path, path: str, not_built_detail: str):
+    index = dist / "index.html"
+    if not index.exists():
+        raise HTTPException(status_code=404, detail=not_built_detail)
+
+    if path and (target := safe_dist_file(dist, path)):
+        return FileResponse(target)
+
+    return FileResponse(index)
+
+
+def is_blocked_web_path(path: str):
+    clean = path.strip("/")
+    return clean.startswith(BLOCKED_WEB_PATH_PREFIXES) or any(
+        part.startswith(".") for part in clean.split("/") if part
+    )
+
+
+def serve_webpage(path: str = ""):
+    if is_blocked_web_path(path):
+        raise HTTPException(status_code=404)
+    if not (WEBPAGE_DIST / "index.html").exists() and not path:
+        return DEV_URLS
+    return serve_vue_app(
+        WEBPAGE_DIST,
+        path,
+        "Webpage Vue app is not built. Use Vite on localhost:5173 during local testing.",
+    )
 
 
 def connect():
@@ -368,14 +414,8 @@ def storage_delete(key):
 
 
 @app.get("/")
-def dev_urls():
-    return {
-        "app": "theumst backend",
-        "health": "/health",
-        "api": "/api",
-        "local_webpage": "http://localhost:5173",
-        "local_dashboard": "http://localhost:5174",
-    }
+def webpage_home():
+    return serve_webpage()
 
 
 @app.get("/health")
@@ -459,16 +499,7 @@ def dashboard_vue(path: str, request: Request):
     if path.startswith("superadmin") and user["authority_type"] != "superadmin":
         return RedirectResponse("/dashboard/profile/", status_code=303)
 
-    index = DASHBOARD_DIST / "index.html"
-    if not index.exists():
-        raise HTTPException(status_code=500, detail="Dashboard Vue app is not built.")
-
-    target = (DASHBOARD_DIST / path).resolve()
-    dist = DASHBOARD_DIST.resolve()
-    if path and target.is_file() and dist in target.parents:
-        return FileResponse(target)
-
-    return FileResponse(index)
+    return serve_vue_app(DASHBOARD_DIST, path, "Dashboard Vue app is not built.")
 
 
 @app.get("/api/me")
@@ -662,15 +693,18 @@ def revoke_api_key(api_key_id: int, request: Request):
     return {"ok": True}
 
 
+@app.get("/index.html")
+def old_index_html():
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/{page_name}.html")
+def old_html_page(page_name: str):
+    if page_name not in WEBPAGE_HTML_ROUTES:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(f"/{page_name}", status_code=303)
+
+
 @app.get("/{path:path}")
 def webpage_vue(path: str):
-    index = WEBPAGE_DIST / "index.html"
-    if not index.exists():
-        raise HTTPException(status_code=404, detail="Webpage Vue app is not built. Use Vite on localhost:5173 during local testing.")
-
-    target = (WEBPAGE_DIST / path).resolve()
-    dist = WEBPAGE_DIST.resolve()
-    if path and target.is_file() and dist in target.parents:
-        return FileResponse(target)
-
-    return FileResponse(index)
+    return serve_webpage(path)
