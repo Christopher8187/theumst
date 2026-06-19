@@ -1,0 +1,2 @@
+2026/06/19 10:52:50 [error] 16431#16431: *6 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: localhost, request: "GET /api/me HTTP/1.1", upstream: "http://127.0.0.1:8000/api/me", host: "localhost:8080", referrer: "http://localhost:8080/"
+2026/06/19 10:57:30 [error] 16431#16431: *13 connect() failed (111: Connection refused) while connecting to upstream, client: 127.0.0.1, server: localhost, request: "GET /api/me HTTP/1.1", upstream: "http://127.0.0.1:8000/api/me", host: "localhost:8080", referrer: "http://localhost:8080/"

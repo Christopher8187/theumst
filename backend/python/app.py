@@ -10,6 +10,7 @@ import psycopg2
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from passlib.context import CryptContext
 from psycopg2.extras import RealDictCursor
 
@@ -23,6 +24,13 @@ SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def connect():
     return psycopg2.connect(

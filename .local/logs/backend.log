@@ -1,35 +1,4 @@
-INFO:     Started server process [29632]
+INFO:     Started server process [16403]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     127.0.0.1:0 - "GET /api/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/profile/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/assets/index-DfREfL7p.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/assets/index-BpqyjIo6.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/api-keys HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/admin/storage?path= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/profile/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/assets/index-BpqyjIo6.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/assets/index-DfREfL7p.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/api-keys HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "POST /auth/signout HTTP/1.1" 303 See Other
-INFO:     127.0.0.1:0 - "GET /api/me HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:0 - "POST /auth/login HTTP/1.1" 303 See Other
-INFO:     127.0.0.1:0 - "GET /dashboard/profile/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/assets/index-DfREfL7p.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/assets/index-BpqyjIo6.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/api-keys HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/admin/storage?path= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "POST /api/admin/sql HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/admin/ HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/assets/index-DfREfL7p.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /dashboard/assets/index-BpqyjIo6.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/api-keys HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/admin/storage?path= HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:0 - "GET /api/admin/storage?path= HTTP/1.1" 200 OK
