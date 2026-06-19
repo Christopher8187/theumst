@@ -4,7 +4,7 @@ import vue from "@vitejs/plugin-vue";
 
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url));
 export default defineConfig({
-  publicDir: "../public",
+  publicDir: "../assets",
   plugins: [vue()],
   server: {
     host: "localhost",

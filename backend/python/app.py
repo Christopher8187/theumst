@@ -21,7 +21,7 @@ load_dotenv(ROOT / ".env", override=True)
 FRONTEND = ROOT / "frontend"
 WEBPAGE_DIST = FRONTEND / "webpage" / "dist"
 DASHBOARD_DIST = FRONTEND / "dashboard" / "dist"
-PUBLIC_IMAGES = FRONTEND / "public" / "images"
+PUBLIC_IMAGES = FRONTEND / "assets" / "images"
 COOKIE = "theumst_session"
 SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
 

@@ -1,52 +1,24 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, watch } from "vue";
 import { apiFetch, dashboardUrl } from "../../urls.js";
-import { closeLanguageMenus, setLanguage, toggleLanguageMenu } from "./language";
-import { pageNameFromPath, pages } from "./pageMeta";
-import { updateSessionUI } from "./session";
-import aboutHtml from "./pages/about.html?raw";
-import getHtml from "./pages/get.html?raw";
-import homeHtml from "./pages/home.html?raw";
-import loginHtml from "./pages/login.html?raw";
-import newsHtml from "./pages/news.html?raw";
-import signupHtml from "./pages/signup.html?raw";
-import wikiHtml from "./pages/wiki.html?raw";
+import RawPage from "./components/RawPage.vue";
+import { useWebpageRouter } from "./composables/useWebpageRouter";
+import { pageHtml } from "./pages";
+import { pages } from "./router/pageMeta";
+import { closeLanguageMenus, setLanguage, toggleLanguageMenu } from "./utils/language";
+import { updateSessionUI } from "./utils/session";
 
-const pageHtmlByName = {
-  "about": aboutHtml,
-  "get": getHtml,
-  "home": homeHtml,
-  "login": loginHtml,
-  "news": newsHtml,
-  "signup": signupHtml,
-  "wiki": wikiHtml
-};
-
-const pageName = ref(pageNameFromPath(location.pathname));
-const pageHtml = computed(() => pageHtmlByName[pageName.value] || pageHtmlByName.home);
+const { pageName, isKnownPage, navigate, syncWithBrowser } = useWebpageRouter();
 const page = computed(() => pages[pageName.value] || pages.home);
+const html = computed(() => pageHtml[pageName.value] || pageHtml.home);
 
 function syncPage() {
   document.body.dataset.title = page.value.titleKey;
   setLanguage();
   updateSessionUI();
-  const errorEl = document.querySelector("[data-login-error]");
-  if (errorEl) errorEl.hidden = new URLSearchParams(location.search).get("error") !== "bad-login";
-}
 
-function normalizeRoutePath(pathname) {
-  return pathname.replace(/\/+$/, "") || "/";
-}
-
-function isKnownPage(pathname) {
-  const path = normalizeRoutePath(pathname);
-  return Object.values(pages).some(page => normalizeRoutePath(page.path) === path);
-}
-
-function navigate(path) {
-  const targetName = pageNameFromPath(path);
-  pageName.value = targetName;
-  history.pushState(null, "", pages[targetName]?.path || "/");
+  const error = document.querySelector("[data-login-error]");
+  if (error) error.hidden = new URLSearchParams(location.search).get("error") !== "bad-login";
 }
 
 function handleClick(event) {
@@ -98,12 +70,13 @@ async function handleSubmit(event) {
   }
 
   if (action === "/auth/login") {
-    const errorEl = document.querySelector("[data-login-error]");
-    if (errorEl) errorEl.hidden = false;
-  } else {
-    const data = await res.json().catch(() => ({ detail: "Could not sign up." }));
-    alert(data.detail || "Could not sign up.");
+    const error = document.querySelector("[data-login-error]");
+    if (error) error.hidden = false;
+    return;
   }
+
+  const data = await res.json().catch(() => ({ detail: "Could not sign up." }));
+  alert(data.detail || "Could not sign up.");
 }
 
 watch(pageName, async () => {
@@ -113,16 +86,13 @@ watch(pageName, async () => {
 
 onMounted(() => {
   syncPage();
-  window.addEventListener("popstate", () => {
-    pageName.value = pageNameFromPath(location.pathname);
-  });
+  window.addEventListener("popstate", syncWithBrowser);
   document.addEventListener("click", event => {
-    if (event.target.closest(".language-menu")) return;
-    closeLanguageMenus();
+    if (!event.target.closest(".language-menu")) closeLanguageMenus();
   });
 });
 </script>
 
 <template>
-  <div v-html="pageHtml" @click="handleClick" @submit="handleSubmit"></div>
+  <RawPage :html="html" @page-click="handleClick" @page-submit="handleSubmit" />
 </template>
