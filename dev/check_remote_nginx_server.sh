@@ -32,6 +32,13 @@ else
     BAD=1
 fi
 
+if ssh -i "$KEY" "$REMOTE" "test -f $REMOTE_WEBPAGE/dist/index.html"; then
+    echo "OK: Vue webpage build exists."
+else
+    echo "DIAGNOSIS: Vue webpage is not built. Run dev/activate_remote_nginx_server.sh."
+    BAD=1
+fi
+
 if ssh -i "$KEY" "$REMOTE" "test -f $REMOTE_DASHBOARD/dist/index.html"; then
     echo "OK: Vue dashboard build exists."
 else

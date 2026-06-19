@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "dev": "vite --host localhost --port 5173 --strictPort",
+    "build": "node ./node_modules/vite/bin/vite.js build",
+    "preview": "vite preview --host localhost --port 5173 --strictPort"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "latest",
+    "vite": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {}
+}

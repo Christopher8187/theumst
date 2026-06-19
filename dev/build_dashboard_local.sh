@@ -8,15 +8,23 @@ umst_find_npm || fail "Missing npm. Install Node.js LTS, then reopen your termin
 printf 'Using npm: %s\n' "${UMST_NPM[*]}"
 "${UMST_NPM[@]}" --version
 
-if [ ! -f "$DASHBOARD_DIR/package.json" ]; then
-    fail "Missing package.json at $DASHBOARD_DIR/package.json."
-fi
+build_vue_app() {
+    local app_name="$1"
+    local app_dir="$2"
 
-cd "$DASHBOARD_DIR"
-echo "Installing/updating Vue packages..."
-"${UMST_NPM[@]}" install --no-audit --no-fund
+    if [ ! -f "$app_dir/package.json" ]; then
+        fail "Missing package.json at $app_dir/package.json."
+    fi
 
-echo "Building Vue dashboard..."
-"${UMST_NPM[@]}" run build
+    cd "$app_dir"
+    echo "Installing/updating Vue packages for $app_name..."
+    "${UMST_NPM[@]}" install --no-audit --no-fund
 
-echo "Vue dashboard built successfully."
+    echo "Building Vue $app_name..."
+    "${UMST_NPM[@]}" run build
+}
+
+build_vue_app "webpage" "$WEBPAGE_DIR"
+build_vue_app "dashboard" "$DASHBOARD_DIR"
+
+echo "Vue apps built successfully."

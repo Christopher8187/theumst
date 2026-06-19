@@ -9,7 +9,7 @@ Local Linux/Windows-Git-Bash commands:
   dev/activate_local_nginx_server.sh
   dev/check_local_nginx_server.sh
   dev/stop_local_nginx_server.sh
-  dev/build_dashboard_local.sh
+  dev/build_dashboard_local.sh   # builds webpage and dashboard Vue apps
 
 Remote commands, using REMOTE_SERVER=COM or CN from .env:
   dev/initialize_remote_server.sh

@@ -24,6 +24,13 @@ else
     BAD=1
 fi
 
+if [ -f "$WEBPAGE_DIR/dist/index.html" ]; then
+    echo "OK: Vue webpage build exists."
+else
+    echo "DIAGNOSIS: Vue webpage is not built. Run dev/initialize_local.sh or dev/activate_local_nginx_server.sh."
+    BAD=1
+fi
+
 if [ -f "$DASHBOARD_DIR/dist/index.html" ]; then
     echo "OK: Vue dashboard build exists."
 else

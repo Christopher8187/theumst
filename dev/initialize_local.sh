@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 LOCAL_ONLY=1 . "$SCRIPT_DIR/load_env.sh"
 trap 'say "Local initialization failed."' ERR
 
-say "Initializing local backend and Vue dashboard."
+say "Initializing local backend and Vue apps."
 
 echo
 echo "=== Python backend ==="
@@ -30,8 +30,8 @@ fi
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$ROOT/backend/sql/schema.sql"
 
 echo
-echo "=== Vue dashboard ==="
+echo "=== Vue apps ==="
 "$SCRIPT_DIR/build_dashboard_local.sh"
 
-say "Local backend and Vue dashboard initialized."
+say "Local backend and Vue apps initialized."
 umst_pause_if_requested

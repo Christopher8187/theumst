@@ -9,19 +9,44 @@ from pathlib import Path
 import psycopg2
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from passlib.context import CryptContext
 from psycopg2.extras import RealDictCursor
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env", override=True)
 
+WEBPAGE_DIST = ROOT / "frontend" / "webpage" / "dist"
 DASHBOARD_DIST = ROOT / "frontend" / "dashboard" / "dist"
+SHARED_PUBLIC = ROOT / "frontend" / "public"
 COOKIE = "theumst_session"
 SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
 
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 app = FastAPI()
+
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174",
+    ).split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+if (SHARED_PUBLIC / "images").exists():
+    app.mount("/images", StaticFiles(directory=SHARED_PUBLIC / "images"), name="images")
+
 
 
 def connect():
@@ -37,6 +62,23 @@ def connect():
 
 def h(value):
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def wants_json(request: Request):
+    accept = request.headers.get("accept", "")
+    return "application/json" in accept or request.headers.get("x-requested-with") == "fetch"
+
+
+def auth_redirect_or_json(request: Request, redirect_path: str, status_code: int = 303):
+    if wants_json(request):
+        return JSONResponse({"ok": True, "redirect": redirect_path})
+    return RedirectResponse(redirect_path, status_code=status_code)
+
+
+def auth_error_or_redirect(request: Request, redirect_path: str, detail: str, status_code: int = 400):
+    if wants_json(request):
+        return JSONResponse({"ok": False, "detail": detail}, status_code=status_code)
+    return RedirectResponse(redirect_path, status_code=303)
 
 
 def current_user(request):
@@ -325,6 +367,17 @@ def storage_delete(key):
     raise HTTPException(status_code=400, detail="SERVER must be LOCAL, COM, or CN.")
 
 
+@app.get("/")
+def dev_urls():
+    return {
+        "app": "theumst backend",
+        "health": "/health",
+        "api": "/api",
+        "local_webpage": "http://localhost:5173",
+        "local_dashboard": "http://localhost:5174",
+    }
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -338,7 +391,7 @@ async def signup(request: Request):
     password = form.get("password", "")
 
     if not username or not email or not password:
-        return RedirectResponse("/signup?error=missing", status_code=303)
+        return auth_error_or_redirect(request, "/signup?error=missing", "Username, email, and password are required.", 400)
 
     try:
         with connect() as con, con.cursor() as cur:
@@ -352,12 +405,12 @@ async def signup(request: Request):
             )
             user_id = cur.fetchone()["user_id"]
     except psycopg2.errors.UniqueViolation:
-        return RedirectResponse("/signup?error=exists", status_code=303)
+        return auth_error_or_redirect(request, "/signup?error=exists", "Username or email is already used.", 409)
     except psycopg2.Error as exc:
         print("Signup database error:", exc)
-        return RedirectResponse("/signup?error=database", status_code=303)
+        return auth_error_or_redirect(request, "/signup?error=database", "Database error during signup.", 500)
 
-    response = RedirectResponse("/dashboard/profile/", status_code=303)
+    response = auth_redirect_or_json(request, "/dashboard/profile/")
     start_session(response, user_id)
     return response
 
@@ -373,9 +426,9 @@ async def login(request: Request):
         user = cur.fetchone()
 
     if not user or not pwd.verify(password, user["password_hash"]):
-        return RedirectResponse("/login?error=bad-login", status_code=303)
+        return auth_error_or_redirect(request, "/login?error=bad-login", "Incorrect username or password.", 401)
 
-    response = RedirectResponse("/dashboard/profile/", status_code=303)
+    response = auth_redirect_or_json(request, "/dashboard/profile/")
     start_session(response, user["user_id"])
     return response
 
@@ -607,3 +660,17 @@ def revoke_api_key(api_key_id: int, request: Request):
             (api_key_id, user["user_id"]),
         )
     return {"ok": True}
+
+
+@app.get("/{path:path}")
+def webpage_vue(path: str):
+    index = WEBPAGE_DIST / "index.html"
+    if not index.exists():
+        raise HTTPException(status_code=404, detail="Webpage Vue app is not built. Use Vite on localhost:5173 during local testing.")
+
+    target = (WEBPAGE_DIST / path).resolve()
+    dist = WEBPAGE_DIST.resolve()
+    if path and target.is_file() and dist in target.parents:
+        return FileResponse(target)
+
+    return FileResponse(index)

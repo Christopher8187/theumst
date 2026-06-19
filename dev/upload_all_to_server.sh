@@ -17,6 +17,8 @@ say "Preparing upload folder."
         --exclude='./.venv' \
         --exclude='./__pycache__' \
         --exclude='./.local' \
+        --exclude='./frontend/webpage/node_modules' \
+        --exclude='./frontend/webpage/dist' \
         --exclude='./frontend/dashboard/node_modules' \
         --exclude='./frontend/dashboard/dist' \
         -cf - . | (cd "$STAGE" && tar -xf -)

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "./i18n";
+import { apiFetch, apiUrl, webpageUrl } from "@shared/urls";
 
 const { lang, t, setLang } = useI18n();
 
@@ -62,7 +63,7 @@ function chooseLang(value) {
 }
 
 function requireLogin(res) {
-  if (res.status === 401) location.href = "/login";
+  if (res.status === 401) location.href = webpageUrl("/login");
   return res;
 }
 
@@ -89,7 +90,7 @@ function niceSize(size) {
 }
 
 async function loadProfile() {
-  const res = requireLogin(await fetch("/api/me"));
+  const res = requireLogin(await apiFetch("/api/me"));
   if (!res.ok) return;
   const data = await res.json();
   profile.value = data.user;
@@ -98,7 +99,7 @@ async function loadProfile() {
 }
 
 async function saveProfile() {
-  const res = requireLogin(await fetch("/api/me", {
+  const res = requireLogin(await apiFetch("/api/me", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(profile.value)
@@ -108,7 +109,7 @@ async function saveProfile() {
 }
 
 async function loadKeys() {
-  const res = requireLogin(await fetch("/api/api-keys"));
+  const res = requireLogin(await apiFetch("/api/api-keys"));
   if (!res.ok) return;
   keys.value = (await res.json()).keys;
 }
@@ -121,7 +122,7 @@ async function createKey(event) {
     return;
   }
 
-  const res = requireLogin(await fetch("/api/api-keys", {
+  const res = requireLogin(await apiFetch("/api/api-keys", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data)
@@ -140,7 +141,7 @@ async function createKey(event) {
 }
 
 async function revokeKey(id) {
-  await fetch(`/api/api-keys/${id}`, { method: "DELETE" });
+  await apiFetch(`/api/api-keys/${id}`, { method: "DELETE" });
   loadKeys();
 }
 
@@ -148,7 +149,7 @@ async function runSql() {
   adminResult.value = "";
   adminError.value = false;
 
-  const res = requireLogin(await fetch("/api/admin/sql", {
+  const res = requireLogin(await apiFetch("/api/admin/sql", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sql: adminSql.value })
@@ -160,7 +161,7 @@ async function runSql() {
 }
 
 async function loadStorage(path = storagePath.value) {
-  const res = requireLogin(await fetch(`/api/admin/storage?path=${encodeURIComponent(path)}`));
+  const res = requireLogin(await apiFetch(`/api/admin/storage?path=${encodeURIComponent(path)}`));
   const data = await res.json();
   if (!res.ok) return showStorage(data.detail, true);
   storagePath.value = data.path;
@@ -172,7 +173,7 @@ async function loadStorage(path = storagePath.value) {
 async function openStorage(item) {
   if (item.type === "folder") return loadStorage(item.key);
 
-  const res = requireLogin(await fetch(`/api/admin/storage/read?path=${encodeURIComponent(item.key)}`));
+  const res = requireLogin(await apiFetch(`/api/admin/storage/read?path=${encodeURIComponent(item.key)}`));
   const data = await res.json();
   if (!res.ok) return showStorage(data.detail, true);
   storageFile.value = data.path;
@@ -186,7 +187,7 @@ async function saveStorage() {
   const path = storageFile.value || (name.includes("/") ? name : joinPath(storagePath.value, name));
   if (!path) return showStorage(t.value.storagePathRequired, true);
 
-  const res = requireLogin(await fetch("/api/admin/storage/write", {
+  const res = requireLogin(await apiFetch("/api/admin/storage/write", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, content: storageText.value })
@@ -202,7 +203,7 @@ async function saveStorage() {
 async function createFolder() {
   if (!folderName.value.trim()) return showStorage(t.value.folderNameRequired, true);
 
-  const res = requireLogin(await fetch("/api/admin/storage/folder", {
+  const res = requireLogin(await apiFetch("/api/admin/storage/folder", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path: storagePath.value, name: folderName.value })
@@ -222,7 +223,7 @@ async function uploadFile(event) {
   form.append("folder", storagePath.value);
   form.append("file", file);
 
-  const res = requireLogin(await fetch("/api/admin/storage/upload", { method: "POST", body: form }));
+  const res = requireLogin(await apiFetch("/api/admin/storage/upload", { method: "POST", body: form }));
   const data = await res.json();
   if (!res.ok) return showStorage(data.detail, true);
   event.target.value = "";
@@ -232,7 +233,7 @@ async function uploadFile(event) {
 
 async function deleteStorage(item) {
   if (!confirm(`${t.value.deleteConfirm} ${item.name}?`)) return;
-  const res = requireLogin(await fetch(`/api/admin/storage?path=${encodeURIComponent(item.key)}`, { method: "DELETE" }));
+  const res = requireLogin(await apiFetch(`/api/admin/storage?path=${encodeURIComponent(item.key)}`, { method: "DELETE" }));
   const data = await res.json();
   if (!res.ok) return showStorage(data.detail, true);
   if (storageFile.value === item.key) {
@@ -255,7 +256,7 @@ async function makeAdmin() {
   superMessage.value = "";
   superError.value = false;
 
-  const res = requireLogin(await fetch("/api/superadmin/make-admin", {
+  const res = requireLogin(await apiFetch("/api/superadmin/make-admin", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ identifier: superUser.value })
@@ -267,8 +268,8 @@ async function makeAdmin() {
 }
 
 async function signOut() {
-  await fetch("/auth/signout", { method: "POST" });
-  location.href = "/";
+  await apiFetch("/auth/signout", { method: "POST" });
+  location.href = webpageUrl("/");
 }
 
 onMounted(() => {
@@ -285,9 +286,9 @@ onMounted(() => {
 <template>
   <div class="dashboard-shell">
     <aside class="sidebar">
-      <a href="/"><img class="dash-logo" :src="logoSrc" alt="UMST"></a>
+      <a :href="webpageUrl('/')"><img class="dash-logo" :src="logoSrc" alt="UMST"></a>
 
-      <a class="side-link" href="/">{{ t.home }}</a>
+      <a class="side-link" :href="webpageUrl('/')">{{ t.home }}</a>
       <button class="side-link" :class="{ active: isProfile }" @click="go('profile')">{{ t.profile }}</button>
       <button class="side-link" :class="{ active: isApiKeys }" @click="go('api-keys')">{{ t.apiKeys }}</button>
       <button v-if="isAdmin" class="side-link" :class="{ active: route === 'admin' }" @click="go('admin')">{{ t.admin }}</button>
@@ -392,7 +393,7 @@ onMounted(() => {
                 <span>{{ item.type }}</span>
                 <span>{{ niceSize(item.size) }}</span>
                 <div class="file-buttons">
-                  <a v-if="item.type === 'file'" :href="`/api/admin/storage/download?path=${encodeURIComponent(item.key)}`">{{ t.download }}</a>
+                  <a v-if="item.type === 'file'" :href="apiUrl(`/api/admin/storage/download?path=${encodeURIComponent(item.key)}`)">{{ t.download }}</a>
                   <button type="button" @click="deleteStorage(item)">{{ t.delete }}</button>
                 </div>
               </article>
