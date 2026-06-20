@@ -32,6 +32,8 @@ Run on Linux / Git Bash / WSL:
 
 ```sh
 chmod +x dev/sh/*.sh
+./dev/sh/linux_first_fix.sh
+newgrp docker
 ./dev/sh/local_testing.sh
 ```
 
@@ -79,3 +81,28 @@ The Dockerfiles copy package/requirements files before source files so Docker ca
 ## Secrets
 
 Safe placeholders live in `.env.example`. Copy it to `.env` and put real private remote secrets only in your own local/server copy of `.env`.
+
+## Linux permission repair
+
+If a `.sh` file starts but Docker commands fail with `permission denied` or `Cannot connect to the Docker daemon`, run:
+
+```sh
+cd /path/to/theumst-charles
+sudo chown -R "$USER:$USER" .
+chmod +x dev/sh/*.sh
+./dev/sh/linux_first_fix.sh
+```
+
+If you prefer the menu, use `./dev/sh/permissions.sh` and choose option `3` to add your user to the Docker group. Then run:
+
+```sh
+newgrp docker
+docker run --rm hello-world
+```
+
+After that, start local testing again:
+
+```sh
+./dev/sh/local_testing.sh
+```
+

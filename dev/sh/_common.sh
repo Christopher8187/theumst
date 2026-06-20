@@ -18,7 +18,11 @@ load_env() {
     REMOTE_SERVER="${REMOTE_SERVER:-COM}"
     HTTP_PORT="${HTTP_PORT:-8080}"
     SSH_KEY_DIR="${SSH_KEY_DIR:-$HOME/.ssh}"
-    [ "$SSH_KEY_DIR" = "__AUTO__" ] && SSH_KEY_DIR="$HOME/.ssh"
+    if [ "$SSH_KEY_DIR" = "__AUTO__" ]; then
+        SSH_KEY_DIR="$HOME/.ssh"
+    fi
+
+    return 0
 }
 
 show_env() {
@@ -39,19 +43,66 @@ INFO
 }
 
 pause_if_clicked() {
+    # Keep double-clicked terminal windows open long enough to read errors.
+    if [ "${NO_PAUSE:-}" = "1" ]; then
+        return 0
+    fi
+
     if [ -t 0 ]; then
-        printf '\nPress Enter to close...'
-        read -r _ || true
+        printf '
+Press Enter to close...'
+        IFS= read -r _ || true
+    elif [ -e /dev/tty ]; then
+        if printf '
+Press Enter to close...' > /dev/tty 2>/dev/null; then
+            IFS= read -r _ < /dev/tty 2>/dev/null || true
+        fi
     fi
 }
+
+on_error() {
+    status="${3:-$?}"
+    line="${1:-?}"
+    command="${2:-unknown}"
+    trap - ERR
+
+    echo >&2
+    echo "Script failed." >&2
+    echo "  Exit code: $status" >&2
+    echo "  Line:      $line" >&2
+    echo "  Command:   $command" >&2
+    echo >&2
+    echo "Most common Linux causes:" >&2
+    echo "  - Docker service is not running." >&2
+    echo "  - Your Linux user is not in the docker group yet." >&2
+    echo "  - Some project files were created by sudo/root earlier." >&2
+    echo "  - A port is already occupied, often 5432, 8000, 5173, 5174, or 8080." >&2
+    echo >&2
+    echo "Useful repair commands from the project root:" >&2
+    echo '  sudo chown -R "$USER:$USER" .' >&2
+    echo '  chmod +x dev/sh/*.sh' >&2
+    echo '  sudo systemctl enable --now docker' >&2
+    echo '  sudo usermod -aG docker "$USER"' >&2
+    echo '  newgrp docker' >&2
+    echo '  docker run --rm hello-world' >&2
+
+    pause_if_clicked
+    exit "$status"
+}
+
 
 choose() {
     prompt="$1"
     default="$2"
-    printf "%s [%s]: " "$prompt" "$default"
-    read -r answer || true
+
+    # Print prompts to stderr, not stdout, because callers capture stdout:
+    # choice="$(choose ...)". Only the selected value goes to stdout.
+    printf "%s [%s]: " "$prompt" "$default" >&2
+    IFS= read -r answer || true
     printf '%s' "${answer:-$default}"
 }
+
+
 
 compose() {
     if docker compose version >/dev/null 2>&1; then
@@ -60,13 +111,79 @@ compose() {
         docker-compose "$@"
     else
         echo "Docker Compose is missing. Install Docker Desktop or the Docker Compose plugin." >&2
-        exit 1
+        return 1
     fi
 }
 
 need_docker() {
-    command -v docker >/dev/null 2>&1 || { echo "Docker is missing." >&2; exit 1; }
-    docker info >/dev/null 2>&1 || { echo "Docker is installed, but it is not running." >&2; exit 1; }
+    command -v docker >/dev/null 2>&1 || {
+        echo "Docker is missing. Install Docker Engine/Desktop first." >&2
+        return 1
+    }
+
+    if docker info >/dev/null 2>&1; then
+        return 0
+    fi
+
+    docker_error="$(docker info 2>&1 >/dev/null || true)"
+
+    cat >&2 <<HELP
+Docker is installed, but this Linux user cannot talk to Docker.
+
+Docker said:
+${docker_error:-  docker info failed}
+
+Fix it from the project root:
+  sudo systemctl enable --now docker
+  sudo usermod -aG docker "$USER"
+  newgrp docker
+  docker run --rm hello-world
+
+If Docker was previously run with sudo inside this project, also run:
+  sudo chown -R "$USER:$USER" .
+HELP
+    return 1
+}
+
+
+fix_local_script_permissions() {
+    chmod +x "$SCRIPT_DIR"/*.sh
+    echo "Made dev/sh/*.sh executable."
+}
+
+fix_local_project_permissions() {
+    echo "Fixing ownership and writable folders under: $ROOT"
+    sudo chown -R "$USER:$USER" "$ROOT"
+    find "$ROOT/dev/sh" -type f -name '*.sh' -exec chmod u+x {} \;
+    find "$ROOT" -type d -exec chmod u+rwx {} \;
+    find "$ROOT" -type f -exec chmod u+rw {} \;
+    echo "Local project files now belong to $USER and are writable by $USER."
+}
+
+fix_local_docker_group() {
+    command -v docker >/dev/null 2>&1 || { echo "Docker is missing." >&2; return 1; }
+    sudo systemctl enable --now docker 2>/dev/null || true
+    if groups "$USER" | tr ' ' '\n' | grep -qx docker; then
+        echo "$USER is already in the docker group."
+    else
+        sudo usermod -aG docker "$USER"
+        echo "Added $USER to the docker group."
+    fi
+    cat <<'HELP'
+
+Refresh your group membership with one of these:
+  newgrp docker
+
+or fully log out and log back in. Then test:
+  docker run --rm hello-world
+HELP
+}
+
+test_local_docker_permissions() {
+    command -v docker >/dev/null 2>&1 || { echo "Docker is missing." >&2; return 1; }
+    docker info >/dev/null
+    docker compose version >/dev/null 2>&1 || docker-compose version >/dev/null
+    docker run --rm hello-world
 }
 
 local_compose() { (cd "$ROOT" && compose -f "$LOCAL_COMPOSE" "$@"); }
@@ -117,8 +234,8 @@ remote_context() {
     KEY="$SSH_KEY_DIR/$KEY_NAME"
     REMOTE="$SSH_USER@$SSH_HOST"
 
-    [ -n "$KEY_NAME$SSH_USER$SSH_HOST" ] || { echo "Missing SSH settings for $TARGET_SERVER in .env" >&2; exit 1; }
-    [ -f "$KEY" ] || { echo "Missing SSH key: $KEY" >&2; exit 1; }
+    [ -n "$KEY_NAME$SSH_USER$SSH_HOST" ] || { echo "Missing SSH settings for $TARGET_SERVER in .env" >&2; return 1; }
+    [ -f "$KEY" ] || { echo "Missing SSH key: $KEY" >&2; return 1; }
 }
 
 remote_sudo() {
@@ -145,7 +262,7 @@ remote_setup() {
 
 remote_permissions() {
     remote_context "$1"
-    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
+    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     SUDO="$(remote_sudo)"
     echo "Fixing permissions on $REMOTE:$REMOTE_ROOT..."
     ssh -i "$KEY" "$REMOTE" "mkdir -p '$REMOTE_ROOT' && $SUDO chown -R '$SSH_USER:$SSH_USER' '$REMOTE_ROOT' && chmod -R u+rwX '$REMOTE_ROOT' && $SUDO usermod -aG docker '$SSH_USER' || true"
@@ -154,7 +271,7 @@ remote_permissions() {
 
 remote_upload() {
     remote_context "$1"
-    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
+    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     STAGE="$(mktemp -d 2>/dev/null || mktemp -d -t theumst_upload)"
     trap 'rm -rf "$STAGE"' RETURN EXIT
 
@@ -179,21 +296,21 @@ remote_upload() {
 
 remote_start() {
     remote_context "$1"
-    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
+    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     echo "Starting Docker deployment on $REMOTE..."
     ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && SERVER='$TARGET_SERVER' docker compose -f compose.deploy.yml up --build -d"
 }
 
 remote_stop() {
     remote_context "$1"
-    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
+    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     echo "Stopping Docker deployment on $REMOTE..."
     ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && docker compose -f compose.deploy.yml down"
 }
 
 remote_check() {
     remote_context "$1"
-    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
+    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     echo "Remote containers on $REMOTE:"
     ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && docker compose -f compose.deploy.yml ps"
     [ -n "${REMOTE_URL:-}" ] && echo "URL: $REMOTE_URL"
@@ -201,7 +318,7 @@ remote_check() {
 
 remote_logs() {
     remote_context "$1"
-    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
+    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && docker compose -f compose.deploy.yml logs --tail=120"
 }
 
@@ -212,7 +329,7 @@ remote_shell() {
 
 remote_certs() {
     remote_context "$1"
-    [ -n "${DOMAIN:-}" ] || { echo "Missing DOMAIN_$TARGET_SERVER in .env" >&2; exit 1; }
+    [ -n "${DOMAIN:-}" ] || { echo "Missing DOMAIN_$TARGET_SERVER in .env" >&2; return 1; }
     CERT_NAME="${CERT_NAME:-$DOMAIN}"
     CERT_EMAIL="${CERT_EMAIL:-admin@$DOMAIN}"
     SUDO="$(remote_sudo)"
