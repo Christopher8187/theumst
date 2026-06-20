@@ -8,7 +8,7 @@ export default defineConfig({
   publicDir: "../assets",
   plugins: [vue()],
   server: {
-    host: "localhost",
+    host: "0.0.0.0",
     port: 5174,
     strictPort: true,
     fs: {

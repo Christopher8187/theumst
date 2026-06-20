@@ -16,7 +16,7 @@ from passlib.context import CryptContext
 from psycopg2.extras import RealDictCursor
 
 ROOT = Path(__file__).resolve().parents[2]
-load_dotenv(ROOT / ".env", override=True)
+load_dotenv(ROOT / ".env", override=False)
 
 FRONTEND = ROOT / "frontend"
 WEBPAGE_DIST = FRONTEND / "webpage" / "dist"
@@ -43,7 +43,7 @@ cors_origins = [
     origin.strip()
     for origin in os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:8080,http://127.0.0.1:8080",
     ).split(",")
     if origin.strip()
 ]

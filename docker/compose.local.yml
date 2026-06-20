@@ -1,0 +1,79 @@
+name: theumst-local
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: theumst
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - local_pgdata:/var/lib/postgresql/data
+      - ../backend/sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d theumst"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+      target: dev
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+    working_dir: /app/backend/python
+    environment:
+      SERVER: LOCAL
+      LOCAL_STORAGE_DIR: /storage
+      DB_NAME: theumst
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: db
+      DB_PORT: 5432
+      SESSION_DAYS: 7
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:8080,http://127.0.0.1:8080
+    ports:
+      - "8000:8000"
+    volumes:
+      - ..:/app
+      - local_storage:/storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+  webpage:
+    image: node:22-alpine
+    working_dir: /app/frontend/webpage
+    command: sh -c "test -d node_modules/vite || npm ci; npm run dev"
+    environment:
+      VITE_API_BASE: http://localhost:8000
+      VITE_WEBPAGE_BASE: http://localhost:5173
+      VITE_DASHBOARD_BASE: http://localhost:5174/dashboard
+    ports:
+      - "5173:5173"
+    volumes:
+      - ..:/app
+      - webpage_node_modules:/app/frontend/webpage/node_modules
+
+  dashboard:
+    image: node:22-alpine
+    working_dir: /app/frontend/dashboard
+    command: sh -c "test -d node_modules/vite || npm ci; npm run dev"
+    environment:
+      VITE_API_BASE: http://localhost:8000
+      VITE_WEBPAGE_BASE: http://localhost:5173
+      VITE_DASHBOARD_BASE: http://localhost:5174/dashboard
+    ports:
+      - "5174:5174"
+    volumes:
+      - ..:/app
+      - dashboard_node_modules:/app/frontend/dashboard/node_modules
+
+volumes:
+  local_pgdata:
+  local_storage:
+  webpage_node_modules:
+  dashboard_node_modules:

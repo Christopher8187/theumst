@@ -1,63 +1,75 @@
-# UMST dev shell scripts
+# UMST Docker dev scripts
 
-The old Windows `.bat` scripts have been replaced with portable `dev/*.sh` scripts.
+The project is now Docker-first. The shell scripts are small wrappers around Docker Compose.
 
-## Linux local path
+## Folder layout
 
-This project is configured for the Linux laptop path:
+```text
+dev/sh/   Linux/macOS/Git Bash scripts
+dev/bat/  Windows cmd.exe scripts
+docker/   Dockerfiles, Compose files, and nginx config
+```
+
+## Local hot-reload testing
+
+This is the everyday development setup. It starts Postgres, FastAPI, the public webpage Vite app, and the dashboard Vite app.
 
 ```sh
-/home/christopher/Desktop/theumst
+chmod +x dev/sh/*.sh
+dev/sh/activate_local_server.sh
 ```
 
-If the project is somewhere else, the scripts automatically fall back to the folder they are running from.
+Open:
 
-## First run on Linux
+```text
+http://localhost:5173
+http://localhost:5174/dashboard/profile/
+http://localhost:8000
+```
+
+Windows cmd.exe:
+
+```bat
+dev\bat\activate_local_server.bat
+```
+
+## Deployment-style nginx test
+
+This builds the Vue apps, bakes them into the FastAPI image, then puts nginx in front.
 
 ```sh
-cd /home/christopher/Desktop/theumst
-chmod +x dev/*.sh
-dev/initialize_local.sh
-dev/activate_local_nginx_server.sh
+dev/sh/activate_deploy_stack.sh
 ```
 
-Open `http://localhost:8080`.
+Open:
 
-## Windows
-
-Run the same `.sh` scripts from Git Bash or WSL. Native `cmd.exe` will not run `.sh` files.
-
-## Remote target
-
-`.env` now uses:
-
-```env
-SERVER=LOCAL
-REMOTE_SERVER=COM
+```text
+http://localhost:8080
 ```
 
-`SERVER=LOCAL` keeps the local backend on local file storage. Remote scripts deploy to `REMOTE_SERVER`, which can be `COM` or `CN`.
-
-## Restart local server on Windows Git Bash
+## Stop
 
 ```sh
-cd /c/Users/Chris/Desktop/theumst
-bash dev/stop_local_nginx_server.sh
-bash dev/activate_local_nginx_server.sh
-bash dev/check_local_nginx_server.sh
+dev/sh/stop_local_server.sh
+dev/sh/stop_deploy_stack.sh
 ```
 
-If Nginx reports missing `.local/nginx/logs` or `.local/nginx/temp/...`, this version creates those folders automatically before testing the config.
+## Reset local database/storage
 
-## Routing shape
+```sh
+dev/sh/reset_local_server.sh
+```
 
-Nginx is intentionally small now: it only terminates/redirects HTTP(S) and proxies every normal request to FastAPI. FastAPI decides whether a URL is an API route, auth route, dashboard route, image route, or main webpage route.
+This deletes Docker volumes for the local testing stack.
 
-Local development still uses:
+## Remote deployment
 
-- FastAPI on `http://localhost:8000`
-- Main webpage Vite app on `http://localhost:5173`
-- Dashboard Vite app on `http://localhost:5174`
+Fill the remote values in `.env`, then run:
 
-For nginx/local-server testing, open `http://localhost:8080`; nginx forwards that request to FastAPI.
+```sh
+dev/sh/initialize_remote_server.sh
+dev/sh/upload_all_to_server.sh
+dev/sh/activate_remote_server.sh
+```
 
+The remote scripts now install/use Docker and run the deployment Compose file instead of creating Python venvs, running npm directly, and managing a systemd backend service.

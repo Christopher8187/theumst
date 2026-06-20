@@ -1,7 +1,10 @@
 .env
+.env.local
 backend/python/.venv/
 __pycache__/
 *.pyc
 node_modules/
 frontend/dashboard/dist/
 frontend/webpage/dist/
+.local/
+*.log
