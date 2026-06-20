@@ -24,7 +24,7 @@ choice="$(choose "Action" "1")"
 
 case "$choice" in
     1) need_docker; deploy_compose up --build -d; open_deploy_url ;;
-    2) need_docker; deploy_compose ps; echo; echo "Nginx health:"; health_url "http://localhost:${HTTP_PORT:-8080}/health" ;;
+    2) need_docker; deploy_compose ps; echo; echo "Nginx health:"; health_url "http://localhost:${HTTP_PORT:-8080}/health"; echo "Database health:"; health_url "http://localhost:${HTTP_PORT:-8080}/health/db"; echo "Asset health:"; health_url "http://localhost:${HTTP_PORT:-8080}/health/assets" ;;
     3) need_docker; deploy_compose logs -f ;;
     4) need_docker; deploy_compose down ;;
     5) need_docker; deploy_compose down -v ;;

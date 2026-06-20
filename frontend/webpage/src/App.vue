@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, watch } from "vue";
-import { apiFetch, dashboardUrl } from "../../urls.js";
+import { apiFetch, dashboardUrl, rewriteAssetUrls } from "../../urls.js";
 import RawPage from "./components/RawPage.vue";
 import { useWebpageRouter } from "./composables/useWebpageRouter";
 import { pageHtml } from "./pages";
@@ -10,7 +10,7 @@ import { updateSessionUI } from "./utils/session";
 
 const { pageName, isKnownPage, navigate, syncWithBrowser } = useWebpageRouter();
 const page = computed(() => pages[pageName.value] || pages.home);
-const html = computed(() => pageHtml[pageName.value] || pageHtml.home);
+const html = computed(() => rewriteAssetUrls(pageHtml[pageName.value] || pageHtml.home));
 
 function syncPage() {
   document.body.dataset.title = page.value.titleKey;

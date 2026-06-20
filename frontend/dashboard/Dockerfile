@@ -14,7 +14,8 @@ COPY frontend/dashboard ./
 FROM base AS dev
 ENV VITE_API_BASE=http://localhost:8000 \
     VITE_WEBPAGE_BASE=http://localhost:5173 \
-    VITE_DASHBOARD_BASE=http://localhost:5174/dashboard
+    VITE_DASHBOARD_BASE=http://localhost:5174/dashboard \
+    VITE_ASSET_BASE=http://localhost:8000/images
 EXPOSE 5174
 CMD ["npm", "run", "dev"]
 

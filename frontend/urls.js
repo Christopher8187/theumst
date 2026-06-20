@@ -1,6 +1,7 @@
 const LOCAL_API_BASE = "http://localhost:8000";
 const LOCAL_WEBPAGE_BASE = "http://localhost:5173";
 const LOCAL_DASHBOARD_BASE = "http://localhost:5174/dashboard";
+const LOCAL_ASSET_BASE = "http://localhost:8000/images";
 
 function isLocalDevPort(port) {
   return ["5173", "5174"].includes(port);
@@ -31,8 +32,27 @@ export const DASHBOARD_BASE = trimTrailingSlash(
   || (location.port === "5173" ? LOCAL_DASHBOARD_BASE : "/dashboard")
 );
 
+export const ASSET_BASE = trimTrailingSlash(
+  import.meta.env.VITE_ASSET_BASE
+  || (isLocalDevPort(location.port) ? LOCAL_ASSET_BASE : "/images")
+);
+
 export function apiUrl(path) {
   return joinUrl(API_BASE, path);
+}
+
+export function assetUrl(path = "") {
+  const cleanPath = String(path || "")
+    .replace(/^\/+/, "")
+    .replace(/^images\//, "");
+  return joinUrl(ASSET_BASE, cleanPath || "/");
+}
+
+export function rewriteAssetUrls(html = "") {
+  const prefix = `${assetUrl("").replace(/\/$/, "")}/`;
+  return String(html)
+    .replaceAll('src="/images/', `src="${prefix}`)
+    .replaceAll("src='/images/", `src='${prefix}`);
 }
 
 export function webpageUrl(path = "/") {

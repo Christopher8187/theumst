@@ -106,6 +106,12 @@ echo.
 echo FastAPI health:
 curl -fsS http://localhost:8000/health 2>nul
 echo.
+echo Database health:
+curl -fsS http://localhost:8000/health/db 2>nul
+echo.
+echo Asset health:
+curl -fsS http://localhost:8000/health/assets 2>nul
+echo.
 exit /b %ERRORLEVEL%
 
 :local_logs
@@ -152,6 +158,12 @@ docker compose -f "%DEPLOY_COMPOSE%" ps
 echo.
 echo Nginx health path:
 curl -fsS http://localhost:%HTTP_PORT%/health 2>nul
+echo.
+echo Database health:
+curl -fsS http://localhost:%HTTP_PORT%/health/db 2>nul
+echo.
+echo Asset health:
+curl -fsS http://localhost:%HTTP_PORT%/health/assets 2>nul
 echo.
 exit /b %ERRORLEVEL%
 

@@ -42,6 +42,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/db >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   webpage:
     build:
@@ -54,6 +59,7 @@ services:
       VITE_API_BASE: http://localhost:8000
       VITE_WEBPAGE_BASE: http://localhost:5173
       VITE_DASHBOARD_BASE: http://localhost:5174/dashboard
+      VITE_ASSET_BASE: http://localhost:8000/images
     ports:
       - "5173:5173"
     volumes:
@@ -61,6 +67,9 @@ services:
       - ./frontend/urls.js:/app/frontend/urls.js:ro
       - ./frontend/assets:/app/frontend/assets:ro
       - webpage_node_modules:/app/frontend/webpage/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
 
   dashboard:
     build:
@@ -73,6 +82,7 @@ services:
       VITE_API_BASE: http://localhost:8000
       VITE_WEBPAGE_BASE: http://localhost:5173
       VITE_DASHBOARD_BASE: http://localhost:5174/dashboard
+      VITE_ASSET_BASE: http://localhost:8000/images
     ports:
       - "5174:5174"
     volumes:
@@ -80,6 +90,9 @@ services:
       - ./frontend/urls.js:/app/frontend/urls.js:ro
       - ./frontend/assets:/app/frontend/assets:ro
       - dashboard_node_modules:/app/frontend/dashboard/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   local_pgdata:

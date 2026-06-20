@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
-import { apiFetch, apiUrl, webpageUrl } from "../../urls.js";
+import { apiFetch, apiUrl, assetUrl, webpageUrl } from "../../urls.js";
 import Sidebar from "./components/Sidebar.vue";
 import LanguageModal from "./components/LanguageModal.vue";
 import AdminPage from "./pages/AdminPage.vue";
@@ -34,8 +34,8 @@ const superUser = ref("");
 const superMessage = ref("");
 const superError = ref(false);
 const showLanguage = ref(false);
-const logoSrc = "/images/logo.png";
-const translateSrc = "/images/translate.svg";
+const logoSrc = assetUrl("logo.png");
+const translateSrc = assetUrl("translate.svg");
 
 const isAdmin = computed(() => ["admin", "superadmin"].includes(profile.value.authority_type));
 const isSuperadmin = computed(() => profile.value.authority_type === "superadmin");

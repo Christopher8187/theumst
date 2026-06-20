@@ -25,7 +25,7 @@ choice="$(choose "Action" "1")"
 
 case "$choice" in
     1) local_compose up --build -d; open_local_urls ;;
-    2) local_compose ps; echo; echo "FastAPI health:"; health_url http://localhost:8000/health ;;
+    2) local_compose ps; echo; echo "FastAPI health:"; health_url http://localhost:8000/health; echo "Database health:"; health_url http://localhost:8000/health/db; echo "Asset health:"; health_url http://localhost:8000/health/assets ;;
     3) local_compose logs -f ;;
     4) local_compose down ;;
     5) local_compose build ;;
