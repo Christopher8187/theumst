@@ -1,67 +1,48 @@
 <script setup>
-import { computed, nextTick, onMounted, watch } from "vue";
-import { apiFetch, dashboardUrl, rewriteAssetUrls } from "../../urls.js";
-import RawPage from "./components/RawPage.vue";
+import { computed, onMounted, watchEffect, ref } from "vue";
+import { apiFetch, dashboardUrl } from "../../urls.js";
+import AboutPage from "./pages/AboutPage.vue";
+import HomePage from "./pages/HomePage.vue";
+import LoginPage from "./pages/LoginPage.vue";
+import SignupPage from "./pages/SignupPage.vue";
+import SimplePage from "./pages/SimplePage.vue";
 import { useWebpageRouter } from "./composables/useWebpageRouter";
-import { pageHtml } from "./pages";
 import { pages } from "./router/pageMeta";
-import { closeLanguageMenus, setLanguage, toggleLanguageMenu } from "./utils/language";
-import { updateSessionUI } from "./utils/session";
+import { useWebI18n } from "./utils/language";
 
-const { pageName, isKnownPage, navigate, syncWithBrowser } = useWebpageRouter();
-const page = computed(() => pages[pageName.value] || pages.home);
-const html = computed(() => rewriteAssetUrls(pageHtml[pageName.value] || pageHtml.home));
+const { pageName, navigate: routeTo, syncWithBrowser } = useWebpageRouter();
+const { tr, setLang } = useWebI18n();
+const session = ref({ user: null });
+const loginError = ref(new URLSearchParams(location.search).get("error") === "bad-login");
 
-function syncPage() {
-  document.body.dataset.title = page.value.titleKey;
-  setLanguage();
-  updateSessionUI();
+const pageComponent = computed(() => ({
+  home: HomePage,
+  about: AboutPage,
+  login: LoginPage,
+  signup: SignupPage
+}[pageName.value] || SimplePage));
 
-  const error = document.querySelector("[data-login-error]");
-  if (error) error.hidden = new URLSearchParams(location.search).get("error") !== "bad-login";
+const titleKey = computed(() => pages[pageName.value]?.titleKey || "home.title");
+
+function navigate(path) {
+  loginError.value = false;
+  routeTo(path);
 }
 
-function handleClick(event) {
-  const languageButton = event.target.closest("[data-language-button]");
-  if (languageButton) {
-    event.preventDefault();
-    toggleLanguageMenu(languageButton);
-    return;
-  }
-
-  const languageChoice = event.target.closest("[data-language-choice]");
-  if (languageChoice) {
-    event.preventDefault();
-    setLanguage(languageChoice.dataset.languageChoice);
-    return;
-  }
-
-  const link = event.target.closest("a[href]");
-  if (!link) return;
-
-  const url = new URL(link.href, location.href);
-  if (url.pathname.startsWith("/dashboard")) {
-    event.preventDefault();
-    location.href = dashboardUrl(url.pathname);
-    return;
-  }
-
-  if (url.origin === location.origin && isKnownPage(url.pathname)) {
-    event.preventDefault();
-    navigate(url.pathname);
+async function loadSession() {
+  try {
+    const res = await apiFetch("/api/me");
+    session.value.user = res.ok ? (await res.json()).user : null;
+  } catch {
+    session.value.user = null;
   }
 }
 
-async function handleSubmit(event) {
-  const form = event.target;
-  const action = form.getAttribute("action") || "";
-  if (!["/auth/login", "/auth/signup"].includes(action)) return;
-
-  event.preventDefault();
+async function submitAuth(event, action) {
   const res = await apiFetch(action, {
     method: "POST",
     headers: { Accept: "application/json" },
-    body: new FormData(form)
+    body: new FormData(event.target)
   });
 
   if (res.ok) {
@@ -70,8 +51,7 @@ async function handleSubmit(event) {
   }
 
   if (action === "/auth/login") {
-    const error = document.querySelector("[data-login-error]");
-    if (error) error.hidden = false;
+    loginError.value = true;
     return;
   }
 
@@ -79,20 +59,26 @@ async function handleSubmit(event) {
   alert(data.detail || "Could not sign up.");
 }
 
-watch(pageName, async () => {
-  await nextTick();
-  syncPage();
+watchEffect(() => {
+  document.title = tr(titleKey.value);
 });
 
 onMounted(() => {
-  syncPage();
+  loadSession();
   window.addEventListener("popstate", syncWithBrowser);
-  document.addEventListener("click", event => {
-    if (!event.target.closest(".language-menu")) closeLanguageMenus();
-  });
 });
 </script>
 
 <template>
-  <RawPage :html="html" @page-click="handleClick" @page-submit="handleSubmit" />
+  <component
+    :is="pageComponent"
+    :tr="tr"
+    :session="session"
+    :title-key="titleKey"
+    :login-error="loginError"
+    @navigate="navigate"
+    @set-language="setLang"
+    @login="submitAuth($event, '/auth/login')"
+    @signup="submitAuth($event, '/auth/signup')"
+  />
 </template>

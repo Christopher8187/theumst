@@ -1,14 +1,10 @@
 # syntax=docker/dockerfile:1.7
 
-# Built from the repository root so shared frontend/urls.js and frontend/assets
-# are available without depending on where dev scripts are launched from.
-
 FROM node:22-alpine AS base
 WORKDIR /app/frontend/dashboard
 COPY frontend/dashboard/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY frontend/urls.js ../urls.js
-COPY frontend/assets ../assets
 COPY frontend/dashboard ./
 
 FROM base AS dev

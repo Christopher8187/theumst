@@ -143,6 +143,7 @@ The scripts are intentionally thin. The Compose files live at the project root s
 ```text
 compose.local.yml
 compose.deploy.yml
+compose.deploy.example.yml
 ```
 
 Each app project now owns its own Dockerfile:
@@ -159,4 +160,4 @@ The Docker nginx config used by `compose.deploy.yml` lives in:
 config/nginx.docker.conf
 ```
 
-Safe placeholders live in `.env.example`. Copy it to `.env` and put real private remote secrets only in your own local/server copy of `.env`.
+Safe script placeholders live in `.env.example`. Safe deployment placeholders live in `compose.deploy.example.yml`. The working `compose.deploy.yml` intentionally contains current deployment credentials and is ignored by git.

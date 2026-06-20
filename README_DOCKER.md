@@ -1,12 +1,11 @@
 # Docker setup
 
-The Docker setup has been moved so it does not depend on the current path of the `dev/sh` or `dev/bat` scripts.
-
-The two Compose files now live at the project root:
+The project has two root-level Compose files:
 
 ```text
-compose.local.yml
-compose.deploy.yml
+compose.local.yml              # safe local hot-reload stack
+compose.deploy.yml             # real deploy stack with current secrets, gitignored
+compose.deploy.example.yml     # safe template for git
 ```
 
 Each app project owns its own Dockerfile:
@@ -17,7 +16,7 @@ frontend/webpage/Dockerfile
 frontend/dashboard/Dockerfile
 ```
 
-Compose always builds from the repository root with stable paths, so the scripts can be launched from Linux, Git Bash, WSL, or Windows without changing Dockerfile paths.
+Compose always builds from the repository root with stable paths, so scripts can be launched from Linux, Git Bash, WSL, or Windows without changing Dockerfile paths.
 
 ## 1. Local testing: `compose.local.yml`
 
@@ -51,6 +50,8 @@ Services:
 - `backend` — production FastAPI image with both Vue apps already built into it.
 - `nginx` — small public reverse proxy on `http://localhost:8080` by default.
 
+The deploy Compose file intentionally contains the current deployment secrets so the app works immediately. It is ignored by git. Use `compose.deploy.example.yml` as the tracked template.
+
 Run on Linux / Git Bash / WSL:
 
 ```sh
@@ -63,46 +64,27 @@ Run on Windows:
 dev\bat\deployment.bat
 ```
 
-For a real server, set `HTTP_PORT=80` in `.env` or your shell before starting the stack.
+For a real server, set `HTTP_PORT=80` in your shell or `.env` before starting the stack.
 
 ## Direct Compose commands
-
-The button scripts are still the recommended entry point, but these also work from the project root:
 
 ```sh
 docker compose -f compose.local.yml up --build -d
 docker compose -f compose.deploy.yml up --build -d
 ```
 
-## Build caching
+## Assets
 
-The Dockerfiles copy package/requirements files before source files so Docker can cache `npm ci` and `pip install`. They also use BuildKit cache mounts for npm and pip caches.
+Images now live in:
+
+```text
+backend/assets/images/
+```
+
+The backend serves them at `/images/...`. Both Vue apps use `VITE_ASSET_BASE=http://localhost:8000/images` during local development.
 
 ## Secrets
 
-Safe placeholders live in `.env.example`. Copy it to `.env` and put real private remote secrets only in your own local/server copy of `.env`.
+`.env` is now only for scripts that need server connection details. Local app defaults live in `compose.local.yml`; deploy app credentials live in the gitignored `compose.deploy.yml`.
 
-## Linux permission repair
-
-If a `.sh` file starts but Docker commands fail with `permission denied` or `Cannot connect to the Docker daemon`, run:
-
-```sh
-cd /path/to/theumst-charles
-sudo chown -R "$USER:$USER" .
-chmod +x dev/sh/*.sh
-./dev/sh/linux_first_fix.sh
-```
-
-If you prefer the menu, use `./dev/sh/permissions.sh` and choose option `3` to add your user to the Docker group. Then run:
-
-```sh
-newgrp docker
-docker run --rm hello-world
-```
-
-After that, start local testing again:
-
-```sh
-./dev/sh/local_testing.sh
-```
-
+After rotating credentials, update `compose.deploy.yml` and your private `.env` copies, not the example files.

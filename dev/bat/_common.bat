@@ -246,7 +246,7 @@ if "%REMOTE_ROOT%"=="" (
 set "TARFILE=%TEMP%\theumst_upload_%RANDOM%.tar"
 echo Preparing upload archive...
 cd /d "%ROOT%"
-tar --exclude=.git --exclude=.local --exclude=backend/python/.venv --exclude=frontend/webpage/node_modules --exclude=frontend/webpage/dist --exclude=frontend/dashboard/node_modules --exclude=frontend/dashboard/dist -cf "%TARFILE%" .
+tar --exclude=.git --exclude=.env --exclude=SECRET_ROTATION_NOTES.md --exclude=.local --exclude=backend/python/.venv --exclude=frontend/webpage/node_modules --exclude=frontend/webpage/dist --exclude=frontend/dashboard/node_modules --exclude=frontend/dashboard/dist -cf "%TARFILE%" .
 echo Uploading to %REMOTE%:%REMOTE_ROOT%...
 ssh -i "%KEY%" "%REMOTE%" "mkdir -p '%REMOTE_ROOT%'"
 scp -i "%KEY%" "%TARFILE%" "%REMOTE%:%REMOTE_ROOT%/theumst_upload.tar"

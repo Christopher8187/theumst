@@ -6,5 +6,6 @@ __pycache__/
 node_modules/
 frontend/dashboard/dist/
 frontend/webpage/dist/
+compose.deploy.yml
 .local/
 *.log

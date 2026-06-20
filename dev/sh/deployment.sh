@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-# shellcheck source=_common.sh
 . "$SCRIPT_DIR/_common.sh"
 trap 'on_error "$LINENO" "$BASH_COMMAND" "$?"' ERR
 load_env
 
 cat <<'MENU'
-Deployment actions:
-  1) Start deployment-style local nginx stack
-  2) Check deployment-style local nginx stack
-  3) Show deployment-style local logs
-  4) Stop deployment-style local nginx stack
-  5) Reset deployment-style local volumes/database
-  6) Remote full deploy: permissions + upload + start + check
+Deployment:
+  1) Start local nginx-style stack
+  2) Check local nginx-style stack
+  3) Logs
+  4) Stop
+  5) Reset volumes/database
+  6) Remote full deploy
   7) Remote setup Docker/certbot
   8) Remote upload only
   9) Remote start only
@@ -23,11 +22,11 @@ MENU
 choice="$(choose "Action" "1")"
 
 case "$choice" in
-    1) need_docker; deploy_compose up --build -d; open_deploy_url ;;
-    2) need_docker; deploy_compose ps; echo; echo "Nginx health:"; health_url "http://localhost:${HTTP_PORT:-8080}/health"; echo "Database health:"; health_url "http://localhost:${HTTP_PORT:-8080}/health/db"; echo "Asset health:"; health_url "http://localhost:${HTTP_PORT:-8080}/health/assets" ;;
-    3) need_docker; deploy_compose logs -f ;;
-    4) need_docker; deploy_compose down ;;
-    5) need_docker; deploy_compose down -v ;;
+    1) deploy_start ;;
+    2) deploy_check ;;
+    3) deploy_logs ;;
+    4) deploy_stop ;;
+    5) deploy_reset ;;
     6) server="$(pick_server)"; remote_full_deploy "$server" ;;
     7) server="$(pick_server)"; remote_setup "$server" ;;
     8) server="$(pick_server)"; remote_upload "$server" ;;

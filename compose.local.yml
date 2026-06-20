@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
       - local_pgdata:/var/lib/postgresql/data
       - ./backend/sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
@@ -37,7 +37,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend/python:/app/backend/python
-      - ./frontend/assets:/app/frontend/assets:ro
+      - ./backend/assets:/app/backend/assets:ro
       - local_storage:/storage
     depends_on:
       db:
@@ -63,13 +63,10 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      # Mount only editable source/config files so the image-built node_modules
-      # folder is not hidden by a Linux bind mount. Rebuild after changing deps.
       - ./frontend/webpage/src:/app/frontend/webpage/src
       - ./frontend/webpage/index.html:/app/frontend/webpage/index.html
       - ./frontend/webpage/vite.config.js:/app/frontend/webpage/vite.config.js
       - ./frontend/urls.js:/app/frontend/urls.js:ro
-      - ./frontend/assets:/app/frontend/assets:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -94,13 +91,10 @@ services:
     ports:
       - "5174:5174"
     volumes:
-      # Mount only editable source/config files so the image-built node_modules
-      # folder is not hidden by a Linux bind mount. Rebuild after changing deps.
       - ./frontend/dashboard/src:/app/frontend/dashboard/src
       - ./frontend/dashboard/index.html:/app/frontend/dashboard/index.html
       - ./frontend/dashboard/vite.config.js:/app/frontend/dashboard/vite.config.js
       - ./frontend/urls.js:/app/frontend/urls.js:ro
-      - ./frontend/assets:/app/frontend/assets:ro
     depends_on:
       backend:
         condition: service_healthy

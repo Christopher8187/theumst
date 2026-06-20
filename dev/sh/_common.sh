@@ -189,6 +189,35 @@ test_local_docker_permissions() {
 local_compose() { (cd "$ROOT" && compose -f "$LOCAL_COMPOSE" "$@"); }
 deploy_compose() { (cd "$ROOT" && compose -f "$DEPLOY_COMPOSE" "$@"); }
 
+
+local_build() { need_docker; local_compose build; }
+local_start() { need_docker; local_compose up --build -d --remove-orphans; open_local_urls; }
+local_stop() { need_docker; local_compose down; }
+local_reset() { need_docker; local_compose down -v; }
+local_logs() { need_docker; local_compose logs -f; }
+local_check() {
+    need_docker
+    local_compose ps
+    echo
+    health_url http://127.0.0.1:8000/health
+    health_url http://127.0.0.1:8000/health/db
+    health_url http://127.0.0.1:8000/health/assets
+}
+
+deploy_build() { need_docker; deploy_compose build; }
+deploy_start() { need_docker; deploy_compose up --build -d --remove-orphans; open_deploy_url; }
+deploy_stop() { need_docker; deploy_compose down; }
+deploy_reset() { need_docker; deploy_compose down -v; }
+deploy_logs() { need_docker; deploy_compose logs -f; }
+deploy_check() {
+    need_docker
+    deploy_compose ps
+    echo
+    health_url "http://127.0.0.1:${HTTP_PORT:-8080}/health"
+    health_url "http://127.0.0.1:${HTTP_PORT:-8080}/health/db"
+    health_url "http://127.0.0.1:${HTTP_PORT:-8080}/health/assets"
+}
+
 open_local_urls() {
     cat <<URLS
 
@@ -280,6 +309,8 @@ remote_upload() {
         cd "$ROOT"
         tar \
             --exclude='./.git' \
+            --exclude='./.env' \
+            --exclude='./SECRET_ROTATION_NOTES.md' \
             --exclude='./.local' \
             --exclude='./backend/python/.venv' \
             --exclude='./frontend/webpage/node_modules' \

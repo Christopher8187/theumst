@@ -48,13 +48,6 @@ export function assetUrl(path = "") {
   return joinUrl(ASSET_BASE, cleanPath || "/");
 }
 
-export function rewriteAssetUrls(html = "") {
-  const prefix = `${assetUrl("").replace(/\/$/, "")}/`;
-  return String(html)
-    .replaceAll('src="/images/', `src="${prefix}`)
-    .replaceAll("src='/images/", `src='${prefix}`);
-}
-
 export function webpageUrl(path = "/") {
   return joinUrl(WEBPAGE_BASE, path);
 }

@@ -20,9 +20,10 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env", override=False)
 
 FRONTEND = ROOT / "frontend"
+BACKEND = ROOT / "backend"
 WEBPAGE_DIST = FRONTEND / "webpage" / "dist"
 DASHBOARD_DIST = FRONTEND / "dashboard" / "dist"
-PUBLIC_IMAGES = FRONTEND / "assets" / "images"
+PUBLIC_IMAGES = BACKEND / "assets" / "images"
 COOKIE = "theumst_session"
 SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
 
