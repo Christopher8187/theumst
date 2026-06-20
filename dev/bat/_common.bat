@@ -5,8 +5,8 @@ set "ACTION=%~1"
 set "TARGET=%~2"
 set "ROOT=%~dp0..\.."
 for %%I in ("%ROOT%") do set "ROOT=%%~fI"
-set "LOCAL_COMPOSE=%ROOT%\docker\compose.local.yml"
-set "DEPLOY_COMPOSE=%ROOT%\docker\compose.deploy.yml"
+set "LOCAL_COMPOSE=%ROOT%\compose.local.yml"
+set "DEPLOY_COMPOSE=%ROOT%\compose.deploy.yml"
 set "ENV_FILE=%ROOT%\.env"
 call :load_env
 
@@ -249,7 +249,7 @@ if "%REMOTE_ROOT%"=="" (
     exit /b 1
 )
 echo Starting Docker deployment on %REMOTE%...
-ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' && SERVER='%TARGET%' docker compose -f docker/compose.deploy.yml up --build -d"
+ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' && SERVER='%TARGET%' docker compose -f compose.deploy.yml up --build -d"
 exit /b %ERRORLEVEL%
 
 :remote_stop
@@ -259,7 +259,7 @@ if "%REMOTE_ROOT%"=="" (
     exit /b 1
 )
 echo Stopping Docker deployment on %REMOTE%...
-ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' && docker compose -f docker/compose.deploy.yml down"
+ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' && docker compose -f compose.deploy.yml down"
 exit /b %ERRORLEVEL%
 
 :remote_check
@@ -269,7 +269,7 @@ if "%REMOTE_ROOT%"=="" (
     exit /b 1
 )
 echo Remote containers on %REMOTE%:
-ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' && docker compose -f docker/compose.deploy.yml ps"
+ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' && docker compose -f compose.deploy.yml ps"
 if not "%REMOTE_URL%"=="" echo URL: %REMOTE_URL%
 exit /b %ERRORLEVEL%
 
@@ -279,7 +279,7 @@ if "%REMOTE_ROOT%"=="" (
     echo Missing REMOTE_ROOT_%TARGET% in .env
     exit /b 1
 )
-ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' && docker compose -f docker/compose.deploy.yml logs --tail=120"
+ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' && docker compose -f compose.deploy.yml logs --tail=120"
 exit /b %ERRORLEVEL%
 
 :remote_shell
@@ -303,7 +303,7 @@ if /I "%CERT_MODE%"=="manual" (
     exit /b %ERRORLEVEL%
 )
 echo Renewing/issuing certificate for %DOMAIN% on %REMOTE%...
-ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' 2>/dev/null || true; docker compose -f docker/compose.deploy.yml stop nginx >/dev/null 2>&1 || true; %SUDO% apt update && %SUDO% apt install -y certbot; %SUDO% certbot certonly --standalone --non-interactive --agree-tos -m '%CERT_EMAIL%' --cert-name '%CERT_NAME%' -d '%DOMAIN%' -d 'www.%DOMAIN%' || %SUDO% certbot renew; cd '%REMOTE_ROOT%' 2>/dev/null && docker compose -f docker/compose.deploy.yml up -d nginx >/dev/null 2>&1 || true"
+ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' 2>/dev/null || true; docker compose -f compose.deploy.yml stop nginx >/dev/null 2>&1 || true; %SUDO% apt update && %SUDO% apt install -y certbot; %SUDO% certbot certonly --standalone --non-interactive --agree-tos -m '%CERT_EMAIL%' --cert-name '%CERT_NAME%' -d '%DOMAIN%' -d 'www.%DOMAIN%' || %SUDO% certbot renew; cd '%REMOTE_ROOT%' 2>/dev/null && docker compose -f compose.deploy.yml up -d nginx >/dev/null 2>&1 || true"
 exit /b %ERRORLEVEL%
 
 :remote_full_deploy

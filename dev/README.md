@@ -138,13 +138,25 @@ It can:
 
 ## Docker files
 
-The scripts are intentionally thin. Most local/deployment configuration lives in:
+The scripts are intentionally thin. The Compose files live at the project root so their relative paths are stable no matter where a Linux `.sh` or Windows `.bat` file is launched from:
 
 ```text
-docker/backend.Dockerfile
-docker/compose.local.yml
-docker/compose.deploy.yml
-docker/nginx.deploy.conf
+compose.local.yml
+compose.deploy.yml
 ```
 
-The safe defaults live in `.env`. Put real private remote secrets only in your own local/server copy of `.env`.
+Each app project now owns its own Dockerfile:
+
+```text
+backend/python/Dockerfile
+frontend/webpage/Dockerfile
+frontend/dashboard/Dockerfile
+```
+
+The Docker nginx config used by `compose.deploy.yml` lives in:
+
+```text
+config/nginx.docker.conf
+```
+
+Safe placeholders live in `.env.example`. Copy it to `.env` and put real private remote secrets only in your own local/server copy of `.env`.

@@ -3,8 +3,8 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 ENV_FILE="$ROOT/.env"
-LOCAL_COMPOSE="$ROOT/docker/compose.local.yml"
-DEPLOY_COMPOSE="$ROOT/docker/compose.deploy.yml"
+LOCAL_COMPOSE="$ROOT/compose.local.yml"
+DEPLOY_COMPOSE="$ROOT/compose.deploy.yml"
 
 load_env() {
     if [ -f "$ENV_FILE" ]; then
@@ -181,28 +181,28 @@ remote_start() {
     remote_context "$1"
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
     echo "Starting Docker deployment on $REMOTE..."
-    ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && SERVER='$TARGET_SERVER' docker compose -f docker/compose.deploy.yml up --build -d"
+    ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && SERVER='$TARGET_SERVER' docker compose -f compose.deploy.yml up --build -d"
 }
 
 remote_stop() {
     remote_context "$1"
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
     echo "Stopping Docker deployment on $REMOTE..."
-    ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && docker compose -f docker/compose.deploy.yml down"
+    ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && docker compose -f compose.deploy.yml down"
 }
 
 remote_check() {
     remote_context "$1"
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
     echo "Remote containers on $REMOTE:"
-    ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && docker compose -f docker/compose.deploy.yml ps"
+    ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && docker compose -f compose.deploy.yml ps"
     [ -n "${REMOTE_URL:-}" ] && echo "URL: $REMOTE_URL"
 }
 
 remote_logs() {
     remote_context "$1"
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; exit 1; }
-    ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && docker compose -f docker/compose.deploy.yml logs --tail=120"
+    ssh -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && docker compose -f compose.deploy.yml logs --tail=120"
 }
 
 remote_shell() {
@@ -227,7 +227,7 @@ remote_certs() {
     fi
 
     echo "Renewing/issuing certificate for $DOMAIN on $REMOTE..."
-    ssh -i "$KEY" "$REMOTE" "cd '${REMOTE_ROOT:-.}' 2>/dev/null || true; docker compose -f docker/compose.deploy.yml stop nginx >/dev/null 2>&1 || true; $SUDO apt update && $SUDO apt install -y certbot; $SUDO certbot certonly --standalone --non-interactive --agree-tos -m '$CERT_EMAIL' --cert-name '$CERT_NAME' -d '$DOMAIN' -d 'www.$DOMAIN' || $SUDO certbot renew; cd '${REMOTE_ROOT:-.}' 2>/dev/null && docker compose -f docker/compose.deploy.yml up -d nginx >/dev/null 2>&1 || true"
+    ssh -i "$KEY" "$REMOTE" "cd '${REMOTE_ROOT:-.}' 2>/dev/null || true; docker compose -f compose.deploy.yml stop nginx >/dev/null 2>&1 || true; $SUDO apt update && $SUDO apt install -y certbot; $SUDO certbot certonly --standalone --non-interactive --agree-tos -m '$CERT_EMAIL' --cert-name '$CERT_NAME' -d '$DOMAIN' -d 'www.$DOMAIN' || $SUDO certbot renew; cd '${REMOTE_ROOT:-.}' 2>/dev/null && docker compose -f compose.deploy.yml up -d nginx >/dev/null 2>&1 || true"
     echo "Certificate command finished."
 }
 
