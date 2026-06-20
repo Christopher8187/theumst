@@ -54,7 +54,7 @@ services:
       dockerfile: frontend/webpage/Dockerfile
       target: dev
     working_dir: /app/frontend/webpage
-    command: sh -c "test -d node_modules/vite || npm ci; npm run dev"
+    command: npm run dev
     environment:
       VITE_API_BASE: http://localhost:8000
       VITE_WEBPAGE_BASE: http://localhost:5173
@@ -63,13 +63,21 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      - ./frontend/webpage:/app/frontend/webpage
+      # Mount only editable source/config files so the image-built node_modules
+      # folder is not hidden by a Linux bind mount. Rebuild after changing deps.
+      - ./frontend/webpage/src:/app/frontend/webpage/src
+      - ./frontend/webpage/index.html:/app/frontend/webpage/index.html
+      - ./frontend/webpage/vite.config.js:/app/frontend/webpage/vite.config.js
       - ./frontend/urls.js:/app/frontend/urls.js:ro
       - ./frontend/assets:/app/frontend/assets:ro
-      - webpage_node_modules:/app/frontend/webpage/node_modules
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5173/ >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   dashboard:
     build:
@@ -77,7 +85,7 @@ services:
       dockerfile: frontend/dashboard/Dockerfile
       target: dev
     working_dir: /app/frontend/dashboard
-    command: sh -c "test -d node_modules/vite || npm ci; npm run dev"
+    command: npm run dev
     environment:
       VITE_API_BASE: http://localhost:8000
       VITE_WEBPAGE_BASE: http://localhost:5173
@@ -86,16 +94,22 @@ services:
     ports:
       - "5174:5174"
     volumes:
-      - ./frontend/dashboard:/app/frontend/dashboard
+      # Mount only editable source/config files so the image-built node_modules
+      # folder is not hidden by a Linux bind mount. Rebuild after changing deps.
+      - ./frontend/dashboard/src:/app/frontend/dashboard/src
+      - ./frontend/dashboard/index.html:/app/frontend/dashboard/index.html
+      - ./frontend/dashboard/vite.config.js:/app/frontend/dashboard/vite.config.js
       - ./frontend/urls.js:/app/frontend/urls.js:ro
       - ./frontend/assets:/app/frontend/assets:ro
-      - dashboard_node_modules:/app/frontend/dashboard/node_modules
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5174/dashboard/ >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   local_pgdata:
   local_storage:
-  webpage_node_modules:
-  dashboard_node_modules:
