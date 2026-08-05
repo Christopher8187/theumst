@@ -104,6 +104,12 @@ chris-theumst-com.pem
 chris-theumst-cn.pem
 ```
 
+The Windows deployment wrappers pass this Windows directory explicitly to Git
+Bash or WSL and translate it to the correct shell path. Leave
+`SSH_KEY_DIR=__AUTO__` in `.env` for this behavior. To use another directory,
+set `SSH_KEY_DIR` to an absolute path, preferably with forward slashes, such as
+`C:/keys/theumst`.
+
 Restrict their permissions in PowerShell:
 
 ```powershell
@@ -611,6 +617,12 @@ Confirm the key exists at:
 %USERPROFILE%\.ssh\chris-theumst-com.pem
 %USERPROFILE%\.ssh\chris-theumst-cn.pem
 ```
+
+Keep `SSH_KEY_DIR=__AUTO__` in `.env` when using `deploy_com.bat` or
+`deploy_cn.bat`. The wrappers now translate `%USERPROFILE%\.ssh` correctly for
+both WSL (`/mnt/c/...`) and Git Bash (`/c/...`). For a custom key directory, set
+an absolute value such as `SSH_KEY_DIR=C:/keys/theumst` and rerun the same batch
+file.
 
 ## Certificate validation fails
 

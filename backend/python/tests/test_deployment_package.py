@@ -77,6 +77,61 @@ def test_agent_deployment_and_complete_readme_are_present():
     assert 'remote_full_deploy "$TARGET"' in script
 
 
+
+def test_windows_deploy_wrappers_pass_userprofile_ssh_directory():
+    for name in ("deploy_com.bat", "deploy_cn.bat"):
+        text = (ROOT / "dev/bat" / name).read_text(encoding="utf-8")
+        assert 'set "THEUMST_SSH_KEY_DIR=%USERPROFILE%\\.ssh"' in text
+        assert "THEUMST_SSH_KEY_DIR/p" in text
+
+
+def test_shell_normalizes_raw_windows_ssh_directory():
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash is not installed")
+
+    command = "\n".join([
+        f"source {str(ROOT / 'dev/sh/_common.sh')!r}",
+        r"normalize_host_path 'C:\Users\Chris\.ssh'",
+    ])
+    completed = subprocess.run(
+        [bash, "-c", command],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    normalized = completed.stdout.strip()
+    assert normalized in {
+        "/c/Users/Chris/.ssh",
+        "/mnt/c/Users/Chris/.ssh",
+    }
+
+
+def test_shell_remote_context_uses_windows_wrapper_key_directory(tmp_path):
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash is not installed")
+
+    key_dir = tmp_path / "windows-profile" / ".ssh"
+    key_dir.mkdir(parents=True)
+    expected_key = key_dir / "chris-theumst-com.pem"
+    expected_key.write_text("test key placeholder", encoding="utf-8")
+
+    command = "\n".join([
+        "set -euo pipefail",
+        f"export THEUMST_SSH_KEY_DIR={str(key_dir)!r}",
+        f"source {str(ROOT / 'dev/sh/_common.sh')!r}",
+        "remote_context COM",
+        "printf '%s' \"$KEY\"",
+    ])
+    completed = subprocess.run(
+        [bash, "-c", command],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.stdout == str(expected_key)
+
 def test_shell_deployment_scripts_parse_when_bash_is_available():
     bash = shutil.which("bash")
     if not bash:

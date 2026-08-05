@@ -7,6 +7,60 @@ LOCAL_COMPOSE="$ROOT/compose.local.yml"
 DEPLOY_COMPOSE="$ROOT/compose.deploy.yml"
 SSH_OPTIONS=(-o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=4)
 
+normalize_host_path() {
+    path_value="${1:-}"
+    [ -n "$path_value" ] || return 1
+
+    case "$path_value" in
+        [A-Za-z]:\\*|[A-Za-z]:/*)
+            if command -v wslpath >/dev/null 2>&1; then
+                wslpath -u "$path_value"
+                return
+            fi
+            if command -v cygpath >/dev/null 2>&1; then
+                cygpath -u "$path_value"
+                return
+            fi
+
+            drive="$(printf '%s' "${path_value%%:*}" | tr '[:upper:]' '[:lower:]')"
+            remainder="${path_value#*:}"
+            remainder="$(printf '%s' "$remainder" | tr '\\' '/')"
+            remainder="${remainder#/}"
+            if grep -qi microsoft /proc/version 2>/dev/null; then
+                printf '/mnt/%s/%s\n' "$drive" "$remainder"
+            else
+                printf '/%s/%s\n' "$drive" "$remainder"
+            fi
+            ;;
+        *)
+            printf '%s\n' "$path_value"
+            ;;
+    esac
+}
+
+resolve_ssh_key_dir() {
+    configured="${SSH_KEY_DIR:-}"
+    if [ -n "$configured" ] && [ "$configured" != "__AUTO__" ]; then
+        normalize_host_path "$configured"
+        return
+    fi
+
+    # The Windows wrappers export this explicitly. Under WSL, WSLENV translates
+    # it to /mnt/c/...; under Git Bash, normalize_host_path uses cygpath.
+    if [ -n "${THEUMST_SSH_KEY_DIR:-}" ]; then
+        normalize_host_path "$THEUMST_SSH_KEY_DIR"
+        return
+    fi
+
+    # Support launching the shell script directly from a Windows-aware shell.
+    if [ -n "${USERPROFILE:-}" ]; then
+        normalize_host_path "${USERPROFILE%[\\/]}/.ssh"
+        return
+    fi
+
+    printf '%s/.ssh\n' "$HOME"
+}
+
 load_env() {
     if [ -f "$ENV_FILE" ]; then
         set -a
@@ -18,10 +72,7 @@ load_env() {
     SERVER="${SERVER:-LOCAL}"
     REMOTE_SERVER="${REMOTE_SERVER:-COM}"
     HTTP_PORT="${HTTP_PORT:-8080}"
-    SSH_KEY_DIR="${SSH_KEY_DIR:-$HOME/.ssh}"
-    if [ "$SSH_KEY_DIR" = "__AUTO__" ]; then
-        SSH_KEY_DIR="$HOME/.ssh"
-    fi
+    SSH_KEY_DIR="$(resolve_ssh_key_dir)"
 
     return 0
 }
@@ -261,8 +312,7 @@ remote_context() {
     NGINX_SITE="$(remote_setting "NGINX_SITE_${TARGET_SERVER}")"
     NGINX_CONF="$(remote_setting "NGINX_CONF_${TARGET_SERVER}")"
     SUDO_PASSWORD="$(remote_setting "SUDO_PASSWORD_${TARGET_SERVER}")"
-    SSH_KEY_DIR="${SSH_KEY_DIR:-$HOME/.ssh}"
-    [ "$SSH_KEY_DIR" = "__AUTO__" ] && SSH_KEY_DIR="$HOME/.ssh"
+    SSH_KEY_DIR="$(resolve_ssh_key_dir)"
     KEY="$SSH_KEY_DIR/$KEY_NAME"
     REMOTE="$SSH_USER@$SSH_HOST"
 
