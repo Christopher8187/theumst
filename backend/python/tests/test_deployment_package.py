@@ -138,3 +138,28 @@ def test_shell_deployment_scripts_parse_when_bash_is_available():
         pytest.skip("bash is not installed")
     scripts = sorted((ROOT / "dev/sh").glob("*.sh"))
     subprocess.run([bash, "-n", *map(str, scripts)], check=True)
+
+
+def test_remote_upload_uses_one_compressed_archive_not_recursive_scp():
+    text = (ROOT / "dev/sh/_common.sh").read_text(encoding="utf-8")
+    upload = text.split("remote_upload() {", 1)[1].split("\nremote_start() {", 1)[0]
+
+    assert 'tar -czf "$archive"' in upload
+    assert 'scp "${SSH_OPTIONS[@]}" -i "$KEY" "$archive"' in upload
+    assert "scp \"${SSH_OPTIONS[@]}\" -i \"$KEY\" -r" not in upload
+    assert upload.count('scp "${SSH_OPTIONS[@]}"') == 1
+    assert "tar -xzf '$remote_archive'" in upload
+    assert "rm -f '$remote_archive'" in upload
+    assert 'rm -rf -- "$work_dir"' in upload
+
+
+def test_remote_nginx_install_reuses_files_from_uploaded_archive():
+    text = (ROOT / "dev/sh/_common.sh").read_text(encoding="utf-8")
+    install = text.split("remote_install_nginx_site() {", 1)[1].split(
+        "\nremote_external_health() {", 1
+    )[0]
+
+    assert "scp " not in install
+    assert "$REMOTE_ROOT/config/$NGINX_CONF" in install
+    assert "$REMOTE_ROOT/config/certbot-renewal-pre.sh" in install
+    assert "$REMOTE_ROOT/config/certbot-renewal-post.sh" in install

@@ -102,7 +102,7 @@ It can also run remote deployment actions:
 
 - remote setup Docker/certbot
 - remote full deploy
-- remote upload only
+- remote upload only, using one compressed archive rather than per-file transfer
 - remote start only
 - remote stop only
 - remote shell

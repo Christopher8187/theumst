@@ -337,8 +337,8 @@ pick_server() {
 remote_setup() {
     remote_context "$1"
     SUDO="$(remote_sudo)"
-    echo "Preparing Docker, Nginx, Certbot, curl, and rsync on $REMOTE..."
-    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "$SUDO apt-get update && $SUDO apt-get install -y ca-certificates curl gnupg rsync nginx certbot && if ! command -v docker >/dev/null 2>&1; then curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && $SUDO sh /tmp/get-docker.sh; fi && $SUDO systemctl enable --now docker && $SUDO usermod -aG docker '$SSH_USER' && if command -v ufw >/dev/null 2>&1; then $SUDO ufw allow OpenSSH && $SUDO ufw allow 80/tcp && $SUDO ufw allow 443/tcp; fi"
+    echo "Preparing Docker, Nginx, Certbot, curl, tar, and gzip on $REMOTE..."
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "$SUDO apt-get update && $SUDO apt-get install -y ca-certificates curl gnupg tar gzip nginx certbot && if ! command -v docker >/dev/null 2>&1; then curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && $SUDO sh /tmp/get-docker.sh; fi && $SUDO systemctl enable --now docker && $SUDO usermod -aG docker '$SSH_USER' && if command -v ufw >/dev/null 2>&1; then $SUDO ufw allow OpenSSH && $SUDO ufw allow 80/tcp && $SUDO ufw allow 443/tcp; fi"
 }
 
 remote_permissions() {
@@ -403,11 +403,21 @@ EOF
 remote_upload() {
     remote_context "$1"
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
-    STAGE="$(mktemp -d 2>/dev/null || mktemp -d -t theumst_upload)"
-    REMOTE_ENV="$(mktemp 2>/dev/null || mktemp -t theumst_env)"
-    trap 'rm -rf "$STAGE" "$REMOTE_ENV"' RETURN EXIT
 
-    echo "Preparing application source for $TARGET_SERVER..."
+    local work_dir stage archive archive_name remote_archive archive_size cleanup_command
+    work_dir="$(mktemp -d 2>/dev/null || mktemp -d -t theumst_upload)"
+    stage="$work_dir/stage"
+    archive_name="theumst-${TARGET_SERVER}-$(date +%Y%m%d%H%M%S)-$$.tar.gz"
+    archive="$work_dir/$archive_name"
+    remote_archive="/tmp/$archive_name"
+    mkdir -p "$stage"
+
+    # Always remove the local staging tree and compressed archive, including on
+    # interrupted or failed uploads. The %q form keeps unusual temp paths safe.
+    printf -v cleanup_command 'rm -rf -- %q' "$work_dir"
+    trap "$cleanup_command" RETURN EXIT
+
+    echo "Preparing one compressed deployment archive for $TARGET_SERVER..."
     (
         cd "$ROOT"
         tar \
@@ -420,15 +430,38 @@ remote_upload() {
             --exclude='./frontend/webpage/dist' \
             --exclude='./frontend/dashboard/node_modules' \
             --exclude='./frontend/dashboard/dist' \
-            -cf - . | (cd "$STAGE" && tar -xf -)
+            -cf - . | (cd "$stage" && tar -xf -)
     )
-    build_remote_env "$TARGET_SERVER" "$REMOTE_ENV"
 
-    echo "Uploading source and target-only secrets to $REMOTE:$REMOTE_ROOT..."
-    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "mkdir -p '$REMOTE_ROOT'"
-    scp "${SSH_OPTIONS[@]}" -i "$KEY" -r "$STAGE"/. "$REMOTE:$REMOTE_ROOT/"
-    scp "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE_ENV" "$REMOTE:$REMOTE_ROOT/.env"
-    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "chmod 600 '$REMOTE_ROOT/.env'"
+    # Put the target-only environment inside the archive, so deployment uses a
+    # single network upload and never sends COM credentials to CN or vice versa.
+    build_remote_env "$TARGET_SERVER" "$stage/.env"
+    chmod 600 "$stage/.env"
+    tar -czf "$archive" -C "$stage" .
+
+    archive_size="$(du -h "$archive" | awk '{print $1}')"
+    echo "Uploading one archive ($archive_size) to $REMOTE:$remote_archive..."
+    scp "${SSH_OPTIONS[@]}" -i "$KEY" "$archive" "$REMOTE:$remote_archive"
+
+    echo "Extracting the archive and activating the new source tree on $REMOTE..."
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "set -eu; \
+        incoming='${REMOTE_ROOT}.incoming'; \
+        previous='${REMOTE_ROOT}.previous'; \
+        rm -rf \"\$incoming\"; \
+        mkdir -p \"\$incoming\"; \
+        tar -xzf '$remote_archive' -C \"\$incoming\"; \
+        test -f \"\$incoming/compose.deploy.yml\"; \
+        test -f \"\$incoming/.env\"; \
+        chmod 600 \"\$incoming/.env\"; \
+        rm -f '$remote_archive'; \
+        rm -rf \"\$previous\"; \
+        if [ -d '$REMOTE_ROOT' ]; then mv '$REMOTE_ROOT' \"\$previous\"; fi; \
+        mv \"\$incoming\" '$REMOTE_ROOT'"
+
+    # Delete the local archive immediately after confirmed remote extraction.
+    rm -rf -- "$work_dir"
+    trap - RETURN EXIT
+    echo "Archive upload complete; local and remote temporary archives were deleted."
 }
 
 remote_start() {
@@ -436,7 +469,7 @@ remote_start() {
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     SUDO="$(remote_sudo)"
     echo "Building and starting the production stack on $REMOTE..."
-    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && $SUDO docker compose --env-file .env -f compose.deploy.yml up --build -d --remove-orphans"
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && $SUDO docker compose --env-file .env -f compose.deploy.yml up --build -d --remove-orphans && rm -rf '${REMOTE_ROOT}.previous'"
 }
 
 remote_stop() {
@@ -510,12 +543,10 @@ remote_install_nginx_site() {
     SUDO="$(remote_sudo)"
 
     echo "Installing host Nginx site $NGINX_SITE on $REMOTE..."
-    scp "${SSH_OPTIONS[@]}" -i "$KEY" "$ROOT/config/$NGINX_CONF" "$REMOTE:/tmp/$NGINX_CONF"
-    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "$SUDO cp '/tmp/$NGINX_CONF' '/etc/nginx/sites-available/$NGINX_SITE' && $SUDO ln -sfn '/etc/nginx/sites-available/$NGINX_SITE' '/etc/nginx/sites-enabled/$NGINX_SITE' && $SUDO rm -f /etc/nginx/sites-enabled/default && $SUDO nginx -t && $SUDO systemctl enable --now nginx && $SUDO systemctl restart nginx"
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "test -f '$REMOTE_ROOT/config/$NGINX_CONF' && $SUDO cp '$REMOTE_ROOT/config/$NGINX_CONF' '/etc/nginx/sites-available/$NGINX_SITE' && $SUDO ln -sfn '/etc/nginx/sites-available/$NGINX_SITE' '/etc/nginx/sites-enabled/$NGINX_SITE' && $SUDO rm -f /etc/nginx/sites-enabled/default && $SUDO nginx -t && $SUDO systemctl enable --now nginx && $SUDO systemctl restart nginx"
 
     if [ "${CERT_MODE:-standalone}" = "standalone" ]; then
-        scp "${SSH_OPTIONS[@]}" -i "$KEY"             "$ROOT/config/certbot-renewal-pre.sh"             "$ROOT/config/certbot-renewal-post.sh"             "$REMOTE:/tmp/"
-        ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "$SUDO mkdir -p /etc/letsencrypt/renewal-hooks/pre /etc/letsencrypt/renewal-hooks/post && $SUDO cp /tmp/certbot-renewal-pre.sh /etc/letsencrypt/renewal-hooks/pre/theumst-nginx && $SUDO cp /tmp/certbot-renewal-post.sh /etc/letsencrypt/renewal-hooks/post/theumst-nginx && $SUDO chmod 755 /etc/letsencrypt/renewal-hooks/pre/theumst-nginx /etc/letsencrypt/renewal-hooks/post/theumst-nginx && $SUDO systemctl enable --now certbot.timer"
+        ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "$SUDO mkdir -p /etc/letsencrypt/renewal-hooks/pre /etc/letsencrypt/renewal-hooks/post && $SUDO cp '$REMOTE_ROOT/config/certbot-renewal-pre.sh' /etc/letsencrypt/renewal-hooks/pre/theumst-nginx && $SUDO cp '$REMOTE_ROOT/config/certbot-renewal-post.sh' /etc/letsencrypt/renewal-hooks/post/theumst-nginx && $SUDO chmod 755 /etc/letsencrypt/renewal-hooks/pre/theumst-nginx /etc/letsencrypt/renewal-hooks/post/theumst-nginx && $SUDO systemctl enable --now certbot.timer"
     fi
 }
 

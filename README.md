@@ -18,11 +18,11 @@ information supplied for:
 A full remote deployment performs every application-side step in this order:
 
 1. Connect to the selected server over SSH.
-2. Install or update Docker, Nginx, Certbot, curl, and rsync.
+2. Install or update Docker, Nginx, Certbot, curl, tar, and gzip.
 3. Enable Docker and open ports 22, 80, and 443 in UFW when UFW is present.
 4. Create and repair permissions for the remote application directory.
-5. Upload the source tree.
-6. Generate and upload a target-specific `.env`:
+5. Build one gzip-compressed deployment archive containing the source and a target-specific `.env`.
+6. Upload that single archive, extract it into a temporary release directory, atomically activate it, and delete both temporary archive copies:
    - COM receives only the DigitalOcean storage credentials;
    - CN receives only the Aliyun storage credentials.
 7. Build the production frontend and backend Docker image.
@@ -238,9 +238,7 @@ Equivalent Git Bash command:
 ./dev/sh/agent_deploy.sh COM
 ```
 
-The script installs the server software, uploads the code and COM-only secrets,
-builds the Docker stack, issues the Let's Encrypt certificate, installs Nginx,
-and checks the public site. COM also installs Certbot renewal hooks that stop
+The script installs the server software, packages the code and COM-only secrets into one compressed archive, uploads that single file, extracts it on the server, builds the Docker stack, issues the Let's Encrypt certificate, installs Nginx, and checks the public site. The local archive and remote `/tmp` archive are deleted automatically after extraction. COM also installs Certbot renewal hooks that stop
 Nginx before standalone validation and restart it afterward.
 
 A successful run ends with:
@@ -248,6 +246,8 @@ A successful run ends with:
 ```text
 Deployment complete: https://theumst.com
 ```
+
+The bulk source transfer is one `.tar.gz` file rather than one network operation per project file. The previous server source tree is retained as `<REMOTE_ROOT>.previous` until the replacement Docker stack starts successfully, then removed automatically.
 
 ## 4.2 Create and promote Christopher on COM
 

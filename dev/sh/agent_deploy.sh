@@ -12,7 +12,7 @@ case "$TARGET" in
     *) echo "Usage: $0 COM|CN" >&2; exit 2 ;;
 esac
 
-for command in ssh scp tar curl; do
+for command in ssh scp tar gzip curl; do
     command -v "$command" >/dev/null 2>&1 || {
         echo "Required command is missing: $command" >&2
         exit 1
