@@ -238,7 +238,7 @@ if "%REMOTE_ROOT%"=="" (
     exit /b 1
 )
 echo Fixing permissions on %REMOTE%:%REMOTE_ROOT%...
-ssh -i "%KEY%" "%REMOTE%" "mkdir -p '%REMOTE_ROOT%' && %SUDO% chown -R '%SSH_USER%:%SSH_USER%' '%REMOTE_ROOT%' && chmod -R u+rwX '%REMOTE_ROOT%' && %SUDO% usermod -aG docker '%SSH_USER%' || true"
+ssh -i "%KEY%" "%REMOTE%" "%SUDO% mkdir -p '%REMOTE_ROOT%' && %SUDO% chown -R '%SSH_USER%:%SSH_USER%' '%REMOTE_ROOT%' && chmod -R u+rwX '%REMOTE_ROOT%' && %SUDO% usermod -aG docker '%SSH_USER%' || true"
 exit /b %ERRORLEVEL%
 
 :remote_upload
@@ -252,7 +252,7 @@ echo Preparing upload archive...
 cd /d "%ROOT%"
 tar --exclude=.git --exclude=.env --exclude=SECRET_ROTATION_NOTES.md --exclude=.local --exclude=backend/python/.venv --exclude=frontend/webpage/node_modules --exclude=frontend/webpage/dist --exclude=frontend/dashboard/node_modules --exclude=frontend/dashboard/dist -cf "%TARFILE%" .
 echo Uploading to %REMOTE%:%REMOTE_ROOT%...
-ssh -i "%KEY%" "%REMOTE%" "mkdir -p '%REMOTE_ROOT%'"
+ssh -i "%KEY%" "%REMOTE%" "%SUDO% mkdir -p '%REMOTE_ROOT%' && %SUDO% chown '%SSH_USER%:%SSH_USER%' '%REMOTE_ROOT%'"
 scp -i "%KEY%" "%TARFILE%" "%REMOTE%:%REMOTE_ROOT%/theumst_upload.tar"
 ssh -i "%KEY%" "%REMOTE%" "cd '%REMOTE_ROOT%' && tar -xf theumst_upload.tar && rm theumst_upload.tar"
 del "%TARFILE%" >nul 2>nul

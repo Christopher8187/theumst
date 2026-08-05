@@ -149,6 +149,10 @@ def test_remote_upload_uses_one_compressed_archive_not_recursive_scp():
     assert "scp \"${SSH_OPTIONS[@]}\" -i \"$KEY\" -r" not in upload
     assert upload.count('scp "${SSH_OPTIONS[@]}"') == 1
     assert "tar -xzf '$remote_archive'" in upload
+    assert 'remote_stage="/tmp/${archive_name%.tar.gz}.incoming"' in upload
+    assert "incoming='${REMOTE_ROOT}.incoming'" not in upload
+    assert r"$SUDO mv \"\$incoming\" '$REMOTE_ROOT'" in upload
+    assert "$SUDO chown -R '$SSH_USER:$SSH_USER' '$REMOTE_ROOT'" in upload
     assert "rm -f '$remote_archive'" in upload
     assert 'rm -rf -- "$work_dir"' in upload
 
@@ -163,3 +167,12 @@ def test_remote_nginx_install_reuses_files_from_uploaded_archive():
     assert "$REMOTE_ROOT/config/$NGINX_CONF" in install
     assert "$REMOTE_ROOT/config/certbot-renewal-pre.sh" in install
     assert "$REMOTE_ROOT/config/certbot-renewal-post.sh" in install
+
+
+def test_remote_release_paths_use_sudo_under_var_www():
+    text = (ROOT / "dev/sh/_common.sh").read_text(encoding="utf-8")
+    permissions = text.split("remote_permissions() {", 1)[1].split("\nbuild_remote_env() {", 1)[0]
+    start = text.split("remote_start() {", 1)[1].split("\nremote_stop() {", 1)[0]
+
+    assert "$SUDO mkdir -p '$REMOTE_ROOT'" in permissions
+    assert "$SUDO rm -rf '${REMOTE_ROOT}.previous'" in start

@@ -247,7 +247,7 @@ A successful run ends with:
 Deployment complete: https://theumst.com
 ```
 
-The bulk source transfer is one `.tar.gz` file rather than one network operation per project file. The previous server source tree is retained as `<REMOTE_ROOT>.previous` until the replacement Docker stack starts successfully, then removed automatically.
+The bulk source transfer is one `.tar.gz` file rather than one network operation per project file. The archive is extracted under `/tmp` as the SSH user, then the release is moved into `/var/www` with `sudo`; the SSH user never needs permission to create sibling directories directly under `/var/www`. The previous server source tree is retained as `<REMOTE_ROOT>.previous` until the replacement Docker stack starts successfully, then removed automatically.
 
 ## 4.2 Create and promote Christopher on COM
 

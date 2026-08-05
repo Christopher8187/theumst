@@ -346,7 +346,7 @@ remote_permissions() {
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     SUDO="$(remote_sudo)"
     echo "Fixing permissions on $REMOTE:$REMOTE_ROOT..."
-    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "mkdir -p '$REMOTE_ROOT' && $SUDO chown -R '$SSH_USER:$SSH_USER' '$REMOTE_ROOT' && chmod -R u+rwX '$REMOTE_ROOT' && $SUDO usermod -aG docker '$SSH_USER' || true"
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "$SUDO mkdir -p '$REMOTE_ROOT' && $SUDO chown -R '$SSH_USER:$SSH_USER' '$REMOTE_ROOT' && chmod -R u+rwX '$REMOTE_ROOT' && $SUDO usermod -aG docker '$SSH_USER' || true"
     echo "Permissions updated. Reconnect to the server if Docker group membership changed."
 }
 
@@ -404,12 +404,13 @@ remote_upload() {
     remote_context "$1"
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
 
-    local work_dir stage archive archive_name remote_archive archive_size cleanup_command
+    local work_dir stage archive archive_name remote_archive remote_stage archive_size cleanup_command
     work_dir="$(mktemp -d 2>/dev/null || mktemp -d -t theumst_upload)"
     stage="$work_dir/stage"
     archive_name="theumst-${TARGET_SERVER}-$(date +%Y%m%d%H%M%S)-$$.tar.gz"
     archive="$work_dir/$archive_name"
     remote_archive="/tmp/$archive_name"
+    remote_stage="/tmp/${archive_name%.tar.gz}.incoming"
     mkdir -p "$stage"
 
     # Always remove the local staging tree and compressed archive, including on
@@ -443,9 +444,12 @@ remote_upload() {
     echo "Uploading one archive ($archive_size) to $REMOTE:$remote_archive..."
     scp "${SSH_OPTIONS[@]}" -i "$KEY" "$archive" "$REMOTE:$remote_archive"
 
+    # Extract under /tmp, which is writable by the SSH user. Only the final
+    # release swap touches /var/www, so those operations use sudo explicitly.
+    SUDO="$(remote_sudo)"
     echo "Extracting the archive and activating the new source tree on $REMOTE..."
     ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "set -eu; \
-        incoming='${REMOTE_ROOT}.incoming'; \
+        incoming='$remote_stage'; \
         previous='${REMOTE_ROOT}.previous'; \
         rm -rf \"\$incoming\"; \
         mkdir -p \"\$incoming\"; \
@@ -454,9 +458,11 @@ remote_upload() {
         test -f \"\$incoming/.env\"; \
         chmod 600 \"\$incoming/.env\"; \
         rm -f '$remote_archive'; \
-        rm -rf \"\$previous\"; \
-        if [ -d '$REMOTE_ROOT' ]; then mv '$REMOTE_ROOT' \"\$previous\"; fi; \
-        mv \"\$incoming\" '$REMOTE_ROOT'"
+        $SUDO rm -rf \"\$previous\"; \
+        if [ -d '$REMOTE_ROOT' ]; then $SUDO mv '$REMOTE_ROOT' \"\$previous\"; fi; \
+        $SUDO mv \"\$incoming\" '$REMOTE_ROOT'; \
+        $SUDO chown -R '$SSH_USER:$SSH_USER' '$REMOTE_ROOT'; \
+        chmod -R u+rwX '$REMOTE_ROOT'"
 
     # Delete the local archive immediately after confirmed remote extraction.
     rm -rf -- "$work_dir"
@@ -469,7 +475,7 @@ remote_start() {
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     SUDO="$(remote_sudo)"
     echo "Building and starting the production stack on $REMOTE..."
-    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && $SUDO docker compose --env-file .env -f compose.deploy.yml up --build -d --remove-orphans && rm -rf '${REMOTE_ROOT}.previous'"
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && $SUDO docker compose --env-file .env -f compose.deploy.yml up --build -d --remove-orphans && $SUDO rm -rf '${REMOTE_ROOT}.previous'"
 }
 
 remote_stop() {
