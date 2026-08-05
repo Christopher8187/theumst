@@ -11,18 +11,20 @@ defineProps({
   storageItems: { type: Array, required: true },
   storageMessage: String,
   storageError: Boolean,
-  adminResult: String,
-  adminError: Boolean,
+  qdrantResult: String,
+  qdrantError: Boolean
 });
 
 const fileInput = ref(null);
-
-const adminSql = defineModel("adminSql");
+const qdrantQuery = defineModel("qdrantQuery");
+const qdrantVector = defineModel("qdrantVector");
+const qdrantFilters = defineModel("qdrantFilters");
+const qdrantLimit = defineModel("qdrantLimit");
 const folderName = defineModel("folderName");
 const storageName = defineModel("storageName");
 const storageText = defineModel("storageText");
 
-defineEmits(["run-sql", "load-storage", "open-storage", "create-folder", "new-file", "upload-file", "delete-storage", "save-storage"]);
+defineEmits(["search-qdrant", "load-storage", "open-storage", "create-folder", "new-file", "upload-file", "delete-storage", "save-storage"]);
 </script>
 
 <template>
@@ -31,12 +33,21 @@ defineEmits(["run-sql", "load-storage", "open-storage", "create-folder", "new-fi
     <h1>{{ t.adminTitle }}</h1>
     <p class="muted">{{ t.adminText }}</p>
 
-    <form class="dashboard-form" @submit.prevent="$emit('run-sql')">
-      <label>{{ t.sqlCode }}<textarea v-model="adminSql" class="sql-box" rows="10"></textarea></label>
-      <button type="submit">{{ t.runSql }}</button>
-    </form>
-
-    <pre v-if="adminResult" class="result-box" :class="{ error: adminError }">{{ adminResult }}</pre>
+    <section class="admin-panel">
+      <div>
+        <p class="eyebrow">{{ t.vectorSearch }}</p>
+        <h2>{{ t.qdrantTitle }}</h2>
+        <p class="muted">{{ t.qdrantText }}</p>
+      </div>
+      <form class="dashboard-form" @submit.prevent="$emit('search-qdrant')">
+        <label>{{ t.queryText }}<textarea v-model="qdrantQuery" rows="4" :placeholder="t.queryTextPlaceholder"></textarea></label>
+        <label>{{ t.queryVector }}<textarea v-model="qdrantVector" rows="4" placeholder="[0.1, 0.2, ...]"></textarea></label>
+        <label>{{ t.filtersJson }}<textarea v-model="qdrantFilters" rows="3" placeholder='{"working_type":"theorem"}'></textarea></label>
+        <label>{{ t.resultLimit }}<input v-model.number="qdrantLimit" type="number" min="1" max="100"></label>
+        <button type="submit">{{ t.searchQdrant }}</button>
+      </form>
+      <pre v-if="qdrantResult" class="result-box" :class="{ error: qdrantError }">{{ qdrantResult }}</pre>
+    </section>
 
     <section class="storage-panel">
       <div class="storage-head">

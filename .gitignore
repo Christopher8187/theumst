@@ -6,6 +6,9 @@ __pycache__/
 node_modules/
 frontend/dashboard/dist/
 frontend/webpage/dist/
-compose.deploy.yml
 .local/
 *.log
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/

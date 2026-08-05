@@ -1,0 +1,89 @@
+name: theumst-deploy
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-theumst}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    volumes:
+      - deploy_pgdata:/var/lib/postgresql/data
+      - ./backend/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}
+    volumes:
+      - deploy_qdrant:/qdrant/storage
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/python/Dockerfile
+      target: production
+    environment:
+      SERVER: ${SERVER:-COM}
+      LOCAL_STORAGE_DIR: /storage
+      DB_NAME: ${DB_NAME:-theumst}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      DB_HOST: db
+      DB_PORT: 5432
+      SESSION_DAYS: ${SESSION_DAYS:-7}
+      COOKIE_SECURE: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://theumst.com,https://www.theumst.com,https://theumst.cn,https://www.theumst.cn}
+      QDRANT_ENABLED: "true"
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-knowledge-semantic-v1}
+      QDRANT_VECTOR_SIZE: ${QDRANT_VECTOR_SIZE:-1536}
+      QDRANT_DISTANCE: ${QDRANT_DISTANCE:-cosine}
+      QDRANT_VECTORS_ON_DISK: ${QDRANT_VECTORS_ON_DISK:-false}
+      EMBEDDING_API_URL: ${EMBEDDING_API_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      DO_SPACES_BUCKET: ${DO_SPACES_BUCKET:-}
+      DO_SPACES_REGION: ${DO_SPACES_REGION:-}
+      DO_SPACES_ENDPOINT: ${DO_SPACES_ENDPOINT:-}
+      DO_SPACES_ACCESS_KEY_ID: ${DO_SPACES_ACCESS_KEY_ID:-}
+      DO_SPACES_SECRET_ACCESS_KEY: ${DO_SPACES_SECRET_ACCESS_KEY:-}
+      ALIYUN_OSS_BUCKET: ${ALIYUN_OSS_BUCKET:-}
+      ALIYUN_OSS_ENDPOINT: ${ALIYUN_OSS_ENDPOINT:-}
+      ALIYUN_OSS_ACCESS_KEY_ID: ${ALIYUN_OSS_ACCESS_KEY_ID:-}
+      ALIYUN_OSS_SECRET_ACCESS_KEY: ${ALIYUN_OSS_SECRET_ACCESS_KEY:-}
+    expose:
+      - "8000"
+    volumes:
+      - deploy_storage:/storage
+    depends_on:
+      db:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/db >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - ./config/nginx.docker.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  deploy_pgdata:
+  deploy_qdrant:
+  deploy_storage:

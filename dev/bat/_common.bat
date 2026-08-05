@@ -67,6 +67,7 @@ echo Local URLs:
 echo   Webpage:   http://localhost:5173
 echo   Dashboard: http://localhost:5174/dashboard/profile/
 echo   FastAPI:   http://localhost:8000
+echo   Qdrant:    http://localhost:6333/dashboard
 echo   Nginx:     http://localhost:%HTTP_PORT%
 exit /b 0
 
@@ -111,6 +112,9 @@ curl -fsS http://localhost:8000/health/db 2>nul
 echo.
 echo Asset health:
 curl -fsS http://localhost:8000/health/assets 2>nul
+echo.
+echo Qdrant health:
+curl -fsS http://localhost:8000/health/qdrant 2>nul
 echo.
 exit /b %ERRORLEVEL%
 

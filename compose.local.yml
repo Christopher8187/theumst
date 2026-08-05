@@ -4,19 +4,29 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: theumst
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME:-theumst}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
       - "55432:5432"
     volumes:
       - local_pgdata:/var/lib/postgresql/data
-      - ./backend/sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./backend/sql:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d theumst"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-local-qdrant-change-me}
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - local_qdrant:/qdrant/storage
 
   backend:
     build:
@@ -26,27 +36,41 @@ services:
     environment:
       SERVER: LOCAL
       LOCAL_STORAGE_DIR: /storage
-      DB_NAME: theumst
-      DB_USER: postgres
-      DB_PASSWORD: postgres
+      DB_NAME: ${DB_NAME:-theumst}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_HOST: db
       DB_PORT: 5432
       SESSION_DAYS: 7
+      COOKIE_SECURE: "false"
+      QDRANT_ENABLED: "true"
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-local-qdrant-change-me}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-knowledge-semantic-v1}
+      QDRANT_VECTOR_SIZE: ${QDRANT_VECTOR_SIZE:-1536}
+      QDRANT_DISTANCE: ${QDRANT_DISTANCE:-cosine}
+      QDRANT_VECTORS_ON_DISK: ${QDRANT_VECTORS_ON_DISK:-false}
+      EMBEDDING_API_URL: ${EMBEDDING_API_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:8080,http://127.0.0.1:8080
     ports:
       - "8000:8000"
     volumes:
       - ./backend/python:/app/backend/python
+      - ./backend/sql:/app/backend/sql:ro
       - ./backend/assets:/app/backend/assets:ro
       - local_storage:/storage
     depends_on:
       db:
         condition: service_healthy
+      qdrant:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/db >/dev/null"]
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
 
   webpage:
     build:
@@ -70,11 +94,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5173/ >/dev/null"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
 
   dashboard:
     build:
@@ -98,12 +117,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5174/dashboard/ >/dev/null"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
 
 volumes:
   local_pgdata:
+  local_qdrant:
   local_storage:

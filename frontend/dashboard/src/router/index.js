@@ -12,8 +12,6 @@ export function routeFromPath(pathname = location.pathname) {
   return "profile";
 }
 
-export function canUseRoute(route, userRole) {
-  if (route === "superadmin") return userRole === "superadmin";
-  if (route === "admin") return ["admin", "superadmin"].includes(userRole);
-  return true;
+export function canUseRoute(route, accessPoints = []) {
+  return accessPoints.includes(route);
 }

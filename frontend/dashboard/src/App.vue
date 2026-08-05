@@ -17,10 +17,11 @@ const message = ref("");
 const output = ref("");
 const outputError = ref(false);
 const keys = ref([]);
-const profile = ref({ username: "", email: "", alias: "", description: "", authority_type: "" });
-const adminSql = ref("");
-const adminResult = ref("");
-const adminError = ref(false);
+const profile = ref({
+  username: "", email: "", alias: "", description: "",
+  authority_type: "", access_points: []
+});
+
 const storagePath = ref("");
 const storageMode = ref("");
 const storageItems = ref([]);
@@ -30,19 +31,30 @@ const storageName = ref("");
 const folderName = ref("");
 const storageMessage = ref("");
 const storageError = ref(false);
+
+const qdrantQuery = ref("");
+const qdrantVector = ref("");
+const qdrantFilters = ref("{}");
+const qdrantLimit = ref(10);
+const qdrantResult = ref("");
+const qdrantError = ref(false);
+
 const superUser = ref("");
 const superMessage = ref("");
 const superError = ref(false);
+const superSql = ref("");
+const superSqlResult = ref("");
+const superSqlError = ref(false);
+
 const showLanguage = ref(false);
 const logoSrc = assetUrl("logo.png");
 const translateSrc = assetUrl("translate.svg");
-
-const isAdmin = computed(() => ["admin", "superadmin"].includes(profile.value.authority_type));
-const isSuperadmin = computed(() => profile.value.authority_type === "superadmin");
+const accessPoints = computed(() => profile.value.access_points || []);
 const parentPath = computed(() => storagePath.value.split("/").slice(0, -1).join("/"));
 const homeUrl = computed(() => webpageUrl("/"));
 
 function go(next) {
+  if (!canUseRoute(next, accessPoints.value)) return;
   route.value = next;
   history.pushState(null, "", dashboardRoutes[next]);
   if (next === "admin") loadStorage();
@@ -58,8 +70,8 @@ function requireLogin(res) {
   return res;
 }
 
-function enforceRolePage() {
-  if (!canUseRoute(route.value, profile.value.authority_type)) go("profile");
+function enforceAccessPage() {
+  if (!canUseRoute(route.value, accessPoints.value)) go("profile");
 }
 
 function joinPath(folder, name) {
@@ -81,10 +93,9 @@ function niceSize(size) {
 async function loadProfile() {
   const res = requireLogin(await apiFetch("/api/me"));
   if (!res.ok) return;
-  const data = await res.json();
-  profile.value = data.user;
-  enforceRolePage();
-  if (route.value === "admin" && isAdmin.value) loadStorage();
+  profile.value = (await res.json()).user;
+  enforceAccessPage();
+  if (route.value === "admin") loadStorage();
 }
 
 async function saveProfile() {
@@ -93,7 +104,6 @@ async function saveProfile() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(profile.value)
   }));
-
   message.value = res.ok ? t.value.saved : (await res.json()).detail;
 }
 
@@ -110,22 +120,29 @@ async function createKey(event) {
     outputError.value = true;
     return;
   }
-
   const res = requireLogin(await apiFetch("/api/api-keys", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data)
   }));
-
+  const response = await res.json();
   if (!res.ok) {
-    output.value = (await res.json()).detail;
+    output.value = response.detail;
     outputError.value = true;
     return;
   }
-
-  output.value = `${t.value.newKey} ${(await res.json()).key}`;
+  output.value = `${t.value.newKey} ${response.key}`;
   outputError.value = false;
   event.target.reset();
+  loadKeys();
+}
+
+async function upgradeKey(id) {
+  if (!confirm(t.value.upgradeMasterConfirm)) return;
+  const res = requireLogin(await apiFetch(`/api/api-keys/${id}/upgrade-master`, { method: "POST" }));
+  const data = await res.json();
+  output.value = res.ok ? t.value.masterUpgraded : data.detail;
+  outputError.value = !res.ok;
   loadKeys();
 }
 
@@ -134,19 +151,32 @@ async function revokeKey(id) {
   loadKeys();
 }
 
-async function runSql() {
-  adminResult.value = "";
-  adminError.value = false;
-
-  const res = requireLogin(await apiFetch("/api/admin/sql", {
+async function searchQdrant() {
+  qdrantResult.value = "";
+  qdrantError.value = false;
+  let vector = null;
+  let filters = {};
+  try {
+    if (qdrantVector.value.trim()) vector = JSON.parse(qdrantVector.value);
+    filters = qdrantFilters.value.trim() ? JSON.parse(qdrantFilters.value) : {};
+  } catch (error) {
+    qdrantError.value = true;
+    qdrantResult.value = `${t.value.invalidJson}: ${error.message}`;
+    return;
+  }
+  const res = requireLogin(await apiFetch("/api/admin/qdrant/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sql: adminSql.value })
+    body: JSON.stringify({
+      query_text: qdrantQuery.value.trim() || null,
+      query_vector: vector,
+      filters,
+      limit: Number(qdrantLimit.value || 10)
+    })
   }));
-
   const data = await res.json();
-  adminError.value = !res.ok;
-  adminResult.value = res.ok ? JSON.stringify(data, null, 2) : data.detail;
+  qdrantError.value = !res.ok;
+  qdrantResult.value = res.ok ? JSON.stringify(data, null, 2) : data.detail;
 }
 
 async function loadStorage(path = storagePath.value) {
@@ -161,7 +191,6 @@ async function loadStorage(path = storagePath.value) {
 
 async function openStorage(item) {
   if (item.type === "folder") return loadStorage(item.key);
-
   const res = requireLogin(await apiFetch(`/api/admin/storage/read?path=${encodeURIComponent(item.key)}`));
   const data = await res.json();
   if (!res.ok) return showStorage(data.detail, true);
@@ -175,7 +204,6 @@ async function saveStorage() {
   const name = storageName.value.trim();
   const path = storageFile.value || (name.includes("/") ? name : joinPath(storagePath.value, name));
   if (!path) return showStorage(t.value.storagePathRequired, true);
-
   const res = requireLogin(await apiFetch("/api/admin/storage/write", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -191,7 +219,6 @@ async function saveStorage() {
 
 async function createFolder() {
   if (!folderName.value.trim()) return showStorage(t.value.folderNameRequired, true);
-
   const res = requireLogin(await apiFetch("/api/admin/storage/folder", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -207,11 +234,9 @@ async function createFolder() {
 async function uploadFile(event) {
   const file = event.target.files[0];
   if (!file) return;
-
   const form = new FormData();
   form.append("folder", storagePath.value);
   form.append("file", file);
-
   const res = requireLogin(await apiFetch("/api/admin/storage/upload", { method: "POST", body: form }));
   const data = await res.json();
   if (!res.ok) return showStorage(data.detail, true);
@@ -244,16 +269,27 @@ function newStorageFile() {
 async function makeAdmin() {
   superMessage.value = "";
   superError.value = false;
-
   const res = requireLogin(await apiFetch("/api/superadmin/make-admin", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ identifier: superUser.value })
   }));
-
   const data = await res.json();
   superError.value = !res.ok;
   superMessage.value = res.ok ? `${data.user.username} ${t.value.adminGranted}` : data.detail;
+}
+
+async function runSuperSql() {
+  superSqlResult.value = "";
+  superSqlError.value = false;
+  const res = requireLogin(await apiFetch("/api/superadmin/sql", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sql: superSql.value })
+  }));
+  const data = await res.json();
+  superSqlError.value = !res.ok;
+  superSqlResult.value = res.ok ? JSON.stringify(data, null, 2) : data.detail;
 }
 
 async function signOut() {
@@ -266,8 +302,8 @@ onMounted(() => {
   loadKeys();
   window.addEventListener("popstate", () => {
     route.value = routeFromPath();
-    enforceRolePage();
-    if (route.value === "admin" && isAdmin.value) loadStorage();
+    enforceAccessPage();
+    if (route.value === "admin") loadStorage();
   });
 });
 </script>
@@ -277,8 +313,7 @@ onMounted(() => {
     <Sidebar
       :t="t"
       :route="route"
-      :is-admin="isAdmin"
-      :is-superadmin="isSuperadmin"
+      :access-points="accessPoints"
       :logo-src="logoSrc"
       :translate-src="translateSrc"
       :home-url="homeUrl"
@@ -303,12 +338,16 @@ onMounted(() => {
         :output="output"
         :output-error="outputError"
         @create="createKey"
+        @upgrade="upgradeKey"
         @revoke="revokeKey"
       />
 
       <AdminPage
-        v-else-if="route === 'admin' && isAdmin"
-        v-model:admin-sql="adminSql"
+        v-else-if="route === 'admin' && accessPoints.includes('admin')"
+        v-model:qdrant-query="qdrantQuery"
+        v-model:qdrant-vector="qdrantVector"
+        v-model:qdrant-filters="qdrantFilters"
+        v-model:qdrant-limit="qdrantLimit"
         v-model:folder-name="folderName"
         v-model:storage-name="storageName"
         v-model:storage-text="storageText"
@@ -321,9 +360,9 @@ onMounted(() => {
         :storage-items="storageItems"
         :storage-message="storageMessage"
         :storage-error="storageError"
-        :admin-result="adminResult"
-        :admin-error="adminError"
-        @run-sql="runSql"
+        :qdrant-result="qdrantResult"
+        :qdrant-error="qdrantError"
+        @search-qdrant="searchQdrant"
         @load-storage="loadStorage"
         @open-storage="openStorage"
         @create-folder="createFolder"
@@ -334,12 +373,16 @@ onMounted(() => {
       />
 
       <SuperadminPage
-        v-else-if="route === 'superadmin' && isSuperadmin"
+        v-else-if="route === 'superadmin' && accessPoints.includes('superadmin')"
         v-model:super-user="superUser"
+        v-model:super-sql="superSql"
         :t="t"
         :super-message="superMessage"
         :super-error="superError"
+        :sql-result="superSqlResult"
+        :sql-error="superSqlError"
         @make-admin="makeAdmin"
+        @run-sql="runSuperSql"
       />
     </main>
 
