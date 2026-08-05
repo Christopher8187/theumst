@@ -44,7 +44,7 @@ COPY backend/sql /app/backend/sql
 FROM base AS dev
 COPY backend/python ./
 EXPOSE 8000
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 FROM base AS production
 WORKDIR /app
@@ -53,4 +53,4 @@ COPY --from=webpage-build /app/frontend/webpage/dist ./frontend/webpage/dist
 COPY --from=dashboard-build /app/frontend/dashboard/dist ./frontend/dashboard/dist
 WORKDIR /app/backend/python
 EXPOSE 8000
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

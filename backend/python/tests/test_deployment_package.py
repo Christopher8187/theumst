@@ -51,6 +51,13 @@ def test_complete_environment_contains_both_remote_targets():
     assert not sorted(key for key in required if not values.get(key))
 
 
+
+def test_backend_container_uses_unambiguous_asgi_module():
+    dockerfile = (ROOT / "backend/python/Dockerfile").read_text(encoding="utf-8")
+    assert dockerfile.count('"app.main:app"') == 2
+    assert '"app:app"' not in dockerfile
+
+
 def test_production_proxy_is_loopback_only_and_matches_host_nginx():
     compose_text = (ROOT / "compose.deploy.yml").read_text(encoding="utf-8")
     assert '127.0.0.1:${HTTP_PORT:-8080}:80' in compose_text
