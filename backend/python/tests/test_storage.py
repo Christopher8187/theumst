@@ -26,3 +26,16 @@ def test_local_storage_round_trip(tmp_path, monkeypatch):
 def test_storage_rejects_traversal():
     with pytest.raises(HTTPException):
         storage.clean_key("../secret")
+
+
+def test_local_public_url_uses_public_api_prefix(monkeypatch):
+    monkeypatch.setenv("SERVER", "LOCAL")
+    monkeypatch.setenv("LOCAL_URL", "http://localhost:8080")
+    get_settings.cache_clear()
+    try:
+        assert (
+            storage.public_url("books/42/images/example image.png")
+            == "http://localhost:8080/api/v1/storage/books/42/images/example%20image.png"
+        )
+    finally:
+        get_settings.cache_clear()

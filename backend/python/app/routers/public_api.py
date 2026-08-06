@@ -1,15 +1,26 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Response, UploadFile
 
 from ..config import get_settings
 from ..dependencies import authenticate_api_key
 from ..schemas import EmbeddingBatchInput, KnowledgeSubmission, StorageFolderCreate, StorageTextWrite
 from ..services import storage
 from ..services.knowledge import get_knowledge, list_knowledge, submit_embeddings, submit_knowledge
+from ..services.book_ingestion import ingest_book_archive
 
 
 router = APIRouter(prefix="/api/v1", tags=["public API"])
+
+
+@router.get("/storage/{path:path}", include_in_schema=False)
+def read_public_local_storage(path: str):
+    if storage.storage_mode() != "LOCAL":
+        raise HTTPException(status_code=404, detail="Local storage serving is disabled")
+    return Response(
+        content=storage.read_bytes(path),
+        media_type=storage.media_type_for(path),
+    )
 
 
 @router.get("/knowledge")
@@ -45,6 +56,17 @@ def read_one_knowledge(knowledge_id: int, request: Request, language_id: int = Q
         "item": get_knowledge(knowledge_id, language_id),
         "key_type": key["key_type"], "rate_remaining": key.get("rate_remaining"),
     }
+
+
+@router.post("/books/ingest-archive", status_code=201)
+async def create_book_archive(
+    request: Request,
+    archive: UploadFile = File(...),
+):
+    key = authenticate_api_key(request, master_required=True)
+    result = await ingest_book_archive(archive)
+    result["submitted_by"] = {"user_id": key["user_id"], "api_key_id": key["api_key_id"]}
+    return result
 
 
 @router.post("/knowledge", status_code=201)

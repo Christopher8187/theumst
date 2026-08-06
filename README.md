@@ -678,3 +678,38 @@ the downloadable archive, rotate them after the first successful deployment:
 
 After rotation, update only the local `.env` and rerun the deployment command for
 the relevant target. The script regenerates the target-specific remote `.env`.
+
+## Whole-book Kaicenat ingestion
+
+The master-only endpoint below accepts one ZIP per book:
+
+```text
+POST /api/v1/books/ingest-archive
+X-API-Key: <master key>
+Content-Type: multipart/form-data
+field name: archive
+```
+
+The ZIP must contain `manifest.json` and any files named by `images[].archive_path`.
+The endpoint validates archive paths and size limits, then performs idempotent
+upserts using stable source keys. One ingestion operation:
+
+1. upserts the grimoire and localized title;
+2. upserts the complete section hierarchy;
+3. upserts every knowledge object and hook-derived field;
+4. records semantic projections and embedding lifecycle rows;
+5. batches vectors into Qdrant collections by model/dimension/distance;
+6. writes images to `books/<grimoire-id>/images/` in the selected storage backend;
+7. records stable image URLs in PostgreSQL.
+
+The deployment defaults are now:
+
+```text
+QDRANT_COLLECTION=knowledge-qwen3-embedding-4b
+QDRANT_VECTOR_SIZE=2560
+QDRANT_DISTANCE=cosine
+```
+
+The endpoint never contains or provisions a publisher key. Create or upgrade a
+master API key through the dashboard, then configure the publishing client.
+Kaicenat's dedicated publisher owns its credential separately.

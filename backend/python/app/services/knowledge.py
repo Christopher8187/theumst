@@ -129,7 +129,7 @@ def _knowledge_embedding_context(cur, knowledge_id: int, language_id: int) -> di
         JOIN section s ON s.section_id = k.section_id
         JOIN language_knowledge lk ON lk.knowledge_id = k.knowledge_id
             AND lk.language_id = %s
-        WHERE k.knowledge_id = %s
+        WHERE k.knowledge_id = %s AND k.is_active
         """,
         (language_id, knowledge_id),
     )
@@ -347,7 +347,7 @@ def list_knowledge(
     section_id: int | None = None,
     working_type: str | None = None,
 ) -> list[dict[str, Any]]:
-    conditions = ["lk.language_id = %s"]
+    conditions = ["lk.language_id = %s", "k.is_active"]
     params: list[Any] = [language_id]
     if grimoire_id is not None:
         conditions.append("s.grimoire_id = %s"); params.append(grimoire_id)
@@ -361,8 +361,13 @@ def list_knowledge(
             f"""
             SELECT k.knowledge_id, k.type, k.is_default_in_crystal,
                    kc.likes, lk.language_id, lk.statement, lk.working,
+                   lk.label, lk.working_summary, lk.ref_id,
+                   lk.labelled_references, lk.object_reference_labels,
+                   lk.loose_references_guessed_objects,
                    s.section_id, s.section_number, s.parent_section,
-                   g.grimoire_id, g.isbn, g.publish_date, g.version
+                   s.source_key AS section_source_key,
+                   g.grimoire_id, g.source_key AS book_source_key,
+                   g.isbn, g.publish_date, g.version
             FROM knowledge k
             JOIN knowledge_crystal kc ON kc.knowledge_crystal_id = k.knowledge_crystal_id
             JOIN language_knowledge lk ON lk.knowledge_id = k.knowledge_id
@@ -383,8 +388,13 @@ def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
             """
             SELECT k.knowledge_id, k.type, k.is_default_in_crystal,
                    kc.likes, lk.language_id, lk.statement, lk.working,
+                   lk.label, lk.working_summary, lk.ref_id,
+                   lk.labelled_references, lk.object_reference_labels,
+                   lk.loose_references_guessed_objects,
                    s.section_id, s.section_number, s.parent_section,
-                   g.grimoire_id, g.isbn, g.publish_date, g.version,
+                   s.source_key AS section_source_key,
+                   g.grimoire_id, g.source_key AS book_source_key,
+                   g.isbn, g.publish_date, g.version,
                    COALESCE(jsonb_agg(
                        jsonb_build_object(
                            'semantic_projection_id', sp.semantic_projection_id,
@@ -397,7 +407,18 @@ def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
                            'grounding_kind', sp.grounding_kind,
                            'confidence', sp.confidence
                        ) ORDER BY sp.semantic_projection_id
-                   ) FILTER (WHERE sp.semantic_projection_id IS NOT NULL), '[]'::jsonb) AS projections
+                   ) FILTER (WHERE sp.semantic_projection_id IS NOT NULL), '[]'::jsonb) AS projections,
+                   COALESCE((
+                       SELECT jsonb_agg(jsonb_build_object(
+                           'book_image_id', bi.book_image_id,
+                           'source_image_id', bi.source_image_id,
+                           'semantic_context_name', bi.semantic_context_name,
+                           'url', bi.url,
+                           'metadata', bi.metadata
+                       ) ORDER BY bi.book_image_id)
+                       FROM book_image bi
+                       WHERE bi.knowledge_id = k.knowledge_id AND bi.is_active
+                   ), '[]'::jsonb) AS images
             FROM knowledge k
             JOIN knowledge_crystal kc ON kc.knowledge_crystal_id = k.knowledge_crystal_id
             JOIN language_knowledge lk ON lk.knowledge_id = k.knowledge_id AND lk.language_id = %s
@@ -405,9 +426,12 @@ def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
             JOIN grimoire g ON g.grimoire_id = s.grimoire_id
             LEFT JOIN semantic_projection sp ON sp.knowledge_id = k.knowledge_id
                 AND sp.language_id = lk.language_id AND sp.is_active
-            WHERE k.knowledge_id = %s
+            WHERE k.knowledge_id = %s AND k.is_active
             GROUP BY k.knowledge_id, kc.likes, lk.language_id, lk.statement, lk.working,
-                     s.section_id, g.grimoire_id
+                     lk.label, lk.working_summary, lk.ref_id,
+                     lk.labelled_references, lk.object_reference_labels,
+                     lk.loose_references_guessed_objects,
+                     s.section_id, s.source_key, g.grimoire_id, g.source_key
             """,
             (language_id, knowledge_id),
         )

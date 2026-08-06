@@ -73,7 +73,7 @@ class Settings:
         distance = os.getenv("QDRANT_DISTANCE", "cosine").strip().lower()
         if distance not in {"cosine", "dot", "euclid"}:
             raise ValueError("QDRANT_DISTANCE must be cosine, dot, or euclid")
-        vector_size = int(os.getenv("QDRANT_VECTOR_SIZE", "1536"))
+        vector_size = int(os.getenv("QDRANT_VECTOR_SIZE", "2560"))
         if vector_size <= 0:
             raise ValueError("QDRANT_VECTOR_SIZE must be positive")
 
@@ -104,7 +104,7 @@ class Settings:
             qdrant_enabled=_bool("QDRANT_ENABLED", True),
             qdrant_url=os.getenv("QDRANT_URL", "http://127.0.0.1:6333"),
             qdrant_api_key=qdrant_key,
-            qdrant_collection=os.getenv("QDRANT_COLLECTION", "knowledge-semantic-v1"),
+            qdrant_collection=os.getenv("QDRANT_COLLECTION", "knowledge-qwen3-embedding-4b"),
             qdrant_vector_size=vector_size,
             qdrant_distance=distance,
             qdrant_vectors_on_disk=_bool("QDRANT_VECTORS_ON_DISK", False),

@@ -101,6 +101,120 @@ class QdrantService:
                 json={"field_name": field_name, "field_schema": field_schema},
             )
 
+    def ensure_collection_config(
+        self, *, collection: str, vector_size: int, distance: str
+    ) -> None:
+        if distance not in _DISTANCE:
+            raise ValueError(f"Unsupported Qdrant distance: {distance}")
+        if vector_size <= 0:
+            raise ValueError("vector_size must be positive")
+        encoded = quote(collection, safe="")
+        response = self._client.get(f"/collections/{encoded}")
+        if response.status_code == 404:
+            self._request(
+                "PUT",
+                f"/collections/{encoded}",
+                json={
+                    "vectors": {
+                        "size": vector_size,
+                        "distance": _DISTANCE[distance],
+                        "on_disk": self.settings.qdrant_vectors_on_disk,
+                    }
+                },
+            )
+            existing_indexes: set[str] = set()
+        else:
+            try:
+                response.raise_for_status()
+                result = response.json().get("result", {})
+                config = result.get("config", {}).get("params", {}).get("vectors", {})
+                actual_size = config.get("size")
+                actual_distance = str(config.get("distance") or "").lower()
+                if actual_size is not None and int(actual_size) != vector_size:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Qdrant collection {collection!r} has {actual_size} dimensions, expected {vector_size}",
+                    )
+                if actual_distance and actual_distance != _DISTANCE[distance].lower():
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Qdrant collection {collection!r} uses {actual_distance}, expected {distance}",
+                    )
+                existing_indexes = set((result.get("payload_schema") or {}).keys())
+            except HTTPException:
+                raise
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                raise HTTPException(status_code=502, detail=f"Qdrant collection inspection failed: {exc}") from exc
+
+        indexes = {
+            "knowledge_id": "integer",
+            "language_id": "integer",
+            "section_id": "integer",
+            "grimoire_id": "integer",
+            "working_type": "keyword",
+            "projection_type": "keyword",
+            "direction": "keyword",
+            "object_source_key": "keyword",
+            "is_active": "bool",
+        }
+        for field_name, field_schema in indexes.items():
+            if field_name in existing_indexes:
+                continue
+            self._request(
+                "PUT",
+                f"/collections/{encoded}/index?wait=true",
+                json={"field_name": field_name, "field_schema": field_schema},
+            )
+
+    def delete_many(
+        self,
+        *,
+        collection: str,
+        point_ids: Sequence[UUID | str],
+        chunk_size: int = 1024,
+    ) -> None:
+        name = quote(collection, safe="")
+        for start in range(0, len(point_ids), chunk_size):
+            chunk = [str(value) for value in point_ids[start:start + chunk_size]]
+            if not chunk:
+                continue
+            self._request(
+                "POST",
+                f"/collections/{name}/points/delete?wait=true",
+                json={"points": chunk},
+            )
+
+    def upsert_many(
+        self,
+        *,
+        collection: str,
+        points: Sequence[dict[str, Any]],
+        vector_size: int,
+        chunk_size: int = 512,
+    ) -> None:
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        name = quote(collection, safe="")
+        for start in range(0, len(points), chunk_size):
+            chunk = points[start:start + chunk_size]
+            encoded_points = []
+            for point in chunk:
+                vector = point["vector"]
+                if len(vector) != vector_size:
+                    raise ValueError(
+                        f"Expected vector size {vector_size}, got {len(vector)}"
+                    )
+                encoded_points.append({
+                    "id": str(point["embedding_id"]),
+                    "vector": list(vector),
+                    "payload": point["payload"],
+                })
+            self._request(
+                "PUT",
+                f"/collections/{name}/points?wait=true",
+                json={"points": encoded_points},
+            )
+
     def embed_query(self, text: str) -> list[float]:
         settings = self.settings
         if not settings.embedding_api_url or not settings.embedding_model:

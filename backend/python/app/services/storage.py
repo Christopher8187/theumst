@@ -163,6 +163,30 @@ def write_bytes(key: str, data: bytes) -> str:
     return key
 
 
+
+def public_url(key: str) -> str:
+    """Return the stable URL stored beside an object-storage key."""
+    from urllib.parse import quote
+
+    key = clean_key(key)
+    mode = storage_mode()
+    if mode == "COM":
+        endpoint = (os.getenv("DO_SPACES_ENDPOINT") or "").rstrip("/")
+        if not endpoint:
+            raise HTTPException(status_code=500, detail="DO_SPACES_ENDPOINT is not configured")
+        return f"{endpoint}/{quote(key, safe='/')}"
+    if mode == "CN":
+        bucket = os.getenv("ALIYUN_OSS_BUCKET") or ""
+        endpoint = (os.getenv("ALIYUN_OSS_ENDPOINT") or "").rstrip("/")
+        if not bucket or not endpoint:
+            raise HTTPException(status_code=500, detail="Aliyun OSS is not configured")
+        scheme, host = endpoint.split("://", 1) if "://" in endpoint else ("https", endpoint)
+        return f"{scheme}://{bucket}.{host}/{quote(key, safe='/')}"
+    if mode == "LOCAL":
+        base = (os.getenv("LOCAL_URL") or "http://localhost:8080").rstrip("/")
+        return f"{base}/api/v1/storage/{quote(key, safe='/')}"
+    raise HTTPException(status_code=400, detail="SERVER must be LOCAL, COM, or CN")
+
 def create_folder(key: str) -> str:
     key = clean_key(key)
     if not key:

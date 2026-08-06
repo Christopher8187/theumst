@@ -46,8 +46,8 @@ services:
       QDRANT_ENABLED: "true"
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-local-qdrant-change-me}
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-knowledge-semantic-v1}
-      QDRANT_VECTOR_SIZE: ${QDRANT_VECTOR_SIZE:-1536}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-knowledge-qwen3-embedding-4b}
+      QDRANT_VECTOR_SIZE: ${QDRANT_VECTOR_SIZE:-2560}
       QDRANT_DISTANCE: ${QDRANT_DISTANCE:-cosine}
       QDRANT_VECTORS_ON_DISK: ${QDRANT_VECTORS_ON_DISK:-false}
       EMBEDDING_API_URL: ${EMBEDDING_API_URL:-}
