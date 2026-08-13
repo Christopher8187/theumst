@@ -3,11 +3,12 @@ import { assetUrl } from "../../../urls.js";
 import SiteHeader from "../components/SiteHeader.vue";
 
 defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean });
-defineEmits(["navigate", "set-language"]);
+defineEmits(["navigate", "set-language", "login", "signup"]);
 
 const team = [
   { id: "chris", image: "Chris.jpg" },
-  { id: "randall", image: "Randall.jpg" }
+  { id: "randall", image: "Randall.jpg" },
+  { id: "tina", image: "Tina.jpg" }
 ];
 </script>
 
@@ -20,7 +21,7 @@ const team = [
     @set-language="$emit('set-language', $event)"
   />
 
-  <main class="content about-page">
+  <main class="site-container about-page">
     <section class="about-intro">
       <h2>{{ tr("about.company.title") }}</h2>
       <p>{{ tr("about.company.text") }}</p>
@@ -30,7 +31,8 @@ const team = [
       <h2 class="team-title">{{ tr("team.title") }}</h2>
       <div class="team">
         <article v-for="member in team" :key="member.id" class="member">
-          <img :src="assetUrl(member.image)" :alt="tr(`team.${member.id}.name`)">
+          <img v-if="member.image" class="member-portrait" :src="assetUrl(member.image)" :alt="tr(`team.${member.id}.name`)">
+          <div v-else class="member-portrait member-initials" role="img" :aria-label="tr(`team.${member.id}.name`)">{{ member.initials }}</div>
           <h3>{{ tr(`team.${member.id}.name`) }}</h3>
           <p class="member-role">{{ tr(`team.${member.id}.role`) }}</p>
           <div class="member-field">

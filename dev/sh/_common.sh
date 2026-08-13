@@ -39,16 +39,16 @@ normalize_host_path() {
 }
 
 resolve_ssh_key_dir() {
-    configured="${SSH_KEY_DIR:-}"
-    if [ -n "$configured" ] && [ "$configured" != "__AUTO__" ]; then
-        normalize_host_path "$configured"
+    # The Windows wrapper is the most specific signal and must win over a
+    # Linux-oriented SSH_KEY_DIR value loaded from the project environment.
+    if [ -n "${THEUMST_SSH_KEY_DIR:-}" ]; then
+        normalize_host_path "$THEUMST_SSH_KEY_DIR"
         return
     fi
 
-    # The Windows wrappers export this explicitly. Under WSL, WSLENV translates
-    # it to /mnt/c/...; under Git Bash, normalize_host_path uses cygpath.
-    if [ -n "${THEUMST_SSH_KEY_DIR:-}" ]; then
-        normalize_host_path "$THEUMST_SSH_KEY_DIR"
+    configured="${SSH_KEY_DIR:-}"
+    if [ -n "$configured" ] && [ "$configured" != "__AUTO__" ]; then
+        normalize_host_path "$configured"
         return
     fi
 
@@ -361,6 +361,17 @@ HTTP_PORT=${HTTP_PORT:-8080}
 SESSION_DAYS=${SESSION_DAYS:-7}
 COOKIE_SECURE=true
 CORS_ORIGINS=https://${DOMAIN},https://www.${DOMAIN}
+PUBLIC_WEBPAGE_URL=https://${DOMAIN}
+PASSWORD_RESET_TTL_MINUTES=${PASSWORD_RESET_TTL_MINUTES:-60}
+
+SMTP_HOST=${SMTP_HOST:-}
+SMTP_PORT=${SMTP_PORT:-587}
+SMTP_USERNAME=${SMTP_USERNAME:-}
+SMTP_PASSWORD=${SMTP_PASSWORD:-}
+SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+SMTP_FROM_NAME=${SMTP_FROM_NAME:-theumst}
+SMTP_STARTTLS=${SMTP_STARTTLS:-true}
+SMTP_USE_SSL=${SMTP_USE_SSL:-false}
 
 DB_NAME=${DB_NAME:-theumst}
 DB_USER=${DB_USER:-postgres}
@@ -424,6 +435,7 @@ remote_upload() {
         tar \
             --exclude='./.git' \
             --exclude='./.env' \
+            --exclude='./boh.md' \
             --exclude='./SECRET_ROTATION_NOTES.md' \
             --exclude='./.local' \
             --exclude='./backend/python/.venv' \

@@ -5,6 +5,8 @@ import Sidebar from "./components/Sidebar.vue";
 import LanguageModal from "./components/LanguageModal.vue";
 import AdminPage from "./pages/AdminPage.vue";
 import ApiKeysPage from "./pages/ApiKeysPage.vue";
+import BooksPage from "./pages/BooksPage.vue";
+import MediaPage from "./pages/MediaPage.vue";
 import ProfilePage from "./pages/ProfilePage.vue";
 import SuperadminPage from "./pages/SuperadminPage.vue";
 import { canUseRoute, dashboardRoutes, routeFromPath } from "./router";
@@ -46,6 +48,26 @@ const superSql = ref("");
 const superSqlResult = ref("");
 const superSqlError = ref(false);
 
+const managerUser = ref("");
+const managerMessage = ref("");
+const managerError = ref(false);
+
+const books = ref([]);
+const editingBookId = ref(null);
+const bookMessage = ref("");
+const bookError = ref(false);
+const blankBook = () => ({
+  title: "", publisher: "", isbn: "", publish_date: "", version: "", source_key: "", language_id: 1
+});
+const bookDraft = ref(blankBook());
+
+const posts = ref([]);
+const editingPostId = ref(null);
+const mediaMessage = ref("");
+const mediaError = ref(false);
+const blankPost = () => ({ title: "", excerpt: "", body: "", image_url: "/images/graph.jpg", status: "published" });
+const postDraft = ref(blankPost());
+
 const showLanguage = ref(false);
 const logoSrc = assetUrl("logo.png");
 const translateSrc = assetUrl("translate.svg");
@@ -58,6 +80,8 @@ function go(next) {
   route.value = next;
   history.pushState(null, "", dashboardRoutes[next]);
   if (next === "admin") loadStorage();
+  if (next === "books") loadBooks();
+  if (next === "media") loadMedia();
 }
 
 function chooseLang(value) {
@@ -96,6 +120,8 @@ async function loadProfile() {
   profile.value = (await res.json()).user;
   enforceAccessPage();
   if (route.value === "admin") loadStorage();
+  if (route.value === "books") loadBooks();
+  if (route.value === "media") loadMedia();
 }
 
 async function saveProfile() {
@@ -279,6 +305,128 @@ async function makeAdmin() {
   superMessage.value = res.ok ? `${data.user.username} ${t.value.adminGranted}` : data.detail;
 }
 
+async function makeManager() {
+  managerMessage.value = "";
+  managerError.value = false;
+  const res = requireLogin(await apiFetch("/api/admin/make-manager", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier: managerUser.value.trim() })
+  }));
+  const data = await res.json();
+  managerError.value = !res.ok;
+  managerMessage.value = res.ok ? `${data.user.username} ${t.value.managerGranted}` : data.detail;
+  if (res.ok) managerUser.value = "";
+}
+
+function setContentMessage(target, errorTarget, value, isError = false) {
+  target.value = value;
+  errorTarget.value = isError;
+}
+
+async function loadBooks() {
+  const res = requireLogin(await apiFetch("/api/content/books"));
+  const data = await res.json();
+  if (!res.ok) return setContentMessage(bookMessage, bookError, data.detail, true);
+  books.value = data.books;
+}
+
+function resetBook() {
+  editingBookId.value = null;
+  bookDraft.value = blankBook();
+  bookMessage.value = "";
+  bookError.value = false;
+}
+
+function editBook(book) {
+  editingBookId.value = book.grimoire_id;
+  bookDraft.value = {
+    title: book.title || "",
+    publisher: book.publisher || "",
+    isbn: book.isbn || "",
+    publish_date: book.publish_date || "",
+    version: book.version || "",
+    source_key: book.source_key || "",
+    language_id: Number(book.language_id || 1)
+  };
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function saveBook() {
+  const path = editingBookId.value ? `/api/content/books/${editingBookId.value}` : "/api/content/books";
+  const res = requireLogin(await apiFetch(path, {
+    method: editingBookId.value ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(bookDraft.value)
+  }));
+  const data = await res.json();
+  if (!res.ok) return setContentMessage(bookMessage, bookError, data.detail, true);
+  resetBook();
+  setContentMessage(bookMessage, bookError, t.value.bookSaved);
+  await loadBooks();
+}
+
+async function deleteBook(book) {
+  const warning = `${t.value.deleteBookConfirm} “${book.title}”?\n\n${book.section_count} ${t.value.sections}, ${book.knowledge_count} ${t.value.objects}.`;
+  if (!confirm(warning)) return;
+  const res = requireLogin(await apiFetch(`/api/content/books/${book.grimoire_id}`, { method: "DELETE" }));
+  const data = await res.json();
+  if (!res.ok) return setContentMessage(bookMessage, bookError, data.detail, true);
+  if (editingBookId.value === book.grimoire_id) resetBook();
+  setContentMessage(bookMessage, bookError, t.value.bookDeleted);
+  await loadBooks();
+}
+
+async function loadMedia() {
+  const res = requireLogin(await apiFetch("/api/content/media"));
+  const data = await res.json();
+  if (!res.ok) return setContentMessage(mediaMessage, mediaError, data.detail, true);
+  posts.value = data.posts;
+}
+
+function resetPost() {
+  editingPostId.value = null;
+  postDraft.value = blankPost();
+  mediaMessage.value = "";
+  mediaError.value = false;
+}
+
+function editPost(post) {
+  editingPostId.value = post.media_post_id;
+  postDraft.value = {
+    title: post.title || "",
+    excerpt: post.excerpt || "",
+    body: post.body || "",
+    image_url: post.image_url || "",
+    status: post.status || "draft"
+  };
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function savePost() {
+  const path = editingPostId.value ? `/api/content/media/${editingPostId.value}` : "/api/content/media";
+  const res = requireLogin(await apiFetch(path, {
+    method: editingPostId.value ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(postDraft.value)
+  }));
+  const data = await res.json();
+  if (!res.ok) return setContentMessage(mediaMessage, mediaError, data.detail, true);
+  resetPost();
+  setContentMessage(mediaMessage, mediaError, t.value.postSaved);
+  await loadMedia();
+}
+
+async function deletePost(post) {
+  if (!confirm(`${t.value.deletePostConfirm} “${post.title}”?`)) return;
+  const res = requireLogin(await apiFetch(`/api/content/media/${post.media_post_id}`, { method: "DELETE" }));
+  const data = await res.json();
+  if (!res.ok) return setContentMessage(mediaMessage, mediaError, data.detail, true);
+  if (editingPostId.value === post.media_post_id) resetPost();
+  setContentMessage(mediaMessage, mediaError, t.value.postDeleted);
+  await loadMedia();
+}
+
 async function runSuperSql() {
   superSqlResult.value = "";
   superSqlError.value = false;
@@ -304,6 +452,8 @@ onMounted(() => {
     route.value = routeFromPath();
     enforceAccessPage();
     if (route.value === "admin") loadStorage();
+    if (route.value === "books") loadBooks();
+    if (route.value === "media") loadMedia();
   });
 });
 </script>
@@ -342,6 +492,36 @@ onMounted(() => {
         @revoke="revokeKey"
       />
 
+      <BooksPage
+        v-else-if="route === 'books' && accessPoints.includes('books')"
+        v-model:book-draft="bookDraft"
+        :t="t"
+        :books="books"
+        :editing-book-id="editingBookId"
+        :message="bookMessage"
+        :error="bookError"
+        @save="saveBook"
+        @edit="editBook"
+        @reset="resetBook"
+        @delete="deleteBook"
+        @refresh="loadBooks"
+      />
+
+      <MediaPage
+        v-else-if="route === 'media' && accessPoints.includes('media')"
+        v-model:post-draft="postDraft"
+        :t="t"
+        :posts="posts"
+        :editing-post-id="editingPostId"
+        :message="mediaMessage"
+        :error="mediaError"
+        @save="savePost"
+        @edit="editPost"
+        @reset="resetPost"
+        @delete="deletePost"
+        @refresh="loadMedia"
+      />
+
       <AdminPage
         v-else-if="route === 'admin' && accessPoints.includes('admin')"
         v-model:qdrant-query="qdrantQuery"
@@ -351,6 +531,7 @@ onMounted(() => {
         v-model:folder-name="folderName"
         v-model:storage-name="storageName"
         v-model:storage-text="storageText"
+        v-model:manager-user="managerUser"
         :t="t"
         :api-url="apiUrl"
         :nice-size="niceSize"
@@ -362,6 +543,9 @@ onMounted(() => {
         :storage-error="storageError"
         :qdrant-result="qdrantResult"
         :qdrant-error="qdrantError"
+        :manager-message="managerMessage"
+        :manager-error="managerError"
+        @make-manager="makeManager"
         @search-qdrant="searchQdrant"
         @load-storage="loadStorage"
         @open-storage="openStorage"

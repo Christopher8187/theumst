@@ -10,11 +10,15 @@ from ..dependencies import current_user
 
 
 router = APIRouter(include_in_schema=False)
-WEBPAGE_HTML_ROUTES = {"news", "about", "wiki", "get", "login", "signup"}
+WEBPAGE_HTML_ROUTES = {
+    "news", "about", "wiki", "get", "login", "signup", "forgot-password", "reset-password"
+}
 BLOCKED_PREFIXES = ("backend/", "config/", "dev/")
 DASHBOARD_ACCESS = {
     "profile": "profile",
     "api-keys": "api-keys",
+    "books": "books",
+    "media": "media",
     "admin": "admin",
     "superadmin": "superadmin",
 }

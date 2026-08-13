@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 FROM node:22-alpine AS webpage-build
 WORKDIR /app/frontend/webpage
 COPY frontend/webpage/package*.json ./
@@ -47,6 +45,8 @@ EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 FROM base AS production
+COPY backend/python/requirements-cloud.txt ./requirements-cloud.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements-cloud.txt
 WORKDIR /app
 COPY backend ./backend
 COPY --from=webpage-build /app/frontend/webpage/dist ./frontend/webpage/dist

@@ -4,14 +4,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_team_contains_only_chris_and_randall():
+def test_team_contains_chris_randall_and_tina():
     about = (ROOT / "frontend/webpage/src/pages/AboutPage.vue").read_text(encoding="utf-8")
     assert '{ id: "chris"' in about
     assert '{ id: "randall"' in about
-    for removed in ("penny", "kiki", "tina", "lawrence"):
+    assert '{ id: "tina"' in about
+    for removed in ("penny", "kiki", "lawrence"):
         assert f'id: "{removed}"' not in about
     translations = (ROOT / "frontend/webpage/src/utils/language.js").read_text(encoding="utf-8")
     assert '"team.randall.role": "Strategy Advisor"' in translations
+    assert '"team.tina.role": "Social Media Advisor"' in translations
 
 
 def test_admin_and_superadmin_tools_are_separated():

@@ -26,6 +26,10 @@ def new_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def new_password_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
 def session_expiry(days: int) -> datetime:
     return datetime.now(timezone.utc) + timedelta(days=days)
 

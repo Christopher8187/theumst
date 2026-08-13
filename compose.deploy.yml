@@ -39,6 +39,16 @@ services:
       SESSION_DAYS: ${SESSION_DAYS:-7}
       COOKIE_SECURE: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:-https://theumst.com,https://www.theumst.com,https://theumst.cn,https://www.theumst.cn}
+      PUBLIC_WEBPAGE_URL: ${PUBLIC_WEBPAGE_URL:-https://theumst.com}
+      PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-60}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-theumst}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
       QDRANT_ENABLED: "true"
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}

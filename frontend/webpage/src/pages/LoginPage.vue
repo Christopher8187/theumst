@@ -2,7 +2,7 @@
 import { assetUrl } from "../../../urls.js";
 import SiteHeader from "../components/SiteHeader.vue";
 
-defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean });
+defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean, passwordResetSuccess: Boolean });
 defineEmits(["navigate", "set-language", "login"]);
 </script>
 
@@ -34,6 +34,7 @@ defineEmits(["navigate", "set-language", "login"]);
         </div>
 
         <p v-if="loginError" class="login-error">{{ tr("login.badLogin") }}</p>
+        <p v-if="passwordResetSuccess" class="login-status is-success">{{ tr("login.resetSuccess") }}</p>
 
         <form @submit.prevent="$emit('login', $event)">
           <label>
@@ -47,6 +48,7 @@ defineEmits(["navigate", "set-language", "login"]);
           </label>
 
           <button type="submit">{{ tr("login.submit") }}</button>
+          <a class="text-action" href="/forgot-password" @click.prevent="$emit('navigate', '/forgot-password')">{{ tr("login.forgot") }}</a>
           <a class="secondary-action" href="/signup" @click.prevent="$emit('navigate', '/signup')">{{ tr("login.signup") }}</a>
         </form>
       </section>

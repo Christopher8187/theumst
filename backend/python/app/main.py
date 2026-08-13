@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .database import initialize_database
-from .routers import admin, api_keys, auth, frontend, health, public_api, superadmin, users
+from .routers import admin, api_keys, auth, content, frontend, health, public_api, superadmin, users
 from .services.qdrant import qdrant_service
 
 
@@ -50,6 +50,7 @@ def create_app(*, initialize_services: bool = True) -> FastAPI:
     application.include_router(auth.router)
     application.include_router(users.router)
     application.include_router(api_keys.router)
+    application.include_router(content.router)
     application.include_router(admin.router)
     application.include_router(superadmin.router)
     application.include_router(public_api.router)

@@ -21,6 +21,33 @@ class IdentifierRequest(BaseModel):
     identifier: str = Field(min_length=1, max_length=320)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+    new_password: str = Field(min_length=8, max_length=256)
+
+
+class BookPayload(BaseModel):
+    title: str = Field(min_length=1, max_length=500)
+    publisher: str = Field(default="Independent", max_length=500)
+    isbn: str | None = Field(default=None, max_length=64)
+    publish_date: str | None = Field(default=None, max_length=80)
+    version: str | None = Field(default=None, max_length=120)
+    source_key: str | None = Field(default=None, max_length=500)
+    language_id: int = Field(default=1, gt=0)
+
+
+class MediaPostPayload(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    excerpt: str = Field(default="", max_length=1000)
+    body: str = Field(min_length=1, max_length=100_000)
+    image_url: str | None = Field(default=None, max_length=2000)
+    status: Literal["draft", "published"] = "published"
+
+
 class SqlRequest(BaseModel):
     sql: str = Field(min_length=1, max_length=200_000)
 

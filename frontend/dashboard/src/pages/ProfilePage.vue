@@ -1,6 +1,11 @@
 <script setup>
-defineProps({ t: { type: Object, required: true }, profile: { type: Object, required: true }, message: String });
+const props = defineProps({ t: { type: Object, required: true }, profile: { type: Object, required: true }, message: String });
 defineEmits(["save"]);
+
+function authorityLabel(value) {
+  const key = { user: "roleUser", manager: "roleManager", admin: "roleAdmin", superadmin: "roleSuperadmin" }[value];
+  return props.t[key] || value;
+}
 </script>
 
 <template>
@@ -11,7 +16,7 @@ defineEmits(["save"]);
 
     <div class="readonly-field">
       <span>{{ t.authorityType }}</span>
-      <strong>{{ profile.authority_type }}</strong>
+      <strong>{{ authorityLabel(profile.authority_type) }}</strong>
     </div>
 
     <form class="dashboard-form" @submit.prevent="$emit('save')">

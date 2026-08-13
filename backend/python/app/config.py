@@ -44,6 +44,17 @@ class Settings:
     cookie_secure: bool
     cors_origins: tuple[str, ...]
 
+    public_webpage_url: str
+    password_reset_ttl_minutes: int
+    smtp_host: str
+    smtp_port: int
+    smtp_username: str
+    smtp_password: str
+    smtp_from_email: str
+    smtp_from_name: str
+    smtp_starttls: bool
+    smtp_use_ssl: bool
+
     server: str
     local_storage_dir: str
 
@@ -99,6 +110,16 @@ class Settings:
                 "http://localhost:5174,http://127.0.0.1:5174,"
                 "http://localhost:8080,http://127.0.0.1:8080",
             ),
+            public_webpage_url=os.getenv("PUBLIC_WEBPAGE_URL", "http://localhost:5173").rstrip("/"),
+            password_reset_ttl_minutes=int(os.getenv("PASSWORD_RESET_TTL_MINUTES", "60")),
+            smtp_host=os.getenv("SMTP_HOST", "").strip(),
+            smtp_port=int(os.getenv("SMTP_PORT", "587")),
+            smtp_username=os.getenv("SMTP_USERNAME", "").strip(),
+            smtp_password=os.getenv("SMTP_PASSWORD", ""),
+            smtp_from_email=os.getenv("SMTP_FROM_EMAIL", "").strip(),
+            smtp_from_name=os.getenv("SMTP_FROM_NAME", "theumst").strip() or "theumst",
+            smtp_starttls=_bool("SMTP_STARTTLS", True),
+            smtp_use_ssl=_bool("SMTP_USE_SSL", False),
             server=os.getenv("SERVER", "LOCAL").upper(),
             local_storage_dir=os.getenv("LOCAL_STORAGE_DIR", "__AUTO__"),
             qdrant_enabled=_bool("QDRANT_ENABLED", True),

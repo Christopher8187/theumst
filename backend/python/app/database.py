@@ -39,7 +39,12 @@ def transaction() -> Iterator[tuple[Connection, RealDictCursor]]:
 
 
 def _sql_files(sql_dir: Path) -> list[Path]:
-    files = sorted(path for path in sql_dir.glob("*.sql") if path.is_file())
+    # The baseline schema must run before additive numbered migrations. The
+    # repository historically names it schema.sql, which otherwise sorts last.
+    files = sorted(
+        (path for path in sql_dir.glob("*.sql") if path.is_file()),
+        key=lambda path: (path.name != "schema.sql", path.name),
+    )
     if not files:
         raise RuntimeError(f"No SQL schema files found in {sql_dir}")
     return files

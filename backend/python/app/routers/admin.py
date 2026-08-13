@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import io
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
+from ..database import transaction
 from ..dependencies import require_access
-from ..schemas import QdrantSearchRequest, StorageFolderCreate, StorageTextWrite
+from ..schemas import IdentifierRequest, QdrantSearchRequest, StorageFolderCreate, StorageTextWrite
 from ..services import storage
 from ..services.qdrant import qdrant_service
 
@@ -16,6 +17,34 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 def _admin(request: Request):
     return require_access(request, "admin")
+
+
+@router.post("/make-manager")
+def make_manager(payload: IdentifierRequest, request: Request):
+    """Promote a regular user to manager without allowing privilege downgrades."""
+    _admin(request)
+    identifier = payload.identifier.strip()
+    with transaction() as (_, cur):
+        cur.execute(
+            """
+            UPDATE "user" SET authority_id = (
+                SELECT authority_id FROM authority WHERE name = 'manager'
+            )
+            WHERE (lower(username) = lower(%s) OR lower(email) = lower(%s))
+              AND authority_id IN (
+                  SELECT authority_id FROM authority WHERE name IN ('user', 'manager')
+              )
+            RETURNING user_id, username, email
+            """,
+            (identifier, identifier),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found, or this account already has higher authority",
+        )
+    return {"ok": True, "user": row}
 
 
 @router.post("/qdrant/search")

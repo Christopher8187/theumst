@@ -3,7 +3,10 @@ import { computed, onMounted, watchEffect, ref } from "vue";
 import { apiFetch, dashboardUrl } from "../../urls.js";
 import AboutPage from "./pages/AboutPage.vue";
 import HomePage from "./pages/HomePage.vue";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage.vue";
 import LoginPage from "./pages/LoginPage.vue";
+import NewsPage from "./pages/NewsPage.vue";
+import ResetPasswordPage from "./pages/ResetPasswordPage.vue";
 import SignupPage from "./pages/SignupPage.vue";
 import SimplePage from "./pages/SimplePage.vue";
 import { useWebpageRouter } from "./composables/useWebpageRouter";
@@ -14,11 +17,15 @@ const { pageName, navigate: routeTo, syncWithBrowser } = useWebpageRouter();
 const { tr, setLang } = useWebI18n();
 const session = ref({ user: null });
 const loginError = ref(new URLSearchParams(location.search).get("error") === "bad-login");
+const passwordResetSuccess = ref(new URLSearchParams(location.search).get("reset") === "success");
 
 const pageComponent = computed(() => ({
   home: HomePage,
   about: AboutPage,
+  news: NewsPage,
+  forgotPassword: ForgotPasswordPage,
   login: LoginPage,
+  resetPassword: ResetPasswordPage,
   signup: SignupPage
 }[pageName.value] || SimplePage));
 
@@ -26,6 +33,7 @@ const titleKey = computed(() => pages[pageName.value]?.titleKey || "home.title")
 
 function navigate(path) {
   loginError.value = false;
+  passwordResetSuccess.value = false;
   routeTo(path);
 }
 
@@ -76,6 +84,7 @@ onMounted(() => {
     :session="session"
     :title-key="titleKey"
     :login-error="loginError"
+    :password-reset-success="passwordResetSuccess"
     @navigate="navigate"
     @set-language="setLang"
     @login="submitAuth($event, '/auth/login')"

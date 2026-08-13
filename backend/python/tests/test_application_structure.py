@@ -10,6 +10,14 @@ def test_expected_routes_and_sql_is_superadmin_only():
     application = create_app(initialize_services=False)
     paths = {route.path for route in application.routes}
     assert "/api/admin/qdrant/search" in paths
+    assert "/api/admin/make-manager" in paths
+    assert "/api/content/books" in paths
+    assert "/api/content/books/{grimoire_id}" in paths
+    assert "/api/content/media" in paths
+    assert "/api/content/media/{media_post_id}" in paths
+    assert "/api/news" in paths
+    assert "/auth/forgot-password" in paths
+    assert "/auth/reset-password" in paths
     assert "/api/superadmin/sql" in paths
     assert "/api/admin/sql" not in paths
     assert "/api/v1/knowledge" in paths
@@ -22,7 +30,7 @@ def test_backend_is_refactored_into_conventional_modules():
     expected = [
         "app/main.py", "app/config.py", "app/database.py", "app/dependencies.py",
         "app/schemas.py", "app/security.py", "app/routers/admin.py",
-        "app/routers/superadmin.py", "app/routers/public_api.py",
+        "app/routers/superadmin.py", "app/routers/public_api.py", "app/routers/content.py",
         "app/services/qdrant.py", "app/services/storage.py", "app/services/knowledge.py",
     ]
     backend = ROOT / "backend" / "python"

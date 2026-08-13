@@ -2,7 +2,7 @@
 import SiteHeader from "../components/SiteHeader.vue";
 
 defineProps({ tr: Function, titleKey: String, session: Object, loginError: Boolean });
-defineEmits(["navigate", "set-language"]);
+defineEmits(["navigate", "set-language", "login", "signup"]);
 </script>
 
 <template>
@@ -13,5 +13,9 @@ defineEmits(["navigate", "set-language"]);
     @navigate="$emit('navigate', $event)"
     @set-language="$emit('set-language', $event)"
   />
-  <main class="content empty"></main>
+  <main class="site-container simple-page">
+    <p class="section-kicker">{{ tr("brand.category") }}</p>
+    <h2>{{ tr(titleKey) }}</h2>
+    <p>{{ tr(titleKey.startsWith('wiki') ? 'wiki.intro' : titleKey.startsWith('get') ? 'get.intro' : '') }}</p>
+  </main>
 </template>

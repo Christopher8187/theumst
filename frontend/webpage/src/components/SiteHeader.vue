@@ -16,8 +16,8 @@ const open = ref(false);
 
 const nav = [
   ["/", "nav.home"],
-  ["/news", "nav.news"],
   ["/about", "nav.about"],
+  ["/news", "nav.news"],
   ["/wiki", "nav.wiki"],
   ["/login", "nav.login", "login"],
   ["/get", "nav.get", "get"]
@@ -35,15 +35,14 @@ function chooseLanguage(code) {
 </script>
 
 <template>
-  <header class="top" :class="{ 'login-top': compact }">
-    <div class="brand">
-      <a href="/" @click="go($event, '/')">
+  <header class="site-header" :class="{ 'compact-header': compact }">
+    <div class="site-nav-shell">
+      <a class="brand" href="/" @click="go($event, '/')">
         <img class="logo" :src="assetUrl('logo.png')" :alt="tr('alt.logo')">
+        <span>{{ tr("brand.title") }}</span>
       </a>
-      <h1>{{ tr("brand.title") }}</h1>
-    </div>
 
-    <nav class="nav">
+      <nav class="nav">
       <template v-for="item in nav" :key="item[0]">
         <a
           v-if="!(item[2] === 'login' && session?.user)"
@@ -68,16 +67,21 @@ function chooseLanguage(code) {
           >{{ tr(option.labelKey) }}</button>
         </div>
       </div>
-    </nav>
+      </nav>
 
-    <section v-if="showUserCard && session?.user" class="home-user-card">
-      <img :src="assetUrl('Chris.jpg')" alt="Profile picture">
-      <div class="home-user-name">{{ session.user.username }}</div>
-      <div class="home-user-alias">{{ session.user.alias || session.user.username }}</div>
-      <p>{{ session.user.description || tr("home.noDescription") }}</p>
-      <a :href="dashboardUrl('/dashboard/profile/')">{{ tr("dashboard.title") }}</a>
+      <a v-if="session?.user" class="account-link" :href="dashboardUrl('/dashboard/profile/')">
+        <span class="account-dot"></span>{{ session.user.alias || session.user.username }}
+      </a>
+    </div>
+
+    <section v-if="showUserCard && session?.user" class="home-user-card site-container">
+      <span>{{ tr("home.welcomeBack") }}, <strong>{{ session.user.alias || session.user.username }}</strong></span>
+      <a :href="dashboardUrl('/dashboard/profile/')">{{ tr("dashboard.title") }} →</a>
     </section>
 
-    <h2 v-if="titleKey" class="hero-title">{{ tr(titleKey) }}</h2>
+    <div v-if="titleKey" class="page-heading site-container">
+      <p class="section-kicker">{{ tr("brand.category") }}</p>
+      <h1>{{ tr(titleKey) }}</h1>
+    </div>
   </header>
 </template>

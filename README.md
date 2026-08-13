@@ -377,10 +377,36 @@ Dashboard access points are rows in `access` and are assigned through
 The Admin page contains Qdrant search and object-storage management. Arbitrary
 PostgreSQL execution exists only on the Superadmin page.
 
-The public team page contains only:
+The public team page contains:
 
 - Chris;
-- Randall — Strategy Advisor.
+- Randall — Strategy Advisor;
+- Tina — Social Media Advisor.
+
+---
+
+# 7.1 Password recovery email
+
+Password recovery uses hashed, one-use database tokens and SMTP delivery. Add
+the following settings to `.env` before deploying:
+
+```dotenv
+PUBLIC_WEBPAGE_URL=https://theumst.com
+PASSWORD_RESET_TTL_MINUTES=60
+SMTP_HOST=smtp.your-provider.example
+SMTP_PORT=587
+SMTP_USERNAME=your-smtp-username
+SMTP_PASSWORD=your-smtp-password
+SMTP_FROM_EMAIL=accounts@theumst.com
+SMTP_FROM_NAME=theumst
+SMTP_STARTTLS=true
+SMTP_USE_SSL=false
+```
+
+Use `SMTP_USE_SSL=true` and normally `SMTP_PORT=465` for providers that require
+implicit TLS. Keep `SMTP_STARTTLS=true` for port 587. The public endpoint always
+uses a neutral response so it does not reveal whether an email address has an
+account. A successful reset revokes all of that user's existing sessions.
 
 ---
 

@@ -1,9 +1,11 @@
 export const pages = {
   "about": {"path": "/about", "titleKey": "about.title"},
   "get": {"path": "/get", "titleKey": "get.title"},
+  "forgotPassword": {"path": "/forgot-password", "titleKey": "forgot.title"},
   "home": {"path": "/", "titleKey": "home.title"},
   "login": {"path": "/login", "titleKey": "login.title"},
   "news": {"path": "/news", "titleKey": "news.title"},
+  "resetPassword": {"path": "/reset-password", "titleKey": "reset.title"},
   "signup": {"path": "/signup", "titleKey": "signup.title"},
   "wiki": {"path": "/wiki", "titleKey": "wiki.title"}
 };

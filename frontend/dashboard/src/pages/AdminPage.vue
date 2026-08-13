@@ -12,7 +12,9 @@ defineProps({
   storageMessage: String,
   storageError: Boolean,
   qdrantResult: String,
-  qdrantError: Boolean
+  qdrantError: Boolean,
+  managerMessage: String,
+  managerError: Boolean
 });
 
 const fileInput = ref(null);
@@ -23,8 +25,9 @@ const qdrantLimit = defineModel("qdrantLimit");
 const folderName = defineModel("folderName");
 const storageName = defineModel("storageName");
 const storageText = defineModel("storageText");
+const managerUser = defineModel("managerUser");
 
-defineEmits(["search-qdrant", "load-storage", "open-storage", "create-folder", "new-file", "upload-file", "delete-storage", "save-storage"]);
+defineEmits(["make-manager", "search-qdrant", "load-storage", "open-storage", "create-folder", "new-file", "upload-file", "delete-storage", "save-storage"]);
 </script>
 
 <template>
@@ -32,6 +35,19 @@ defineEmits(["search-qdrant", "load-storage", "open-storage", "create-folder", "
     <p class="eyebrow">{{ t.admin }}</p>
     <h1>{{ t.adminTitle }}</h1>
     <p class="muted">{{ t.adminText }}</p>
+
+    <section class="admin-panel manager-panel">
+      <div>
+        <p class="eyebrow">{{ t.teamAccess }}</p>
+        <h2>{{ t.managerAccessTitle }}</h2>
+        <p class="muted">{{ t.managerAccessText }}</p>
+      </div>
+      <form class="dashboard-form small-form" @submit.prevent="$emit('make-manager')">
+        <label>{{ t.userToPromote }}<input v-model="managerUser" autocomplete="off" :placeholder="t.usernameOrEmail" required></label>
+        <button type="submit">{{ t.makeManager }}</button>
+      </form>
+      <p v-if="managerMessage" class="message key-output" :class="{ error: managerError }">{{ managerMessage }}</p>
+    </section>
 
     <section class="admin-panel">
       <div>
@@ -81,7 +97,7 @@ defineEmits(["search-qdrant", "load-storage", "open-storage", "create-folder", "
               <span>{{ item.type === 'folder' ? '📁' : '📄' }}</span>
               <strong>{{ item.name }}</strong>
             </button>
-            <span>{{ item.type }}</span>
+            <span>{{ item.type === 'folder' ? t.fileTypeFolder : t.fileTypeFile }}</span>
             <span>{{ niceSize(item.size) }}</span>
             <div class="file-buttons">
               <a v-if="item.type === 'file'" :href="apiUrl(`/api/admin/storage/download?path=${encodeURIComponent(item.key)}`)">{{ t.download }}</a>
