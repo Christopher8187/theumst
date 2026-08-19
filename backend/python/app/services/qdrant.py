@@ -248,7 +248,7 @@ class QdrantService:
         allowed = {
             "knowledge_id", "language_id", "section_id", "grimoire_id",
             "working_type", "projection_type", "direction",
-            "expected_target_types", "field_ids", "is_active",
+            "expected_target_types", "field_ids", "object_source_key", "is_active",
         }
         conditions = []
         for key, value in filters.items():
@@ -284,6 +284,46 @@ class QdrantService:
         points = response.get("result", {}).get("points", [])
         return [
             {"id": str(point.get("id")), "score": point.get("score"), "payload": point.get("payload") or {}}
+            for point in points
+        ]
+
+    def query_by_point(
+        self,
+        *,
+        collection: str,
+        point_id: UUID | str,
+        limit: int = 10,
+        filters: dict[str, str | int | bool] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Find neighbours using an indexed point as the query vector.
+
+        Qdrant resolves the point vector inside the named collection.  This is
+        intentionally separate from ``embed_query`` so demo similarity never
+        calls an embedding provider at request time.
+        """
+        if not 1 <= limit <= 256:
+            raise ValueError("limit must be between 1 and 256")
+        if not str(collection).strip():
+            raise ValueError("collection must not be empty")
+        name = quote(collection, safe="")
+        response = self._request(
+            "POST",
+            f"/collections/{name}/points/query",
+            json={
+                "query": str(point_id),
+                "filter": self._filter(filters or {}),
+                "limit": limit,
+                "with_payload": True,
+                "with_vector": False,
+            },
+        )
+        points = response.get("result", {}).get("points", [])
+        return [
+            {
+                "id": str(point.get("id")),
+                "score": point.get("score"),
+                "payload": point.get("payload") or {},
+            }
             for point in points
         ]
 

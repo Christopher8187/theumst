@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import gzip
 import json
 import zipfile
 from pathlib import Path
@@ -10,7 +11,7 @@ import pytest
 
 from app.config import get_settings
 from app.main import create_app
-from app.services.book_ingestion import _safe_archive
+from app.services.book_ingestion import MAX_ARCHIVE_BYTES, _embedding_entries, _open_archive, _safe_archive
 from app.services.qdrant import QdrantService
 
 
@@ -34,6 +35,10 @@ def minimal_manifest() -> dict:
     }
 
 
+def test_whole_book_archive_limit_is_one_gibibyte():
+    assert MAX_ARCHIVE_BYTES == 1024 * 1024 * 1024
+
+
 def test_archive_parser_reads_one_manifest_and_files():
     manifest, files = _safe_archive(
         archive_bytes(minimal_manifest(), {"images/image_1.jpg": b"jpg"})
@@ -49,6 +54,53 @@ def test_archive_parser_rejects_path_traversal():
         archive.writestr("../secret.txt", "bad")
     with pytest.raises(Exception, match="Unsafe archive member"):
         _safe_archive(output.getvalue())
+
+
+def test_v2_archive_streams_gzipped_embedding_sidecar():
+    manifest = minimal_manifest()
+    manifest["schema_version"] = 2
+    manifest["embeddings"] = {
+        "archive_path": "embeddings/records.json.gz",
+        "format": "json-array",
+        "compression": "gzip",
+        "count": 2,
+    }
+    records = [
+        {"local_object_id": "one", "vector": [0.1, 0.2]},
+        {"local_object_id": "two", "vector": [0.3, 0.4]},
+    ]
+    payload = archive_bytes(
+        manifest,
+        {"embeddings/records.json.gz": gzip.compress(json.dumps(records).encode("utf-8"))},
+    )
+    bundle = _open_archive(io.BytesIO(payload))
+    try:
+        assert list(_embedding_entries(bundle)) == records
+    finally:
+        bundle.close()
+
+
+def test_archive_boundary_replaces_database_forbidden_nuls():
+    manifest = minimal_manifest()
+    manifest["schema_version"] = 2
+    manifest["book"]["title"] = "Bad\x00Book"
+    manifest["embeddings"] = {
+        "archive_path": "embeddings/records.json.gz",
+        "format": "json-array",
+        "compression": "gzip",
+        "count": 1,
+    }
+    records = [{"local_object_id": "one", "embedding_text": "bad\x00text", "vector": [0.1]}]
+    payload = archive_bytes(
+        manifest,
+        {"embeddings/records.json.gz": gzip.compress(json.dumps(records).encode("utf-8"))},
+    )
+    bundle = _open_archive(io.BytesIO(payload))
+    try:
+        assert bundle.manifest["book"]["title"] == "Bad�Book"
+        assert list(_embedding_entries(bundle))[0]["embedding_text"] == "bad�text"
+    finally:
+        bundle.close()
 
 
 def test_master_archive_route_is_registered():
@@ -71,7 +123,7 @@ def test_qdrant_batch_upsert_is_one_request_for_one_chunk(monkeypatch):
     )
     service = QdrantService(settings=settings, client=client)
     service.upsert_many(
-        collection="knowledge-qwen3-embedding-4b",
+        collection="knowledge-qwen3-embedding-0-6b",
         vector_size=3,
         points=[
             {"embedding_id": "00000000-0000-0000-0000-000000000001", "vector": [1, 0, 0], "payload": {"knowledge_id": 1}},
@@ -98,7 +150,7 @@ def test_website_does_not_embed_the_publisher_master_key():
     for path in root.rglob("*"):
         if not path.is_file() or path.name == ".env":
             continue
-        if any(part in {".pytest_cache", "__pycache__"} for part in path.parts):
+        if any(part in {".pytest_cache", "__pycache__", "node_modules", "dist"} for part in path.parts):
             continue
         try:
             content = path.read_text(encoding="utf-8")

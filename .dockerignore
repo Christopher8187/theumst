@@ -10,3 +10,4 @@ backend/python/.venv
 frontend/**/node_modules
 frontend/**/dist
 dev/keys
+backend/assets/images/demo/*.png

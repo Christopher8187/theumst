@@ -1,25 +1,59 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
+from fastapi.responses import RedirectResponse
 
 from ..config import get_settings
+from ..database import transaction
 from ..dependencies import authenticate_api_key
-from ..schemas import EmbeddingBatchInput, KnowledgeSubmission, StorageFolderCreate, StorageTextWrite
+from ..schemas import (
+    EmbeddingBatchInput,
+    KnowledgeSubmission,
+    StorageFolderCreate,
+    StorageTextWrite,
+)
 from ..services import storage
-from ..services.knowledge import get_knowledge, list_knowledge, submit_embeddings, submit_knowledge
 from ..services.book_ingestion import ingest_book_archive
-
+from ..services.knowledge import (
+    get_knowledge,
+    list_knowledge,
+    submit_embeddings,
+    submit_knowledge,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["public API"])
 
 
 @router.get("/storage/{path:path}", include_in_schema=False)
-def read_public_local_storage(path: str):
-    if storage.storage_mode() != "LOCAL":
-        raise HTTPException(status_code=404, detail="Local storage serving is disabled")
-    return Response(
-        content=storage.read_bytes(path),
-        media_type=storage.media_type_for(path),
+def read_public_storage(path: str):
+    key = storage.clean_key(path)
+    with transaction() as (_, cur):
+        cur.execute(
+            "SELECT 1 FROM book_image WHERE storage_key = %s AND is_active LIMIT 1",
+            (key,),
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Book image not found")
+    response_headers = {"Cache-Control": "public, max-age=300"}
+    if storage.storage_mode() == "LOCAL":
+        return Response(
+            content=storage.read_bytes(key),
+            media_type=storage.media_type_for(key),
+            headers=response_headers,
+        )
+    return RedirectResponse(
+        storage.signed_read_url(key),
+        status_code=307,
+        headers=response_headers,
     )
 
 

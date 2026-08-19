@@ -19,6 +19,54 @@ def _admin(request: Request):
     return require_access(request, "admin")
 
 
+@router.get("/users")
+def list_users(request: Request):
+    """Return dashboard-safe account information without exposing internal role names."""
+    _admin(request)
+    with transaction() as (_, cur):
+        cur.execute(
+            """
+            SELECT
+                u.user_id,
+                u.username,
+                u.email,
+                COALESCE(u.alias, '') AS alias,
+                COALESCE(u.description, '') AS description,
+                u.created_at,
+                CASE a.name
+                    WHEN 'user' THEN 'user'
+                    WHEN 'betatester' THEN 'betatester'
+                    WHEN 'manager' THEN 'manager'
+                    ELSE 'staff'
+                END AS account_type,
+                COALESCE(keys.active_api_keys, 0) AS active_api_keys,
+                sessions.last_session_at,
+                requests.demo_status
+            FROM "user" u
+            JOIN authority a ON a.authority_id = u.authority_id
+            LEFT JOIN LATERAL (
+                SELECT count(*) AS active_api_keys
+                FROM api_key
+                WHERE user_id = u.user_id AND revoked_at IS NULL
+            ) keys ON true
+            LEFT JOIN LATERAL (
+                SELECT max(created_at) AS last_session_at
+                FROM web_session
+                WHERE user_id = u.user_id
+            ) sessions ON true
+            LEFT JOIN LATERAL (
+                SELECT status AS demo_status
+                FROM demo_access_request
+                WHERE user_id = u.user_id
+                LIMIT 1
+            ) requests ON true
+            ORDER BY u.created_at DESC, u.user_id DESC
+            """
+        )
+        users = list(cur.fetchall())
+    return {"users": users}
+
+
 @router.post("/make-manager")
 def make_manager(payload: IdentifierRequest, request: Request):
     """Promote a regular user to manager without allowing privilege downgrades."""
@@ -32,7 +80,7 @@ def make_manager(payload: IdentifierRequest, request: Request):
             )
             WHERE (lower(username) = lower(%s) OR lower(email) = lower(%s))
               AND authority_id IN (
-                  SELECT authority_id FROM authority WHERE name IN ('user', 'manager')
+                  SELECT authority_id FROM authority WHERE name IN ('user', 'betatester', 'manager')
               )
             RETURNING user_id, username, email
             """,

@@ -19,6 +19,7 @@ const nav = [
   ["/about", "nav.about"],
   ["/news", "nav.news"],
   ["/wiki", "nav.wiki"],
+  ["/demo", "nav.demo", "demo"],
   ["/login", "nav.login", "login"],
   ["/get", "nav.get", "get"]
 ];
@@ -32,6 +33,7 @@ function chooseLanguage(code) {
   emit("set-language", code);
   open.value = false;
 }
+
 </script>
 
 <template>
@@ -46,9 +48,9 @@ function chooseLanguage(code) {
       <template v-for="item in nav" :key="item[0]">
         <a
           v-if="!(item[2] === 'login' && session?.user)"
-          :href="item[0]"
+          :href="item[2] === 'demo' ? (session?.user ? dashboardUrl('/dashboard/demo/') : '/login?next=/dashboard/demo/') : item[0]"
           :class="{ get: item[2] === 'get' }"
-          @click="go($event, item[0])"
+          @click="item[2] === 'demo' ? null : go($event, item[0])"
         >{{ tr(item[1]) }}</a>
       </template>
 

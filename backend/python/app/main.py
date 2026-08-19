@@ -1,15 +1,38 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .database import initialize_database
-from .routers import admin, api_keys, auth, content, frontend, health, public_api, superadmin, users
+from .reviewed_migrations import assert_database_schema_ready
+from .routers import admin, api_keys, auth, content, demo, frontend, health, public_api, superadmin, users
 from .services.qdrant import qdrant_service
+
+
+def _assert_public_image_mount_isolated(settings) -> None:
+    """Prevent the public static mount from overlapping book object storage."""
+    if settings.server != "LOCAL":
+        return
+    raw = settings.local_storage_dir
+    storage_root = (
+        Path.home() / "theumst_storage"
+        if not raw or raw == "__AUTO__"
+        else Path(os.path.expandvars(raw)).expanduser()
+    ).resolve()
+    public_root = settings.public_images.resolve()
+    if (
+        storage_root == public_root
+        or storage_root in public_root.parents
+        or public_root in storage_root.parents
+    ):
+        raise RuntimeError("Public images and book storage must be isolated")
 
 
 def create_app(*, initialize_services: bool = True) -> FastAPI:
@@ -18,7 +41,13 @@ def create_app(*, initialize_services: bool = True) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         if initialize_services:
-            initialize_database()
+            if settings.db_schema_startup_mode == "replay":
+                initialize_database()
+            else:
+                # Production startup is read-only with respect to PostgreSQL.
+                # A release operator must apply reviewed migrations explicitly
+                # after a verified backup before this process can listen.
+                assert_database_schema_ready()
             try:
                 qdrant_service.ensure_collection()
             except Exception as exc:
@@ -43,6 +72,8 @@ def create_app(*, initialize_services: bool = True) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    application.add_middleware(GZipMiddleware, minimum_size=1_000)
+    _assert_public_image_mount_isolated(settings)
     if settings.public_images.exists():
         application.mount("/images", StaticFiles(directory=settings.public_images), name="images")
 
@@ -51,6 +82,7 @@ def create_app(*, initialize_services: bool = True) -> FastAPI:
     application.include_router(users.router)
     application.include_router(api_keys.router)
     application.include_router(content.router)
+    application.include_router(demo.router)
     application.include_router(admin.router)
     application.include_router(superadmin.router)
     application.include_router(public_api.router)

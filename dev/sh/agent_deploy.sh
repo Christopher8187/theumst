@@ -11,6 +11,30 @@ case "$TARGET" in
     COM|CN) ;;
     *) echo "Usage: $0 COM|CN" >&2; exit 2 ;;
 esac
+BACKUP_SHA256="${2:-${PREDEPLOY_BACKUP_SHA256:-}}"
+[ "${#BACKUP_SHA256}" -eq 64 ] || {
+    echo "A verified PREDEPLOY_BACKUP_SHA256 is required." >&2
+    exit 2
+}
+case "$BACKUP_SHA256" in
+    *[!0-9A-Fa-f]*) echo "PREDEPLOY_BACKUP_SHA256 must be hexadecimal." >&2; exit 2 ;;
+esac
+
+# OpenSSH correctly refuses private keys exposed by permissive Windows-mount
+# modes (for example 0777 under WSL/DrvFS). Stage only the selected key in a
+# private Linux temporary directory for this process, then remove it on every
+# exit path. The source key and its Windows ACLs are left untouched.
+SOURCE_SSH_KEY_DIR="$SSH_KEY_DIR"
+KEY_NAME="$(remote_setting "SSH_KEY_${TARGET}")"
+[ -n "$KEY_NAME" ] || { echo "Missing SSH_KEY_${TARGET} in .env" >&2; exit 1; }
+RUNTIME_SSH_KEY_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t theumst_ssh)"
+cleanup_runtime_key() {
+    rm -rf -- "$RUNTIME_SSH_KEY_DIR"
+}
+trap cleanup_runtime_key EXIT
+cp "$SOURCE_SSH_KEY_DIR/$KEY_NAME" "$RUNTIME_SSH_KEY_DIR/$KEY_NAME"
+chmod 600 "$RUNTIME_SSH_KEY_DIR/$KEY_NAME"
+export THEUMST_SSH_KEY_DIR="$RUNTIME_SSH_KEY_DIR"
 
 for command in ssh scp tar gzip curl; do
     command -v "$command" >/dev/null 2>&1 || {
@@ -19,4 +43,4 @@ for command in ssh scp tar gzip curl; do
     }
 done
 
-remote_full_deploy "$TARGET"
+remote_full_deploy "$TARGET" "$BACKUP_SHA256"

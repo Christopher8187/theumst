@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ..database import transaction
 from ..dependencies import require_access
-from ..schemas import BookPayload, MediaPostPayload
+from ..schemas import BookDemoVisibility, BookPayload, MediaPostPayload
 
 
 router = APIRouter(tags=["content"])
@@ -33,7 +33,8 @@ def _book_rows(cur):
             COALESCE(lg.title, 'Untitled') AS title,
             COALESCE(lg.publisher, '') AS publisher,
             COALESCE(stats.section_count, 0) AS section_count,
-            COALESCE(stats.knowledge_count, 0) AS knowledge_count
+            COALESCE(stats.knowledge_count, 0) AS knowledge_count,
+            COALESCE(g.source_metadata->>'demo', 'false') = 'true' AS demo_enabled
         FROM grimoire g
         LEFT JOIN LATERAL (
             SELECT language_id, title, publisher
@@ -117,6 +118,60 @@ def update_book(grimoire_id: int, payload: BookPayload, request: Request):
     return {"ok": True, "grimoire_id": grimoire_id}
 
 
+@router.put("/api/content/books/{grimoire_id}/demo-visibility")
+def set_book_demo_visibility(
+    grimoire_id: int,
+    payload: BookDemoVisibility,
+    request: Request,
+):
+    _book_access(request)
+    with transaction() as (_, cur):
+        if payload.enabled:
+            cur.execute(
+                """
+                SELECT
+                    EXISTS (
+                        SELECT 1 FROM grimoire WHERE grimoire_id = %s
+                    ) AS book_exists,
+                    EXISTS (
+                        SELECT 1
+                        FROM section s
+                        JOIN knowledge k ON k.section_id = s.section_id
+                        WHERE s.grimoire_id = %s AND k.is_active
+                    ) AS has_knowledge
+                """,
+                (grimoire_id, grimoire_id),
+            )
+            readiness = cur.fetchone()
+            if not readiness["book_exists"]:
+                raise HTTPException(status_code=404, detail="Book not found")
+            if not readiness["has_knowledge"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A book needs active knowledge objects before it can appear in the demo",
+                )
+
+        cur.execute(
+            """
+            UPDATE grimoire
+            SET source_metadata = jsonb_set(
+                COALESCE(source_metadata, '{}'::jsonb),
+                '{demo}',
+                to_jsonb(%s::boolean),
+                true
+            )
+            WHERE grimoire_id = %s
+            RETURNING grimoire_id,
+                      COALESCE(source_metadata->>'demo', 'false') = 'true' AS demo_enabled
+            """,
+            (payload.enabled, grimoire_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Book not found")
+    return {"ok": True, "book": row}
+
+
 @router.delete("/api/content/books/{grimoire_id}")
 def delete_book(grimoire_id: int, request: Request):
     _book_access(request)
@@ -178,6 +233,7 @@ def _list_media(cur, public_only: bool):
             mp.published_at,
             mp.created_at,
             mp.updated_at,
+            mp.grimoire_id,
             u.username AS author
         FROM media_post mp
         LEFT JOIN "user" u ON u.user_id = mp.created_by_user_id
@@ -211,13 +267,13 @@ def create_media(payload: MediaPostPayload, request: Request):
         cur.execute(
             """
             INSERT INTO media_post
-                (created_by_user_id, title, slug, excerpt, body, image_url, status, published_at)
-            VALUES (%s, %s, %s, %s, %s, NULLIF(%s, ''), %s,
+                (created_by_user_id, grimoire_id, title, slug, excerpt, body, image_url, status, published_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NULLIF(%s, ''), %s,
                     CASE WHEN %s = 'published' THEN now() ELSE NULL END)
             RETURNING media_post_id, slug
             """,
             (
-                user["user_id"], payload.title.strip(), slug, payload.excerpt.strip(),
+                user["user_id"], payload.grimoire_id, payload.title.strip(), slug, payload.excerpt.strip(),
                 payload.body.strip(), payload.image_url, payload.status, payload.status,
             ),
         )
@@ -238,6 +294,7 @@ def update_media(media_post_id: int, payload: MediaPostPayload, request: Request
                 excerpt = %s,
                 body = %s,
                 image_url = NULLIF(%s, ''),
+                grimoire_id = %s,
                 status = %s,
                 published_at = CASE
                     WHEN %s = 'published' THEN COALESCE(published_at, now())
@@ -248,7 +305,8 @@ def update_media(media_post_id: int, payload: MediaPostPayload, request: Request
             """,
             (
                 payload.title.strip(), slug, payload.excerpt.strip(), payload.body.strip(),
-                payload.image_url, payload.status, payload.status, media_post_id,
+                payload.image_url, payload.grimoire_id,
+                payload.status, payload.status, media_post_id,
             ),
         )
         row = cur.fetchone()

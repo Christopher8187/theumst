@@ -30,6 +30,19 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=256)
 
 
+class EmailVerificationRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=256)
+
+
+class EmailVerificationResendRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+class EmailChangeRequest(BaseModel):
+    new_email: str = Field(min_length=3, max_length=320)
+    current_password: str = Field(min_length=1, max_length=256)
+
+
 class BookPayload(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     publisher: str = Field(default="Independent", max_length=500)
@@ -40,12 +53,49 @@ class BookPayload(BaseModel):
     language_id: int = Field(default=1, gt=0)
 
 
+class BookDemoVisibility(BaseModel):
+    enabled: bool
+
+
 class MediaPostPayload(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     excerpt: str = Field(default="", max_length=1000)
     body: str = Field(min_length=1, max_length=100_000)
     image_url: str | None = Field(default=None, max_length=2000)
+    grimoire_id: int | None = Field(default=None, gt=0)
     status: Literal["draft", "published"] = "published"
+
+
+class DemoAccessRequestPayload(BaseModel):
+    message: str = Field(default="", max_length=1000)
+
+
+class DemoReviewPayload(BaseModel):
+    note: str = Field(default="", max_length=1000)
+
+
+class DemoProgressPayload(BaseModel):
+    completed: bool = True
+
+
+class DemoStudyStatePayload(BaseModel):
+    knowledge_id: int = Field(gt=0)
+
+
+class DemoNotePayload(BaseModel):
+    grimoire_id: int | None = Field(default=None, gt=0)
+    knowledge_id: int | None = Field(default=None, gt=0)
+    note_type: Literal["attached", "scribble"]
+    tag: str = Field(default="", max_length=120)
+    content: str = Field(default="", max_length=50_000)
+
+    @model_validator(mode="after")
+    def validate_note_target(self) -> "DemoNotePayload":
+        if self.note_type == "attached" and self.knowledge_id is None:
+            raise ValueError("Attached notes require a knowledge_id")
+        if self.note_type == "scribble" and self.knowledge_id is not None:
+            raise ValueError("Scribble notes cannot be attached to a knowledge object")
+        return self
 
 
 class SqlRequest(BaseModel):

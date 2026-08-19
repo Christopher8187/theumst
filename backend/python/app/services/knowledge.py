@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -15,6 +16,18 @@ from ..schemas import (
     SemanticEmbeddingInput,
 )
 from .qdrant import qdrant_service
+
+
+def _governed_image_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Route stored book images through the application's validated image endpoint."""
+    governed: list[dict[str, Any]] = []
+    for original in rows:
+        row = dict(original)
+        storage_key = row.pop("storage_key", None)
+        if storage_key:
+            row["url"] = f"/api/v1/storage/{quote(str(storage_key), safe='/')}"
+        governed.append(row)
+    return governed
 
 
 def _resolve_book(cur, book: BookReference) -> int:
@@ -413,6 +426,7 @@ def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
                            'book_image_id', bi.book_image_id,
                            'source_image_id', bi.source_image_id,
                            'semantic_context_name', bi.semantic_context_name,
+                           'storage_key', bi.storage_key,
                            'url', bi.url,
                            'metadata', bi.metadata
                        ) ORDER BY bi.book_image_id)
@@ -438,4 +452,6 @@ def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Knowledge object not found")
-        return row
+        result = dict(row)
+        result["images"] = _governed_image_rows(result.get("images") or [])
+        return result

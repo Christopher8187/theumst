@@ -10,9 +10,15 @@ from .security import hash_secret
 
 
 def current_user(request: Request) -> dict[str, Any] | None:
+    # Authentication is DB-backed and revalidated at most once per request.
+    # Reuse the same result if middleware and an endpoint both need the actor.
+    if getattr(request.state, "_theumst_user_resolved", False):
+        return getattr(request.state, "_theumst_user", None)
     settings = get_settings()
     token = request.cookies.get(settings.cookie_name)
     if not token:
+        request.state._theumst_user = None
+        request.state._theumst_user_resolved = True
         return None
     with transaction() as (_, cur):
         cur.execute(
@@ -29,11 +35,15 @@ def current_user(request: Request) -> dict[str, Any] | None:
             WHERE s.token_hash = %s
               AND s.revoked_at IS NULL
               AND s.expires_at > now()
+              AND u.email_verified_at IS NOT NULL
             GROUP BY u.user_id, a.name
             """,
             (hash_secret(token),),
         )
-        return cur.fetchone()
+        user = cur.fetchone()
+    request.state._theumst_user = user
+    request.state._theumst_user_resolved = True
+    return user
 
 
 def require_user(request: Request) -> dict[str, Any]:
@@ -79,7 +89,9 @@ def authenticate_api_key(request: Request, *, master_required: bool = False) -> 
             JOIN "user" u ON u.user_id = k.user_id
             JOIN authority a ON a.authority_id = u.authority_id
             LEFT JOIN api_rate r ON r.api_rate_id = k.api_rate_id
-            WHERE k.key_hash = %s AND k.revoked_at IS NULL
+            WHERE k.key_hash = %s
+              AND k.revoked_at IS NULL
+              AND u.email_verified_at IS NOT NULL
             FOR UPDATE OF k
             """,
             (hash_secret(raw),),

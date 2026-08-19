@@ -51,13 +51,16 @@ def _sql_files(sql_dir: Path) -> list[Path]:
 
 
 def initialize_database(max_attempts: int = 30) -> None:
-    """Apply all idempotent SQL files on every backend startup.
+    """Apply the local-development schema replay.
 
-    Postgres entrypoint scripts only run for a new volume. Reapplying these
-    migrations keeps long-lived local and deployment volumes in sync.
+    Production releases use the explicit checksummed 006/007 runner instead.
+    Keeping the guard here prevents another caller from accidentally replaying
+    historical fixture/seed migrations outside an explicitly local stack.
     """
 
     settings = get_settings()
+    if settings.db_schema_startup_mode != "replay" or settings.server != "LOCAL":
+        raise RuntimeError("Historical database replay is restricted to LOCAL")
     last_error: Exception | None = None
     for attempt in range(1, max_attempts + 1):
         try:

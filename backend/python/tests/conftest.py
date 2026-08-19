@@ -23,6 +23,14 @@ except ModuleNotFoundError:
     extensions.connection = object
     extras = types.ModuleType("psycopg2.extras")
     extras.RealDictCursor = object
+    def execute_values(cur, query, values, template=None, page_size=100):
+        """Small test-only stand-in for psycopg2.extras.execute_values.
+
+        Pure/unit tests only need imports to resolve; database-backed ingestion
+        acceptance remains a container prerequisite and must use psycopg2.
+        """
+        cur.execute(query, values)
+    extras.execute_values = execute_values
     sys.modules.update({
         "psycopg2": psycopg2,
         "psycopg2.extensions": extensions,

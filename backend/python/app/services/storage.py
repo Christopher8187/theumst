@@ -4,6 +4,7 @@ import mimetypes
 import os
 import shutil
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -49,28 +50,47 @@ def _iso(ts: float | int | None) -> str:
     return datetime.fromtimestamp(ts, timezone.utc).isoformat()
 
 
-def _spaces_client():
+@lru_cache(maxsize=8)
+def _spaces_client_cached(region: str, endpoint: str, access_key: str, secret_key: str):
     import boto3
 
-    bucket = os.getenv("DO_SPACES_BUCKET")
-    endpoint = os.getenv("DO_SPACES_ENDPOINT")
+    bucket = os.getenv("DO_SPACES_BUCKET") or ""
     if endpoint and bucket and f"://{bucket}." in endpoint:
         scheme, rest = endpoint.split("://", 1)
         endpoint = f"{scheme}://{rest[len(bucket) + 1:]}"
     return boto3.client(
         "s3",
-        region_name=os.getenv("DO_SPACES_REGION"),
-        endpoint_url=endpoint,
-        aws_access_key_id=os.getenv("DO_SPACES_ACCESS_KEY_ID"),
-        aws_secret_access_key=os.getenv("DO_SPACES_SECRET_ACCESS_KEY"),
+        region_name=region or None,
+        endpoint_url=endpoint or None,
+        aws_access_key_id=access_key or None,
+        aws_secret_access_key=secret_key or None,
     )
 
 
-def _oss_bucket():
+def _spaces_client():
+    return _spaces_client_cached(
+        os.getenv("DO_SPACES_REGION") or "",
+        os.getenv("DO_SPACES_ENDPOINT") or "",
+        os.getenv("DO_SPACES_ACCESS_KEY_ID") or "",
+        os.getenv("DO_SPACES_SECRET_ACCESS_KEY") or "",
+    )
+
+
+@lru_cache(maxsize=8)
+def _oss_bucket_cached(endpoint: str, bucket_name: str, access_key: str, secret_key: str):
     import oss2
 
-    auth = oss2.Auth(os.getenv("ALIYUN_OSS_ACCESS_KEY_ID"), os.getenv("ALIYUN_OSS_SECRET_ACCESS_KEY"))
-    return oss2.Bucket(auth, os.getenv("ALIYUN_OSS_ENDPOINT"), os.getenv("ALIYUN_OSS_BUCKET"))
+    auth = oss2.Auth(access_key, secret_key)
+    return oss2.Bucket(auth, endpoint, bucket_name)
+
+
+def _oss_bucket():
+    return _oss_bucket_cached(
+        os.getenv("ALIYUN_OSS_ENDPOINT") or "",
+        os.getenv("ALIYUN_OSS_BUCKET") or "",
+        os.getenv("ALIYUN_OSS_ACCESS_KEY_ID") or "",
+        os.getenv("ALIYUN_OSS_SECRET_ACCESS_KEY") or "",
+    )
 
 
 def list_items(prefix: str = "") -> list[dict]:
@@ -155,12 +175,33 @@ def write_bytes(key: str, data: bytes) -> str:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
     elif mode == "COM":
-        _spaces_client().put_object(Bucket=os.getenv("DO_SPACES_BUCKET"), Key=key, Body=data)
+        _spaces_client().put_object(
+            Bucket=os.getenv("DO_SPACES_BUCKET"), Key=key, Body=data,
+            ContentType=media_type_for(key),
+        )
     elif mode == "CN":
-        _oss_bucket().put_object(key, data)
+        _oss_bucket().put_object(key, data, headers={"Content-Type": media_type_for(key)})
     else:
         raise HTTPException(status_code=400, detail="SERVER must be LOCAL, COM, or CN")
     return key
+
+
+def health() -> dict:
+    """Verify the active storage destination without creating a probe object."""
+    mode = storage_mode()
+    if mode == "LOCAL":
+        root = local_root()
+        return {"ok": root.is_dir() and os.access(root, os.R_OK | os.W_OK), "mode": mode}
+    if mode == "COM":
+        bucket = os.getenv("DO_SPACES_BUCKET") or ""
+        if not bucket:
+            raise HTTPException(status_code=503, detail="Object storage is not configured")
+        _spaces_client().list_objects_v2(Bucket=bucket, MaxKeys=1)
+        return {"ok": True, "mode": mode}
+    if mode == "CN":
+        _oss_bucket().get_bucket_info()
+        return {"ok": True, "mode": mode}
+    raise HTTPException(status_code=400, detail="SERVER must be LOCAL, COM, or CN")
 
 
 
@@ -170,21 +211,33 @@ def public_url(key: str) -> str:
 
     key = clean_key(key)
     mode = storage_mode()
-    if mode == "COM":
-        endpoint = (os.getenv("DO_SPACES_ENDPOINT") or "").rstrip("/")
-        if not endpoint:
-            raise HTTPException(status_code=500, detail="DO_SPACES_ENDPOINT is not configured")
-        return f"{endpoint}/{quote(key, safe='/')}"
-    if mode == "CN":
-        bucket = os.getenv("ALIYUN_OSS_BUCKET") or ""
-        endpoint = (os.getenv("ALIYUN_OSS_ENDPOINT") or "").rstrip("/")
-        if not bucket or not endpoint:
-            raise HTTPException(status_code=500, detail="Aliyun OSS is not configured")
-        scheme, host = endpoint.split("://", 1) if "://" in endpoint else ("https", endpoint)
-        return f"{scheme}://{bucket}.{host}/{quote(key, safe='/')}"
     if mode == "LOCAL":
         base = (os.getenv("LOCAL_URL") or "http://localhost:8080").rstrip("/")
         return f"{base}/api/v1/storage/{quote(key, safe='/')}"
+    if mode in {"COM", "CN"}:
+        base = get_settings().public_webpage_url.rstrip("/")
+        return f"{base}/api/v1/storage/{quote(key, safe='/')}"
+    raise HTTPException(status_code=400, detail="SERVER must be LOCAL, COM, or CN")
+
+
+def signed_read_url(key: str, *, expires_seconds: int = 900) -> str:
+    """Create a short-lived direct read URL while keeping cloud buckets private."""
+    key = clean_key(key)
+    expires = max(60, min(int(expires_seconds), 3600))
+    mode = storage_mode()
+    if mode == "LOCAL":
+        return public_url(key)
+    if mode == "COM":
+        bucket = os.getenv("DO_SPACES_BUCKET") or ""
+        if not bucket:
+            raise HTTPException(status_code=500, detail="DO_SPACES_BUCKET is not configured")
+        return _spaces_client().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=expires,
+        )
+    if mode == "CN":
+        return _oss_bucket().sign_url("GET", key, expires)
     raise HTTPException(status_code=400, detail="SERVER must be LOCAL, COM, or CN")
 
 def create_folder(key: str) -> str:

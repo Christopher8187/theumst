@@ -18,17 +18,23 @@ def get_me(request: Request):
 @router.put("/me")
 def update_me(payload: ProfileUpdate, request: Request):
     user = require_user(request)
+    email = payload.email.strip().lower()
+    email_changed = email != str(user["email"]).lower()
+    if email_changed:
+        raise HTTPException(
+            status_code=409,
+            detail="Use the secure email-change form to update your email address",
+        )
     try:
         with transaction() as (_, cur):
             cur.execute(
                 """
-                UPDATE "user" SET username = %s, email = %s, alias = %s, description = %s
+                UPDATE "user" SET username = %s, alias = %s, description = %s
                 WHERE user_id = %s
                 RETURNING username, email, alias, description
                 """,
                 (
-                    payload.username.strip(), payload.email.strip().lower(),
-                    payload.alias, payload.description, user["user_id"],
+                    payload.username.strip(), payload.alias, payload.description, user["user_id"],
                 ),
             )
             updated = cur.fetchone()

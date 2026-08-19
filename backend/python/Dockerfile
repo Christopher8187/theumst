@@ -28,8 +28,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DB_PORT=5432 \
     QDRANT_ENABLED=true \
     QDRANT_URL=http://qdrant:6333 \
-    QDRANT_COLLECTION=knowledge-semantic-v1 \
-    QDRANT_VECTOR_SIZE=1536 \
+    QDRANT_COLLECTION=knowledge-qwen3-embedding-0-6b \
+    QDRANT_VECTOR_SIZE=1024 \
     QDRANT_DISTANCE=cosine
 WORKDIR /app/backend/python
 RUN apt-get update \

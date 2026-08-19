@@ -89,6 +89,7 @@ HTTP_PORT:        $HTTP_PORT
 Local URLs:
   Webpage:   http://localhost:5173
   Dashboard: http://localhost:5174/dashboard/profile/
+  Web Demo:  http://localhost:5175/demo/
   FastAPI:   http://localhost:8000
   Nginx:     http://localhost:$HTTP_PORT
 INFO
@@ -128,7 +129,7 @@ on_error() {
     echo "  - Docker service is not running." >&2
     echo "  - Your Linux user is not in the docker group yet." >&2
     echo "  - Some project files were created by sudo/root earlier." >&2
-    echo "  - A port is already occupied, often 5432, 8000, 5173, 5174, or 8080." >&2
+    echo "  - A port is already occupied, often 5432, 8000, 5173, 5174, 5175, or 8080." >&2
     echo >&2
     echo "Useful repair commands from the project root:" >&2
     echo '  sudo chown -R "$USER:$USER" .' >&2
@@ -276,6 +277,7 @@ open_local_urls() {
 Open:
   Main webpage: http://localhost:5173
   Dashboard:    http://localhost:5174/dashboard/profile/
+  Web Demo:     http://localhost:5175/demo/
   FastAPI:      http://localhost:8000
 URLS
 }
@@ -378,10 +380,11 @@ DB_USER=${DB_USER:-postgres}
 DB_PASSWORD=${DB_PASSWORD:-postgres}
 DB_HOST=db
 DB_PORT=5432
+DB_SCHEMA_STARTUP_MODE=disabled
 
 QDRANT_API_KEY=${QDRANT_API_KEY}
-QDRANT_COLLECTION=${QDRANT_COLLECTION:-knowledge-semantic-v1}
-QDRANT_VECTOR_SIZE=${QDRANT_VECTOR_SIZE:-1536}
+QDRANT_COLLECTION=${QDRANT_COLLECTION:-knowledge-qwen3-embedding-0-6b}
+QDRANT_VECTOR_SIZE=${QDRANT_VECTOR_SIZE:-1024}
 QDRANT_DISTANCE=${QDRANT_DISTANCE:-cosine}
 QDRANT_VECTORS_ON_DISK=${QDRANT_VECTORS_ON_DISK:-false}
 
@@ -443,6 +446,9 @@ remote_upload() {
             --exclude='./frontend/webpage/dist' \
             --exclude='./frontend/dashboard/node_modules' \
             --exclude='./frontend/dashboard/dist' \
+            --exclude='./frontend/demo/node_modules' \
+            --exclude='./frontend/demo/dist' \
+            --exclude='./backend/assets/images/demo/*.png' \
             -cf - . | (cd "$stage" && tar -xf -)
     )
 
@@ -463,6 +469,7 @@ remote_upload() {
     ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "set -eu; \
         incoming='$remote_stage'; \
         previous='${REMOTE_ROOT}.previous'; \
+        if [ -e \"\$previous\" ]; then echo 'A retained previous release already exists; resolve it before deploying.' >&2; exit 1; fi; \
         rm -rf \"\$incoming\"; \
         mkdir -p \"\$incoming\"; \
         tar -xzf '$remote_archive' -C \"\$incoming\"; \
@@ -470,7 +477,6 @@ remote_upload() {
         test -f \"\$incoming/.env\"; \
         chmod 600 \"\$incoming/.env\"; \
         rm -f '$remote_archive'; \
-        $SUDO rm -rf \"\$previous\"; \
         if [ -d '$REMOTE_ROOT' ]; then $SUDO mv '$REMOTE_ROOT' \"\$previous\"; fi; \
         $SUDO mv \"\$incoming\" '$REMOTE_ROOT'; \
         $SUDO chown -R '$SSH_USER:$SSH_USER' '$REMOTE_ROOT'; \
@@ -486,8 +492,31 @@ remote_start() {
     remote_context "$1"
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     SUDO="$(remote_sudo)"
-    echo "Building and starting the production stack on $REMOTE..."
-    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && $SUDO docker compose --env-file .env -f compose.deploy.yml up --build -d --remove-orphans && $SUDO rm -rf '${REMOTE_ROOT}.previous'"
+    echo "Building and starting application containers on $REMOTE..."
+    # Recreate the internal proxy after the backend so Nginx resolves the new
+    # container address immediately instead of retaining a stale upstream IP.
+    # --no-deps and the explicit service list keep PostgreSQL and Qdrant out of
+    # this application-only rollout; their containers and volumes are retained.
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && $SUDO docker compose --env-file .env -f compose.deploy.yml up --build -d --no-deps backend demo && $SUDO docker compose --env-file .env -f compose.deploy.yml up -d --no-deps --force-recreate nginx"
+}
+
+remote_apply_reviewed_migrations() {
+    remote_context "$1"
+    backup_sha256="${2:-}"
+    [ "${#backup_sha256}" -eq 64 ] || {
+        echo "A verified 64-character backup SHA-256 is required." >&2
+        return 2
+    }
+    case "$backup_sha256" in
+        *[!0-9A-Fa-f]*) echo "Backup SHA-256 must be hexadecimal." >&2; return 2 ;;
+    esac
+    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
+    SUDO="$(remote_sudo)"
+    echo "Applying reviewed missing migrations after verified backup on $REMOTE..."
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && \
+        $SUDO docker compose --env-file .env -f compose.deploy.yml build backend && \
+        $SUDO docker compose --env-file .env -f compose.deploy.yml run --rm --no-deps backend \
+        python -m scripts.apply_reviewed_migrations --backup-sha256 '$backup_sha256'"
 }
 
 remote_stop() {
@@ -572,7 +601,7 @@ remote_external_health() {
     remote_context "$1"
     [ -n "$REMOTE_URL" ] || { echo "Missing REMOTE_URL_$TARGET_SERVER" >&2; return 1; }
     echo "Checking public website: $REMOTE_URL"
-    for path in /health /health/db /health/qdrant /health/assets /; do
+    for path in /health /health/db /health/qdrant /health/assets /health/storage /; do
         curl -fsS --retry 12 --retry-delay 5 --retry-all-errors "$REMOTE_URL$path" >/dev/null
         echo "  OK $path"
     done
@@ -580,13 +609,11 @@ remote_external_health() {
 
 remote_full_deploy() {
     target="$1"
-    remote_setup "$target"
-    remote_permissions "$target"
+    backup_sha256="${2:-}"
     remote_upload "$target"
+    remote_apply_reviewed_migrations "$target" "$backup_sha256"
     remote_start "$target"
     remote_wait_for_application "$target"
-    remote_certs "$target"
-    remote_install_nginx_site "$target"
     remote_check "$target"
     remote_external_health "$target"
     echo
