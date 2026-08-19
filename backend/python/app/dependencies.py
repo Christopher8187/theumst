@@ -29,6 +29,7 @@ def current_user(request: Request) -> dict[str, Any] | None:
             WHERE s.token_hash = %s
               AND s.revoked_at IS NULL
               AND s.expires_at > now()
+              AND u.email_verified_at IS NOT NULL
             GROUP BY u.user_id, a.name
             """,
             (hash_secret(token),),
@@ -79,7 +80,9 @@ def authenticate_api_key(request: Request, *, master_required: bool = False) -> 
             JOIN "user" u ON u.user_id = k.user_id
             JOIN authority a ON a.authority_id = u.authority_id
             LEFT JOIN api_rate r ON r.api_rate_id = k.api_rate_id
-            WHERE k.key_hash = %s AND k.revoked_at IS NULL
+            WHERE k.key_hash = %s
+              AND k.revoked_at IS NULL
+              AND u.email_verified_at IS NOT NULL
             FOR UPDATE OF k
             """,
             (hash_secret(raw),),

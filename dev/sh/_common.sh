@@ -89,6 +89,7 @@ HTTP_PORT:        $HTTP_PORT
 Local URLs:
   Webpage:   http://localhost:5173
   Dashboard: http://localhost:5174/dashboard/profile/
+  Web Demo:  http://localhost:5175/demo/
   FastAPI:   http://localhost:8000
   Nginx:     http://localhost:$HTTP_PORT
 INFO
@@ -128,7 +129,7 @@ on_error() {
     echo "  - Docker service is not running." >&2
     echo "  - Your Linux user is not in the docker group yet." >&2
     echo "  - Some project files were created by sudo/root earlier." >&2
-    echo "  - A port is already occupied, often 5432, 8000, 5173, 5174, or 8080." >&2
+    echo "  - A port is already occupied, often 5432, 8000, 5173, 5174, 5175, or 8080." >&2
     echo >&2
     echo "Useful repair commands from the project root:" >&2
     echo '  sudo chown -R "$USER:$USER" .' >&2
@@ -276,6 +277,7 @@ open_local_urls() {
 Open:
   Main webpage: http://localhost:5173
   Dashboard:    http://localhost:5174/dashboard/profile/
+  Web Demo:     http://localhost:5175/demo/
   FastAPI:      http://localhost:8000
 URLS
 }
@@ -380,8 +382,8 @@ DB_HOST=db
 DB_PORT=5432
 
 QDRANT_API_KEY=${QDRANT_API_KEY}
-QDRANT_COLLECTION=${QDRANT_COLLECTION:-knowledge-semantic-v1}
-QDRANT_VECTOR_SIZE=${QDRANT_VECTOR_SIZE:-1536}
+QDRANT_COLLECTION=${QDRANT_COLLECTION:-knowledge-qwen3-embedding-0-6b}
+QDRANT_VECTOR_SIZE=${QDRANT_VECTOR_SIZE:-1024}
 QDRANT_DISTANCE=${QDRANT_DISTANCE:-cosine}
 QDRANT_VECTORS_ON_DISK=${QDRANT_VECTORS_ON_DISK:-false}
 
@@ -443,6 +445,9 @@ remote_upload() {
             --exclude='./frontend/webpage/dist' \
             --exclude='./frontend/dashboard/node_modules' \
             --exclude='./frontend/dashboard/dist' \
+            --exclude='./frontend/demo/node_modules' \
+            --exclude='./frontend/demo/dist' \
+            --exclude='./backend/assets/images/demo/*.png' \
             -cf - . | (cd "$stage" && tar -xf -)
     )
 
@@ -487,7 +492,9 @@ remote_start() {
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
     SUDO="$(remote_sudo)"
     echo "Building and starting the production stack on $REMOTE..."
-    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && $SUDO docker compose --env-file .env -f compose.deploy.yml up --build -d --remove-orphans && $SUDO rm -rf '${REMOTE_ROOT}.previous'"
+    # Recreate the internal proxy after the backend so Nginx resolves the new
+    # container address immediately instead of retaining a stale upstream IP.
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && $SUDO docker compose --env-file .env -f compose.deploy.yml up --build -d --remove-orphans && $SUDO docker compose --env-file .env -f compose.deploy.yml up -d --force-recreate nginx && $SUDO rm -rf '${REMOTE_ROOT}.previous'"
 }
 
 remote_stop() {
@@ -572,7 +579,7 @@ remote_external_health() {
     remote_context "$1"
     [ -n "$REMOTE_URL" ] || { echo "Missing REMOTE_URL_$TARGET_SERVER" >&2; return 1; }
     echo "Checking public website: $REMOTE_URL"
-    for path in /health /health/db /health/qdrant /health/assets /; do
+    for path in /health /health/db /health/qdrant /health/assets /health/storage /; do
         curl -fsS --retry 12 --retry-delay 5 --retry-all-errors "$REMOTE_URL$path" >/dev/null
         echo "  OK $path"
     done

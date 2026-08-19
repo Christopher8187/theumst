@@ -60,7 +60,7 @@ def create_api_key(payload: ApiKeyCreate, request: Request):
 def upgrade_master_key(api_key_id: int, request: Request):
     user = require_user(request)
     if user["authority_type"] not in {"admin", "superadmin"}:
-        raise HTTPException(status_code=403, detail="Only admins and superadmins can create master keys")
+        raise HTTPException(status_code=403, detail="This account is not permitted to create master keys")
     with transaction() as (_, cur):
         cur.execute(
             """

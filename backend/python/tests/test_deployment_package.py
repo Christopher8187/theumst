@@ -67,12 +67,34 @@ def test_production_proxy_is_loopback_only_and_matches_host_nginx():
         assert "proxy_pass http://127.0.0.1:8000;" not in text
 
 
+def test_master_book_ingestion_has_a_route_scoped_one_gibibyte_limit():
+    host = (ROOT / "config/nginx.server.com.conf").read_text(encoding="utf-8")
+    internal = (ROOT / "config/nginx.docker.conf").read_text(encoding="utf-8")
+    for text in (host, internal):
+        assert "client_max_body_size 50m;" in text
+        route = text.split("location = /api/v1/books/ingest-archive", 1)[1].split("}", 1)[0]
+        assert "client_max_body_size 1g;" in route
+
+
 def test_compose_files_are_valid_yaml_and_have_required_services():
     for name in ("compose.local.yml", "compose.deploy.yml"):
         document = yaml.safe_load((ROOT / name).read_text(encoding="utf-8"))
-        assert {"db", "qdrant", "backend"}.issubset(document["services"])
+        assert {"db", "qdrant", "backend", "demo"}.issubset(document["services"])
     production = yaml.safe_load((ROOT / "compose.deploy.yml").read_text(encoding="utf-8"))
     assert "nginx" in production["services"]
+    assert production["services"]["nginx"]["depends_on"]["demo"]["condition"] == "service_started"
+
+
+def test_production_demo_is_isolated_and_proxy_protected():
+    dockerfile = (ROOT / "frontend/demo/Dockerfile").read_text(encoding="utf-8")
+    nginx = (ROOT / "config/nginx.docker.conf").read_text(encoding="utf-8")
+    assert "FROM nginx:1.27-alpine AS production" in dockerfile
+    assert "auth_request /_demo_auth;" in nginx
+    assert "proxy_pass http://demo:80;" in nginx
+    assert "error_page 401 403 = @demo_gate;" in nginx
+    assert "location @demo_gate" in nginx
+    assert "absolute_redirect off;" in nginx
+    assert "return 303 /dashboard/demo/;" in nginx
 
 
 def test_agent_deployment_and_complete_readme_are_present():
@@ -82,6 +104,8 @@ def test_agent_deployment_and_complete_readme_are_present():
     assert "Create and promote Christopher" in readme
     script = (ROOT / "dev/sh/agent_deploy.sh").read_text(encoding="utf-8")
     assert 'remote_full_deploy "$TARGET"' in script
+    assert 'chmod 600 "$RUNTIME_SSH_KEY_DIR/$KEY_NAME"' in script
+    assert 'trap cleanup_runtime_key EXIT' in script
 
 
 

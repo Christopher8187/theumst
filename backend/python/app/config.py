@@ -46,6 +46,7 @@ class Settings:
 
     public_webpage_url: str
     password_reset_ttl_minutes: int
+    email_verification_ttl_hours: int
     smtp_host: str
     smtp_port: int
     smtp_username: str
@@ -84,7 +85,7 @@ class Settings:
         distance = os.getenv("QDRANT_DISTANCE", "cosine").strip().lower()
         if distance not in {"cosine", "dot", "euclid"}:
             raise ValueError("QDRANT_DISTANCE must be cosine, dot, or euclid")
-        vector_size = int(os.getenv("QDRANT_VECTOR_SIZE", "2560"))
+        vector_size = int(os.getenv("QDRANT_VECTOR_SIZE", "1024"))
         if vector_size <= 0:
             raise ValueError("QDRANT_VECTOR_SIZE must be positive")
 
@@ -112,6 +113,7 @@ class Settings:
             ),
             public_webpage_url=os.getenv("PUBLIC_WEBPAGE_URL", "http://localhost:5173").rstrip("/"),
             password_reset_ttl_minutes=int(os.getenv("PASSWORD_RESET_TTL_MINUTES", "60")),
+            email_verification_ttl_hours=int(os.getenv("EMAIL_VERIFICATION_TTL_HOURS", "24")),
             smtp_host=os.getenv("SMTP_HOST", "").strip(),
             smtp_port=int(os.getenv("SMTP_PORT", "587")),
             smtp_username=os.getenv("SMTP_USERNAME", "").strip(),
@@ -125,7 +127,7 @@ class Settings:
             qdrant_enabled=_bool("QDRANT_ENABLED", True),
             qdrant_url=os.getenv("QDRANT_URL", "http://127.0.0.1:6333"),
             qdrant_api_key=qdrant_key,
-            qdrant_collection=os.getenv("QDRANT_COLLECTION", "knowledge-qwen3-embedding-4b"),
+            qdrant_collection=os.getenv("QDRANT_COLLECTION", "knowledge-qwen3-embedding-0-6b"),
             qdrant_vector_size=vector_size,
             qdrant_distance=distance,
             qdrant_vectors_on_disk=_bool("QDRANT_VECTORS_ON_DISK", False),

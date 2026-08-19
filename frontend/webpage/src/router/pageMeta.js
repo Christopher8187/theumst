@@ -5,8 +5,10 @@ export const pages = {
   "home": {"path": "/", "titleKey": "home.title"},
   "login": {"path": "/login", "titleKey": "login.title"},
   "news": {"path": "/news", "titleKey": "news.title"},
+  "privacy": {"path": "/privacy", "titleKey": "privacy.title"},
   "resetPassword": {"path": "/reset-password", "titleKey": "reset.title"},
   "signup": {"path": "/signup", "titleKey": "signup.title"},
+  "verifyEmail": {"path": "/verify-email", "titleKey": "verify.title"},
   "wiki": {"path": "/wiki", "titleKey": "wiki.title"}
 };
 

@@ -1,6 +1,6 @@
 # theumst website and content administration guide
 
-This update gives theumst a more professional public identity and adds a focused, database-backed content-management workflow. The interactive game remains a public product vision only; no playable demo or demo page is included yet.
+This guide covers the database-backed content-management workflow. The protected interactive prototype added later is documented separately in `THEUMST_WEB_DEMO_GUIDE.md`.
 
 ## What was added
 
@@ -87,4 +87,4 @@ docker compose --env-file .env -f compose.local.yml down
 - SQL migrations are idempotent and applied on backend startup, including existing local database volumes.
 - Public visitors only receive posts whose status is `published`.
 - Book and media endpoints validate the signed-in user's database-backed access points on every request; hiding dashboard links is not the security boundary.
-- This release intentionally communicates the game as a vision and does not add a demo page. A future game prototype can be added when its mechanics and learning loop are ready.
+- The content controls remain independent of the separately deployed Web Demo; see `THEUMST_WEB_DEMO_GUIDE.md` for its access and study workflows.

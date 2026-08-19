@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse, Response
 
 from ..config import get_settings
 from ..dependencies import current_user
@@ -11,14 +11,17 @@ from ..dependencies import current_user
 
 router = APIRouter(include_in_schema=False)
 WEBPAGE_HTML_ROUTES = {
-    "news", "about", "wiki", "get", "login", "signup", "forgot-password", "reset-password"
+    "news", "about", "wiki", "get", "login", "signup", "forgot-password", "reset-password",
+    "verify-email", "privacy"
 }
 BLOCKED_PREFIXES = ("backend/", "config/", "dev/")
 DASHBOARD_ACCESS = {
     "profile": "profile",
     "api-keys": "api-keys",
     "books": "books",
+    "users": "admin",
     "media": "media",
+    "demo": "profile",
     "admin": "admin",
     "superadmin": "superadmin",
 }
@@ -72,6 +75,35 @@ def homepage():
 @router.get("/index.html")
 def old_index():
     return RedirectResponse("/", status_code=301)
+
+
+@router.get("/robots.txt", response_class=PlainTextResponse)
+def robots():
+    return """User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /auth/
+Disallow: /dashboard/
+Disallow: /demo/
+Disallow: /docs
+Disallow: /redoc
+Disallow: /openapi.json
+Sitemap: https://theumst.com/sitemap.xml
+"""
+
+
+@router.get("/sitemap.xml")
+def sitemap():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://theumst.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
+"""
+    return Response(content=xml, media_type="application/xml")
 
 
 @router.get("/{page_name}.html")

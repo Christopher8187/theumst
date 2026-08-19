@@ -157,5 +157,4 @@ onMounted(async () => {
     </section>
   </main>
 
-  <footer class="site-footer"><div class="site-container"><strong>theumst</strong><span>{{ tr("footer.line") }}</span><span>© {{ new Date().getFullYear() }}</span></div></footer>
 </template>
