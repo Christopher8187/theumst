@@ -2,7 +2,7 @@
 import { assetUrl } from "../../../urls.js";
 import SiteHeader from "../components/SiteHeader.vue";
 
-defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean, passwordResetSuccess: Boolean });
+defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean, passwordResetSuccess: Boolean, emailVerifiedSuccess: Boolean, loginMessage: String });
 defineEmits(["navigate", "set-language", "login"]);
 </script>
 
@@ -35,6 +35,8 @@ defineEmits(["navigate", "set-language", "login"]);
 
         <p v-if="loginError" class="login-error">{{ tr("login.badLogin") }}</p>
         <p v-if="passwordResetSuccess" class="login-status is-success">{{ tr("login.resetSuccess") }}</p>
+        <p v-if="emailVerifiedSuccess" class="login-status is-success">{{ tr("login.verifiedSuccess") }}</p>
+        <p v-if="loginMessage" class="login-status is-error">{{ loginMessage }} <a href="/verify-email">{{ tr("login.resendVerification") }}</a></p>
 
         <form @submit.prevent="$emit('login', $event)">
           <label>

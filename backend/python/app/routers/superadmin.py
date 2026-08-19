@@ -39,11 +39,9 @@ def make_admin(payload: IdentifierRequest, request: Request):
 
 @router.post("/sql")
 def run_sql(payload: SqlRequest, request: Request):
-    """Execute arbitrary PostgreSQL as a superadmin-only dashboard operation."""
+    """Retired: arbitrary SQL cannot enforce corpus-level authorization."""
     _superadmin(request)
-    with transaction() as (_, cur):
-        cur.execute(payload.sql)
-        if cur.description:
-            rows = list(cur.fetchall())
-            return {"ok": True, "rows": rows, "row_count": len(rows), "status": cur.statusmessage}
-        return {"ok": True, "rows": [], "row_count": cur.rowcount, "status": cur.statusmessage}
+    raise HTTPException(
+        status_code=410,
+        detail="The direct database console is unavailable",
+    )

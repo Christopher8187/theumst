@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 import types
+
+
+os.environ.setdefault("RESEARCH_CORPUS_POLICY_MODE", "database")
+os.environ.setdefault(
+    "RESEARCH_ACCESS_AUDIT_KEY",
+    "synthetic-test-only-corpus-audit-key-v1",
+)
 
 
 # The execution sandbox does not ship several production-only wheels. Provide
@@ -23,6 +31,14 @@ except ModuleNotFoundError:
     extensions.connection = object
     extras = types.ModuleType("psycopg2.extras")
     extras.RealDictCursor = object
+    def execute_values(cur, query, values, template=None, page_size=100):
+        """Small test-only stand-in for psycopg2.extras.execute_values.
+
+        Pure/unit tests only need imports to resolve; database-backed ingestion
+        acceptance remains a container prerequisite and must use psycopg2.
+        """
+        cur.execute(query, values)
+    extras.execute_values = execute_values
     sys.modules.update({
         "psycopg2": psycopg2,
         "psycopg2.extensions": extensions,

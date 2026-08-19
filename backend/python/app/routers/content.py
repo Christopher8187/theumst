@@ -6,7 +6,14 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ..database import transaction
 from ..dependencies import require_access
-from ..schemas import BookPayload, MediaPostPayload
+from ..schemas import BookDemoVisibility, BookPayload, MediaPostPayload
+from ..services.corpus_access import (
+    actor_user_id,
+    corpus_visibility_params,
+    corpus_visibility_sql,
+    ensure_policy_ready,
+    raise_hidden_grimoire_miss,
+)
 
 
 router = APIRouter(tags=["content"])
@@ -20,9 +27,16 @@ def _media_access(request: Request):
     return require_access(request, "media")
 
 
-def _book_rows(cur):
+def _book_rows(cur, user_id: int | None):
+    if not ensure_policy_ready(
+        user_id=user_id,
+        surface="content_book",
+        list_request=True,
+    ):
+        return []
+    visibility = corpus_visibility_sql("g.grimoire_id")
     cur.execute(
-        """
+        f"""
         SELECT
             g.grimoire_id,
             g.isbn,
@@ -33,7 +47,8 @@ def _book_rows(cur):
             COALESCE(lg.title, 'Untitled') AS title,
             COALESCE(lg.publisher, '') AS publisher,
             COALESCE(stats.section_count, 0) AS section_count,
-            COALESCE(stats.knowledge_count, 0) AS knowledge_count
+            COALESCE(stats.knowledge_count, 0) AS knowledge_count,
+            COALESCE(g.source_metadata->>'demo', 'false') = 'true' AS demo_enabled
         FROM grimoire g
         LEFT JOIN LATERAL (
             SELECT language_id, title, publisher
@@ -50,23 +65,30 @@ def _book_rows(cur):
             LEFT JOIN knowledge k ON k.section_id = s.section_id
             WHERE s.grimoire_id = g.grimoire_id
         ) stats ON true
+        WHERE {visibility}
         ORDER BY lower(COALESCE(lg.title, '')), g.grimoire_id DESC
-        """
+        """,
+        corpus_visibility_params(user_id),
     )
     return list(cur.fetchall())
 
 
 @router.get("/api/content/books")
 def list_books(request: Request):
-    _book_access(request)
+    user = _book_access(request)
+    user_id = actor_user_id(user)
     with transaction() as (_, cur):
-        books = _book_rows(cur)
+        books = _book_rows(cur, user_id)
     return {"books": books}
 
 
 @router.post("/api/content/books", status_code=201)
 def create_book(payload: BookPayload, request: Request):
-    _book_access(request)
+    user = _book_access(request)
+    ensure_policy_ready(
+        user_id=actor_user_id(user),
+        surface="content_book",
+    )
     with transaction() as (_, cur):
         cur.execute(
             """
@@ -90,8 +112,22 @@ def create_book(payload: BookPayload, request: Request):
 
 @router.put("/api/content/books/{grimoire_id}")
 def update_book(grimoire_id: int, payload: BookPayload, request: Request):
-    _book_access(request)
+    user = _book_access(request)
+    user_id = actor_user_id(user)
+    ensure_policy_ready(user_id=user_id, surface="content_book")
     with transaction() as (_, cur):
+        visibility = corpus_visibility_sql("g.grimoire_id")
+        cur.execute(
+            f"SELECT 1 FROM grimoire g WHERE g.grimoire_id = %s AND {visibility}",
+            (grimoire_id, *corpus_visibility_params(user_id)),
+        )
+        if not cur.fetchone():
+            raise_hidden_grimoire_miss(
+                cur,
+                grimoire_id=grimoire_id,
+                user_id=user_id,
+                surface="content_book",
+            )
         cur.execute(
             """
             UPDATE grimoire
@@ -102,7 +138,12 @@ def update_book(grimoire_id: int, payload: BookPayload, request: Request):
             (payload.isbn, payload.publish_date, payload.version, payload.source_key, grimoire_id),
         )
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Book not found")
+            raise_hidden_grimoire_miss(
+                cur,
+                grimoire_id=grimoire_id,
+                user_id=user_id,
+                surface="content_book",
+            )
         cur.execute(
             """
             INSERT INTO language_grimoire
@@ -117,10 +158,120 @@ def update_book(grimoire_id: int, payload: BookPayload, request: Request):
     return {"ok": True, "grimoire_id": grimoire_id}
 
 
+@router.put("/api/content/books/{grimoire_id}/demo-visibility")
+def set_book_demo_visibility(
+    grimoire_id: int,
+    payload: BookDemoVisibility,
+    request: Request,
+):
+    user = _book_access(request)
+    user_id = actor_user_id(user)
+    ensure_policy_ready(user_id=user_id, surface="content_book")
+    with transaction() as (_, cur):
+        visibility = corpus_visibility_sql("g.grimoire_id")
+        cur.execute(
+            f"SELECT 1 FROM grimoire g WHERE g.grimoire_id = %s AND {visibility}",
+            (grimoire_id, *corpus_visibility_params(user_id)),
+        )
+        if not cur.fetchone():
+            raise_hidden_grimoire_miss(
+                cur,
+                grimoire_id=grimoire_id,
+                user_id=user_id,
+                surface="content_book",
+            )
+        cur.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM research_corpus_policy
+                WHERE grimoire_id = %s AND is_protected
+            ) AS protected
+            """,
+            (grimoire_id,),
+        )
+        if cur.fetchone()["protected"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Protected research visibility cannot be changed from this interface",
+            )
+        if payload.enabled:
+            cur.execute(
+                """
+                SELECT
+                    EXISTS (
+                        SELECT 1 FROM grimoire WHERE grimoire_id = %s
+                    ) AS book_exists,
+                    EXISTS (
+                        SELECT 1
+                        FROM section s
+                        JOIN knowledge k ON k.section_id = s.section_id
+                        WHERE s.grimoire_id = %s AND k.is_active
+                    ) AS has_knowledge
+                """,
+                (grimoire_id, grimoire_id),
+            )
+            readiness = cur.fetchone()
+            if not readiness["book_exists"]:
+                raise HTTPException(status_code=404, detail="Book not found")
+            if not readiness["has_knowledge"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A book needs active knowledge objects before it can appear in the demo",
+                )
+
+        cur.execute(
+            """
+            UPDATE grimoire
+            SET source_metadata = jsonb_set(
+                COALESCE(source_metadata, '{}'::jsonb),
+                '{demo}',
+                to_jsonb(%s::boolean),
+                true
+            )
+            WHERE grimoire_id = %s
+            RETURNING grimoire_id,
+                      COALESCE(source_metadata->>'demo', 'false') = 'true' AS demo_enabled
+            """,
+            (payload.enabled, grimoire_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Book not found")
+    return {"ok": True, "book": row}
+
+
 @router.delete("/api/content/books/{grimoire_id}")
 def delete_book(grimoire_id: int, request: Request):
-    _book_access(request)
+    user = _book_access(request)
+    user_id = actor_user_id(user)
+    ensure_policy_ready(user_id=user_id, surface="content_book")
     with transaction() as (_, cur):
+        visibility = corpus_visibility_sql("g.grimoire_id")
+        cur.execute(
+            f"SELECT 1 FROM grimoire g WHERE g.grimoire_id = %s AND {visibility}",
+            (grimoire_id, *corpus_visibility_params(user_id)),
+        )
+        if not cur.fetchone():
+            raise_hidden_grimoire_miss(
+                cur,
+                grimoire_id=grimoire_id,
+                user_id=user_id,
+                surface="content_book",
+            )
+        cur.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM research_corpus_policy
+                WHERE grimoire_id = %s AND is_protected
+            ) AS protected
+            """,
+            (grimoire_id,),
+        )
+        if cur.fetchone()["protected"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Protected research books cannot be deleted from this interface",
+            )
         cur.execute(
             """
             SELECT
@@ -163,8 +314,20 @@ def _unique_slug(cur, title: str, exclude_id: int | None = None) -> str:
         suffix += 1
 
 
-def _list_media(cur, public_only: bool):
-    where = "WHERE mp.status = 'published' AND mp.published_at <= now()" if public_only else ""
+def _list_media(cur, public_only: bool, user_id: int | None):
+    if not ensure_policy_ready(
+        user_id=user_id,
+        surface="content_book",
+        list_request=True,
+    ):
+        return []
+    clauses = []
+    if public_only:
+        clauses.append("mp.status = 'published' AND mp.published_at <= now()")
+    clauses.append(
+        f"(mp.grimoire_id IS NULL OR {corpus_visibility_sql('mp.grimoire_id')})"
+    )
+    where = f"WHERE {' AND '.join(clauses)}"
     cur.execute(
         f"""
         SELECT
@@ -178,12 +341,14 @@ def _list_media(cur, public_only: bool):
             mp.published_at,
             mp.created_at,
             mp.updated_at,
+            mp.grimoire_id,
             u.username AS author
         FROM media_post mp
         LEFT JOIN "user" u ON u.user_id = mp.created_by_user_id
         {where}
         ORDER BY COALESCE(mp.published_at, mp.created_at) DESC, mp.media_post_id DESC
-        """
+        """,
+        corpus_visibility_params(user_id),
     )
     return list(cur.fetchall())
 
@@ -191,33 +356,52 @@ def _list_media(cur, public_only: bool):
 @router.get("/api/news")
 def public_news():
     with transaction() as (_, cur):
-        posts = _list_media(cur, public_only=True)
+        posts = _list_media(cur, public_only=True, user_id=None)
     return {"posts": posts}
 
 
 @router.get("/api/content/media")
 def list_media(request: Request):
-    _media_access(request)
+    user = _media_access(request)
     with transaction() as (_, cur):
-        posts = _list_media(cur, public_only=False)
+        posts = _list_media(
+            cur,
+            public_only=False,
+            user_id=actor_user_id(user),
+        )
     return {"posts": posts}
 
 
 @router.post("/api/content/media", status_code=201)
 def create_media(payload: MediaPostPayload, request: Request):
     user = _media_access(request)
+    user_id = actor_user_id(user)
+    ensure_policy_ready(user_id=user_id, surface="content_book")
     with transaction() as (_, cur):
+        if payload.grimoire_id is not None:
+            visibility = corpus_visibility_sql("g.grimoire_id")
+            cur.execute(
+                f"SELECT 1 FROM grimoire g WHERE g.grimoire_id = %s AND {visibility}",
+                (payload.grimoire_id, *corpus_visibility_params(user_id)),
+            )
+            if not cur.fetchone():
+                raise_hidden_grimoire_miss(
+                    cur,
+                    grimoire_id=payload.grimoire_id,
+                    user_id=user_id,
+                    surface="content_book",
+                )
         slug = _unique_slug(cur, payload.title)
         cur.execute(
             """
             INSERT INTO media_post
-                (created_by_user_id, title, slug, excerpt, body, image_url, status, published_at)
-            VALUES (%s, %s, %s, %s, %s, NULLIF(%s, ''), %s,
+                (created_by_user_id, grimoire_id, title, slug, excerpt, body, image_url, status, published_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NULLIF(%s, ''), %s,
                     CASE WHEN %s = 'published' THEN now() ELSE NULL END)
             RETURNING media_post_id, slug
             """,
             (
-                user["user_id"], payload.title.strip(), slug, payload.excerpt.strip(),
+                user["user_id"], payload.grimoire_id, payload.title.strip(), slug, payload.excerpt.strip(),
                 payload.body.strip(), payload.image_url, payload.status, payload.status,
             ),
         )
@@ -227,8 +411,34 @@ def create_media(payload: MediaPostPayload, request: Request):
 
 @router.put("/api/content/media/{media_post_id}")
 def update_media(media_post_id: int, payload: MediaPostPayload, request: Request):
-    _media_access(request)
+    user = _media_access(request)
+    user_id = actor_user_id(user)
+    ensure_policy_ready(user_id=user_id, surface="content_book")
     with transaction() as (_, cur):
+        visibility = corpus_visibility_sql("mp.grimoire_id")
+        cur.execute(
+            f"""
+            SELECT 1 FROM media_post mp
+            WHERE mp.media_post_id = %s
+              AND (mp.grimoire_id IS NULL OR {visibility})
+            """,
+            (media_post_id, *corpus_visibility_params(user_id)),
+        )
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Post not found")
+        if payload.grimoire_id is not None:
+            target_visibility = corpus_visibility_sql("g.grimoire_id")
+            cur.execute(
+                f"SELECT 1 FROM grimoire g WHERE g.grimoire_id = %s AND {target_visibility}",
+                (payload.grimoire_id, *corpus_visibility_params(user_id)),
+            )
+            if not cur.fetchone():
+                raise_hidden_grimoire_miss(
+                    cur,
+                    grimoire_id=payload.grimoire_id,
+                    user_id=user_id,
+                    surface="content_book",
+                )
         slug = _unique_slug(cur, payload.title, exclude_id=media_post_id)
         cur.execute(
             """
@@ -238,6 +448,7 @@ def update_media(media_post_id: int, payload: MediaPostPayload, request: Request
                 excerpt = %s,
                 body = %s,
                 image_url = NULLIF(%s, ''),
+                grimoire_id = %s,
                 status = %s,
                 published_at = CASE
                     WHEN %s = 'published' THEN COALESCE(published_at, now())
@@ -248,7 +459,8 @@ def update_media(media_post_id: int, payload: MediaPostPayload, request: Request
             """,
             (
                 payload.title.strip(), slug, payload.excerpt.strip(), payload.body.strip(),
-                payload.image_url, payload.status, payload.status, media_post_id,
+                payload.image_url, payload.grimoire_id,
+                payload.status, payload.status, media_post_id,
             ),
         )
         row = cur.fetchone()
@@ -259,11 +471,19 @@ def update_media(media_post_id: int, payload: MediaPostPayload, request: Request
 
 @router.delete("/api/content/media/{media_post_id}")
 def delete_media(media_post_id: int, request: Request):
-    _media_access(request)
+    user = _media_access(request)
+    user_id = actor_user_id(user)
+    ensure_policy_ready(user_id=user_id, surface="content_book")
     with transaction() as (_, cur):
+        visibility = corpus_visibility_sql("mp.grimoire_id")
         cur.execute(
-            "DELETE FROM media_post WHERE media_post_id = %s RETURNING media_post_id",
-            (media_post_id,),
+            f"""
+            DELETE FROM media_post mp
+            WHERE mp.media_post_id = %s
+              AND (mp.grimoire_id IS NULL OR {visibility})
+            RETURNING mp.media_post_id
+            """,
+            (media_post_id, *corpus_visibility_params(user_id)),
         )
         if not cur.fetchone():
             raise HTTPException(status_code=404, detail="Post not found")

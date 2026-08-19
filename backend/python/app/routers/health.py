@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from ..config import get_settings
 from ..database import transaction
 from ..services.qdrant import qdrant_service
+from ..services import storage
 
 
 router = APIRouter(tags=["health"])
@@ -35,3 +36,8 @@ def health_qdrant():
 def health_assets():
     settings = get_settings()
     return {"ok": settings.public_images.exists(), "path": str(settings.public_images)}
+
+
+@router.get("/health/storage")
+def health_storage():
+    return storage.health()

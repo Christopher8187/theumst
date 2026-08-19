@@ -15,25 +15,51 @@ from ..schemas import (
     SemanticEmbeddingInput,
 )
 from .qdrant import qdrant_service
+from .corpus_access import (
+    corpus_visibility_params,
+    corpus_visibility_sql,
+    ensure_policy_ready,
+    raise_hidden_grimoire_miss,
+    raise_hidden_knowledge_miss,
+    secure_image_rows,
+)
 
 
-def _resolve_book(cur, book: BookReference) -> int:
+def _resolve_book(cur, book: BookReference, actor_user_id: int | None) -> int:
+    ensure_policy_ready(user_id=actor_user_id, surface="developer_api")
+    visibility = corpus_visibility_sql("g.grimoire_id")
     if book.grimoire_id is not None:
-        cur.execute("SELECT grimoire_id FROM grimoire WHERE grimoire_id = %s", (book.grimoire_id,))
+        cur.execute(
+            f"""
+            SELECT g.grimoire_id
+            FROM grimoire g
+            WHERE g.grimoire_id = %s AND {visibility}
+            """,
+            (book.grimoire_id, *corpus_visibility_params(actor_user_id)),
+        )
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Book not found")
+            raise_hidden_grimoire_miss(
+                cur,
+                grimoire_id=book.grimoire_id,
+                user_id=actor_user_id,
+                surface="developer_api",
+            )
         return int(row["grimoire_id"])
 
     cur.execute(
         """
-        SELECT grimoire_id FROM grimoire
-        WHERE isbn IS NOT DISTINCT FROM %s
+        SELECT g.grimoire_id FROM grimoire g
+        WHERE g.isbn IS NOT DISTINCT FROM %s
           AND publish_date IS NOT DISTINCT FROM %s
           AND version IS NOT DISTINCT FROM %s
+          AND {visibility}
         ORDER BY grimoire_id LIMIT 1
-        """,
-        (book.isbn, book.publish_date, book.version),
+        """.format(visibility=visibility),
+        (
+            book.isbn, book.publish_date, book.version,
+            *corpus_visibility_params(actor_user_id),
+        ),
     )
     row = cur.fetchone()
     if row:
@@ -120,9 +146,16 @@ def _embedding_model(cur, embedding: SemanticEmbeddingInput) -> tuple[int, str]:
     return int(row["embedding_model_id"]), str(row["qdrant_collection"])
 
 
-def _knowledge_embedding_context(cur, knowledge_id: int, language_id: int) -> dict[str, Any]:
+def _knowledge_embedding_context(
+    cur,
+    knowledge_id: int,
+    language_id: int,
+    actor_user_id: int | None,
+) -> dict[str, Any]:
+    ensure_policy_ready(user_id=actor_user_id, surface="index")
+    visibility = corpus_visibility_sql("s.grimoire_id")
     cur.execute(
-        """
+        f"""
         SELECT k.knowledge_id, k.type AS working_type, k.section_id,
                s.grimoire_id, lk.language_id
         FROM knowledge k
@@ -130,14 +163,17 @@ def _knowledge_embedding_context(cur, knowledge_id: int, language_id: int) -> di
         JOIN language_knowledge lk ON lk.knowledge_id = k.knowledge_id
             AND lk.language_id = %s
         WHERE k.knowledge_id = %s AND k.is_active
+          AND {visibility}
         """,
-        (language_id, knowledge_id),
+        (language_id, knowledge_id, *corpus_visibility_params(actor_user_id)),
     )
     row = cur.fetchone()
     if not row:
-        raise HTTPException(
-            status_code=404,
-            detail="Knowledge object or requested language version not found",
+        raise_hidden_knowledge_miss(
+            cur,
+            knowledge_id=knowledge_id,
+            user_id=actor_user_id,
+            surface="index",
         )
     return dict(row)
 
@@ -269,11 +305,21 @@ def _index_pending_embeddings(points: list[dict[str, Any]]) -> tuple[list[str], 
     return indexed, failed
 
 
-def submit_embeddings(knowledge_id: int, payload: EmbeddingBatchInput) -> dict[str, Any]:
+def submit_embeddings(
+    knowledge_id: int,
+    payload: EmbeddingBatchInput,
+    *,
+    actor_user_id: int | None,
+) -> dict[str, Any]:
     if not get_settings().qdrant_enabled:
         raise HTTPException(status_code=503, detail="Qdrant must be enabled when submitting embeddings")
     with transaction() as (_, cur):
-        context = _knowledge_embedding_context(cur, knowledge_id, payload.language_id)
+        context = _knowledge_embedding_context(
+            cur,
+            knowledge_id,
+            payload.language_id,
+            actor_user_id,
+        )
         pending_points = _queue_embeddings(cur, context=context, embeddings=payload.embeddings)
     indexed, failed = _index_pending_embeddings(pending_points)
     return {
@@ -284,12 +330,16 @@ def submit_embeddings(knowledge_id: int, payload: EmbeddingBatchInput) -> dict[s
     }
 
 
-def submit_knowledge(payload: KnowledgeSubmission) -> dict[str, Any]:
+def submit_knowledge(
+    payload: KnowledgeSubmission,
+    *,
+    actor_user_id: int | None,
+) -> dict[str, Any]:
     if payload.embeddings and not get_settings().qdrant_enabled:
         raise HTTPException(status_code=503, detail="Qdrant must be enabled when submitting embeddings")
 
     with transaction() as (_, cur):
-        grimoire_id = _resolve_book(cur, payload.book)
+        grimoire_id = _resolve_book(cur, payload.book, actor_user_id)
         section_id = _resolve_section(cur, grimoire_id, payload.section)
         cur.execute("SELECT language_id FROM language WHERE language_id = %s", (payload.knowledge.language_id,))
         if not cur.fetchone():
@@ -346,7 +396,14 @@ def list_knowledge(
     grimoire_id: int | None = None,
     section_id: int | None = None,
     working_type: str | None = None,
+    actor_user_id: int | None,
 ) -> list[dict[str, Any]]:
+    if not ensure_policy_ready(
+        user_id=actor_user_id,
+        surface="bulk",
+        list_request=True,
+    ):
+        return []
     conditions = ["lk.language_id = %s", "k.is_active"]
     params: list[Any] = [language_id]
     if grimoire_id is not None:
@@ -355,6 +412,8 @@ def list_knowledge(
         conditions.append("k.section_id = %s"); params.append(section_id)
     if working_type:
         conditions.append("k.type = %s"); params.append(working_type)
+    conditions.append(corpus_visibility_sql("s.grimoire_id"))
+    params.extend(corpus_visibility_params(actor_user_id))
     params.extend([limit, offset])
     with transaction() as (_, cur):
         cur.execute(
@@ -382,10 +441,17 @@ def list_knowledge(
         return list(cur.fetchall())
 
 
-def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
+def get_knowledge(
+    knowledge_id: int,
+    language_id: int,
+    *,
+    actor_user_id: int | None,
+) -> dict[str, Any]:
+    ensure_policy_ready(user_id=actor_user_id, surface="developer_api")
     with transaction() as (_, cur):
+        visibility = corpus_visibility_sql("s.grimoire_id")
         cur.execute(
-            """
+            f"""
             SELECT k.knowledge_id, k.type, k.is_default_in_crystal,
                    kc.likes, lk.language_id, lk.statement, lk.working,
                    lk.label, lk.working_summary, lk.ref_id,
@@ -413,6 +479,7 @@ def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
                            'book_image_id', bi.book_image_id,
                            'source_image_id', bi.source_image_id,
                            'semantic_context_name', bi.semantic_context_name,
+                           'storage_key', bi.storage_key,
                            'url', bi.url,
                            'metadata', bi.metadata
                        ) ORDER BY bi.book_image_id)
@@ -427,15 +494,23 @@ def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
             LEFT JOIN semantic_projection sp ON sp.knowledge_id = k.knowledge_id
                 AND sp.language_id = lk.language_id AND sp.is_active
             WHERE k.knowledge_id = %s AND k.is_active
+              AND {visibility}
             GROUP BY k.knowledge_id, kc.likes, lk.language_id, lk.statement, lk.working,
                      lk.label, lk.working_summary, lk.ref_id,
                      lk.labelled_references, lk.object_reference_labels,
                      lk.loose_references_guessed_objects,
                      s.section_id, s.source_key, g.grimoire_id, g.source_key
             """,
-            (language_id, knowledge_id),
+            (language_id, knowledge_id, *corpus_visibility_params(actor_user_id)),
         )
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Knowledge object not found")
-        return row
+            raise_hidden_knowledge_miss(
+                cur,
+                knowledge_id=knowledge_id,
+                user_id=actor_user_id,
+                surface="developer_api",
+            )
+        result = dict(row)
+        result["images"] = secure_image_rows(result.get("images") or [])
+        return result

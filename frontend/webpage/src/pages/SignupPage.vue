@@ -50,6 +50,7 @@ defineEmits(["navigate", "set-language", "signup"]);
           </label>
 
           <button type="submit">{{ tr("signup.submit") }}</button>
+          <p class="auth-form-note">{{ tr("signup.verifyNote") }}</p>
           <a class="secondary-action" href="/login" @click.prevent="$emit('navigate', '/login')">{{ tr("signup.login") }}</a>
         </form>
       </section>

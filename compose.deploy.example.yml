@@ -42,8 +42,8 @@ services:
       QDRANT_ENABLED: "true"
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-knowledge-semantic-v1}
-      QDRANT_VECTOR_SIZE: ${QDRANT_VECTOR_SIZE:-1536}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-knowledge-qwen3-embedding-0-6b}
+      QDRANT_VECTOR_SIZE: ${QDRANT_VECTOR_SIZE:-1024}
       QDRANT_DISTANCE: ${QDRANT_DISTANCE:-cosine}
       QDRANT_VECTORS_ON_DISK: ${QDRANT_VECTORS_ON_DISK:-false}
       EMBEDDING_API_URL: ${EMBEDDING_API_URL:-}
@@ -73,6 +73,14 @@ services:
       timeout: 5s
       retries: 30
 
+  demo:
+    build:
+      context: .
+      dockerfile: frontend/demo/Dockerfile
+      target: production
+    expose:
+      - "80"
+
   nginx:
     image: nginx:1.27-alpine
     ports:
@@ -82,6 +90,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      demo:
+        condition: service_started
 
 volumes:
   deploy_pgdata:

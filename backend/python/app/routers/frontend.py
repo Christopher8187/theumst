@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse, Response
 
 from ..config import get_settings
 from ..dependencies import current_user
@@ -11,14 +11,17 @@ from ..dependencies import current_user
 
 router = APIRouter(include_in_schema=False)
 WEBPAGE_HTML_ROUTES = {
-    "news", "about", "wiki", "get", "login", "signup", "forgot-password", "reset-password"
+    "news", "about", "wiki", "get", "login", "signup", "forgot-password", "reset-password",
+    "verify-email", "privacy"
 }
 BLOCKED_PREFIXES = ("backend/", "config/", "dev/")
 DASHBOARD_ACCESS = {
     "profile": "profile",
     "api-keys": "api-keys",
     "books": "books",
+    "users": "admin",
     "media": "media",
+    "demo": "profile",
     "admin": "admin",
     "superadmin": "superadmin",
 }
@@ -74,11 +77,59 @@ def old_index():
     return RedirectResponse("/", status_code=301)
 
 
+@router.get("/robots.txt", response_class=PlainTextResponse)
+def robots():
+    return """User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /auth/
+Disallow: /dashboard/
+Disallow: /demo/
+Disallow: /docs
+Disallow: /redoc
+Disallow: /openapi.json
+Sitemap: https://theumst.com/sitemap.xml
+"""
+
+
+@router.get("/sitemap.xml")
+def sitemap():
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://theumst.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
+"""
+    return Response(content=xml, media_type="application/xml")
+
+
 @router.get("/{page_name}.html")
 def old_page(page_name: str):
     if page_name not in WEBPAGE_HTML_ROUTES:
         raise HTTPException(status_code=404)
     return RedirectResponse(f"/{page_name}", status_code=301)
+
+
+@router.api_route(
+    "/api",
+    methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    include_in_schema=False,
+)
+@router.api_route(
+    "/api/{path:path}",
+    methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    include_in_schema=False,
+)
+def missing_api_route(path: str = ""):
+    """Keep invalid API requests out of the public single-page fallback."""
+    raise HTTPException(
+        status_code=404,
+        detail="API route not found",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/{path:path}")

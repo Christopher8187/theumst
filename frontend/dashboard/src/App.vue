@@ -6,9 +6,11 @@ import LanguageModal from "./components/LanguageModal.vue";
 import AdminPage from "./pages/AdminPage.vue";
 import ApiKeysPage from "./pages/ApiKeysPage.vue";
 import BooksPage from "./pages/BooksPage.vue";
+import DemoPage from "./pages/DemoPage.vue";
 import MediaPage from "./pages/MediaPage.vue";
 import ProfilePage from "./pages/ProfilePage.vue";
 import SuperadminPage from "./pages/SuperadminPage.vue";
+import UsersPage from "./pages/UsersPage.vue";
 import { canUseRoute, dashboardRoutes, routeFromPath } from "./router";
 import { useI18n } from "./utils/i18n";
 
@@ -23,6 +25,8 @@ const profile = ref({
   username: "", email: "", alias: "", description: "",
   authority_type: "", access_points: []
 });
+const emailChangeMessage = ref("");
+const emailChangeError = ref(false);
 
 const storagePath = ref("");
 const storageMode = ref("");
@@ -68,12 +72,24 @@ const mediaError = ref(false);
 const blankPost = () => ({ title: "", excerpt: "", body: "", image_url: "/images/graph.jpg", status: "published" });
 const postDraft = ref(blankPost());
 
+const demoAccess = ref(null);
+const demoRequests = ref([]);
+const demoLoading = ref(false);
+const demoMessage = ref("");
+const demoError = ref(false);
+
+const users = ref([]);
+const usersLoading = ref(false);
+const usersMessage = ref("");
+const usersError = ref(false);
+
 const showLanguage = ref(false);
 const logoSrc = assetUrl("logo.png");
 const translateSrc = assetUrl("translate.svg");
 const accessPoints = computed(() => profile.value.access_points || []);
 const parentPath = computed(() => storagePath.value.split("/").slice(0, -1).join("/"));
 const homeUrl = computed(() => webpageUrl("/"));
+const demoUrl = computed(() => location.port === "5174" ? "http://localhost:5175/demo/" : "/demo/");
 
 function go(next) {
   if (!canUseRoute(next, accessPoints.value)) return;
@@ -81,7 +97,9 @@ function go(next) {
   history.pushState(null, "", dashboardRoutes[next]);
   if (next === "admin") loadStorage();
   if (next === "books") loadBooks();
+  if (next === "users") loadUsers();
   if (next === "media") loadMedia();
+  if (next === "demo") loadDemoAccess();
 }
 
 function chooseLang(value) {
@@ -121,7 +139,9 @@ async function loadProfile() {
   enforceAccessPage();
   if (route.value === "admin") loadStorage();
   if (route.value === "books") loadBooks();
+  if (route.value === "users") loadUsers();
   if (route.value === "media") loadMedia();
+  if (route.value === "demo") loadDemoAccess();
 }
 
 async function saveProfile() {
@@ -130,7 +150,25 @@ async function saveProfile() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(profile.value)
   }));
-  message.value = res.ok ? t.value.saved : (await res.json()).detail;
+  const data = await res.json();
+  if (res.ok && data.requires_email_verification) {
+    location.href = webpageUrl(data.redirect || "/verify-email?sent=1");
+    return;
+  }
+  message.value = res.ok ? t.value.saved : data.detail;
+}
+
+async function requestEmailChange(payload) {
+  emailChangeMessage.value = "";
+  emailChangeError.value = false;
+  const res = requireLogin(await apiFetch("/auth/email-change/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  }));
+  const data = await res.json();
+  emailChangeError.value = !res.ok;
+  emailChangeMessage.value = res.ok ? t.value.emailChangeSent : data.detail;
 }
 
 async function loadKeys() {
@@ -377,6 +415,41 @@ async function deleteBook(book) {
   await loadBooks();
 }
 
+async function setBookDemoVisibility(book, enabled) {
+  const prompt = enabled
+    ? `${t.value.enableDemoConfirm} “${book.title}”?`
+    : `${t.value.disableDemoConfirm} “${book.title}”?`;
+  if (!confirm(prompt)) return;
+  const res = requireLogin(await apiFetch(`/api/content/books/${book.grimoire_id}/demo-visibility`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled })
+  }));
+  const data = await res.json();
+  if (!res.ok) return setContentMessage(bookMessage, bookError, data.detail, true);
+  setContentMessage(
+    bookMessage,
+    bookError,
+    enabled ? t.value.demoBookEnabled : t.value.demoBookDisabled
+  );
+  await loadBooks();
+}
+
+async function loadUsers() {
+  usersLoading.value = true;
+  usersMessage.value = "";
+  usersError.value = false;
+  const res = requireLogin(await apiFetch("/api/admin/users"));
+  const data = await res.json();
+  usersLoading.value = false;
+  if (!res.ok) {
+    usersError.value = true;
+    usersMessage.value = data.detail;
+    return;
+  }
+  users.value = data.users;
+}
+
 async function loadMedia() {
   const res = requireLogin(await apiFetch("/api/content/media"));
   const data = await res.json();
@@ -427,6 +500,60 @@ async function deletePost(post) {
   await loadMedia();
 }
 
+async function loadDemoAccess() {
+  demoLoading.value = true;
+  demoMessage.value = "";
+  demoError.value = false;
+  const res = requireLogin(await apiFetch("/api/demo/access"));
+  const data = await res.json();
+  if (!res.ok) {
+    demoError.value = true;
+    demoMessage.value = data.detail;
+    demoLoading.value = false;
+    return;
+  }
+  demoAccess.value = data;
+  if (data.can_review) await loadDemoRequests();
+  demoLoading.value = false;
+}
+
+async function loadDemoRequests() {
+  const res = requireLogin(await apiFetch("/api/demo/access/requests"));
+  const data = await res.json();
+  if (!res.ok) {
+    demoError.value = true;
+    demoMessage.value = data.detail;
+    return;
+  }
+  demoRequests.value = data.requests;
+}
+
+async function requestDemoAccess(requestMessage) {
+  const res = requireLogin(await apiFetch("/api/demo/access/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: requestMessage })
+  }));
+  const data = await res.json();
+  demoError.value = !res.ok;
+  demoMessage.value = res.ok ? t.value.demoRequestSent : data.detail;
+  if (res.ok) await loadDemoAccess();
+}
+
+async function reviewDemoAccess(userId, decision) {
+  const res = requireLogin(await apiFetch(`/api/demo/access/requests/${userId}/${decision}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note: "" })
+  }));
+  const data = await res.json();
+  demoError.value = !res.ok;
+  demoMessage.value = res.ok
+    ? (decision === "approve" ? t.value.demoApproved : t.value.demoRejected)
+    : data.detail;
+  if (res.ok) await loadDemoRequests();
+}
+
 async function runSuperSql() {
   superSqlResult.value = "";
   superSqlError.value = false;
@@ -453,7 +580,9 @@ onMounted(() => {
     enforceAccessPage();
     if (route.value === "admin") loadStorage();
     if (route.value === "books") loadBooks();
+    if (route.value === "users") loadUsers();
     if (route.value === "media") loadMedia();
+    if (route.value === "demo") loadDemoAccess();
   });
 });
 </script>
@@ -478,7 +607,10 @@ onMounted(() => {
         :t="t"
         :profile="profile"
         :message="message"
+        :email-change-message="emailChangeMessage"
+        :email-change-error="emailChangeError"
         @save="saveProfile"
+        @change-email="requestEmailChange"
       />
 
       <ApiKeysPage
@@ -490,6 +622,20 @@ onMounted(() => {
         @create="createKey"
         @upgrade="upgradeKey"
         @revoke="revokeKey"
+      />
+
+      <DemoPage
+        v-else-if="route === 'demo'"
+        :t="t"
+        :access="demoAccess"
+        :requests="demoRequests"
+        :loading="demoLoading"
+        :message="demoMessage"
+        :error="demoError"
+        :demo-url="demoUrl"
+        @request="requestDemoAccess"
+        @review="reviewDemoAccess"
+        @refresh="loadDemoRequests"
       />
 
       <BooksPage
@@ -504,7 +650,18 @@ onMounted(() => {
         @edit="editBook"
         @reset="resetBook"
         @delete="deleteBook"
+        @set-demo="setBookDemoVisibility"
         @refresh="loadBooks"
+      />
+
+      <UsersPage
+        v-else-if="route === 'users' && accessPoints.includes('admin')"
+        :t="t"
+        :users="users"
+        :loading="usersLoading"
+        :message="usersMessage"
+        :error="usersError"
+        @refresh="loadUsers"
       />
 
       <MediaPage

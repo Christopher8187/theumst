@@ -1,8 +1,8 @@
 # The UMST website
 
-This repository contains the complete public website, dashboard, FastAPI backend,
-PostgreSQL schema, Qdrant semantic-vector database, and LOCAL/COM/CN object-storage
-integrations.
+This repository contains the complete public website, dashboard, isolated Web Demo,
+FastAPI backend, PostgreSQL schema, Qdrant semantic-vector database, and LOCAL/COM/CN
+object-storage integrations.
 
 The checked-in release archive includes a populated `.env` using the deployment
 information supplied for:
@@ -45,14 +45,15 @@ Browser
 Host Nginx :80/:443
    |
 Docker Nginx 127.0.0.1:8080
-   |
-FastAPI :8000
+   |--------------------------|
+FastAPI :8000          Demo Nginx :80
    |-------------------|------------------|
 PostgreSQL          Qdrant       LOCAL / Spaces / Aliyun OSS
 ```
 
-Production frontend files are compiled into the FastAPI production image. The
-backend serves both Vue applications and the API from the same public origin.
+The public and dashboard frontend files are compiled into the FastAPI production
+image. The Web Demo is intentionally built and served from a separate container;
+the internal Nginx proxy validates the signed-in user's demo access before serving it.
 
 Backend source follows normal FastAPI package conventions:
 
@@ -180,6 +181,7 @@ curl.exe -f http://localhost:8000/health
 curl.exe -f http://localhost:8000/health/db
 curl.exe -f http://localhost:8000/health/qdrant
 curl.exe -f http://localhost:8000/health/assets
+curl.exe -f http://localhost:8000/health/storage
 ```
 
 ## 3.2 Open the local applications
@@ -187,6 +189,7 @@ curl.exe -f http://localhost:8000/health/assets
 ```text
 Public website:   http://localhost:5173
 Dashboard:        http://localhost:5174/dashboard/profile/
+Web Demo:         http://localhost:5175/demo/
 FastAPI docs:     http://localhost:8000/docs
 Qdrant dashboard: http://localhost:6333/dashboard
 ```
@@ -269,6 +272,7 @@ curl.exe -f https://theumst.com/health
 curl.exe -f https://theumst.com/health/db
 curl.exe -f https://theumst.com/health/qdrant
 curl.exe -f https://theumst.com/health/assets
+curl.exe -f https://theumst.com/health/storage
 ```
 
 Open:
@@ -340,6 +344,7 @@ curl.exe -f https://theumst.cn/health
 curl.exe -f https://theumst.cn/health/db
 curl.exe -f https://theumst.cn/health/qdrant
 curl.exe -f https://theumst.cn/health/assets
+curl.exe -f https://theumst.cn/health/storage
 ```
 
 ---
@@ -731,8 +736,8 @@ upserts using stable source keys. One ingestion operation:
 The deployment defaults are now:
 
 ```text
-QDRANT_COLLECTION=knowledge-qwen3-embedding-4b
-QDRANT_VECTOR_SIZE=2560
+QDRANT_COLLECTION=knowledge-qwen3-embedding-0-6b
+QDRANT_VECTOR_SIZE=1024
 QDRANT_DISTANCE=cosine
 ```
 

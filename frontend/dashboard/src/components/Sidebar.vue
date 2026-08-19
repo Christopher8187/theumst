@@ -18,7 +18,9 @@ defineEmits(["go", "choose-language", "sign-out"]);
     <a class="side-link" :href="homeUrl">{{ t.home }}</a>
     <button v-if="accessPoints.includes('profile')" class="side-link" :class="{ active: route === 'profile' }" @click="$emit('go', 'profile')">{{ t.profile }}</button>
     <button v-if="accessPoints.includes('api-keys')" class="side-link" :class="{ active: route === 'api-keys' }" @click="$emit('go', 'api-keys')">{{ t.apiKeys }}</button>
+    <button v-if="accessPoints.includes('profile')" class="side-link demo-side-link" :class="{ active: route === 'demo' }" @click="$emit('go', 'demo')"><span class="side-icon">✦</span>{{ t.demo }}</button>
     <button v-if="accessPoints.includes('books')" class="side-link" :class="{ active: route === 'books' }" @click="$emit('go', 'books')"><span class="side-icon">▤</span>{{ t.books }}</button>
+    <button v-if="accessPoints.includes('admin')" class="side-link" :class="{ active: route === 'users' }" @click="$emit('go', 'users')"><span class="side-icon">◎</span>{{ t.users }}</button>
     <button v-if="accessPoints.includes('media')" class="side-link" :class="{ active: route === 'media' }" @click="$emit('go', 'media')"><span class="side-icon">◉</span>{{ t.media }}</button>
     <button v-if="accessPoints.includes('admin')" class="side-link" :class="{ active: route === 'admin' }" @click="$emit('go', 'admin')">{{ t.admin }}</button>
     <button v-if="accessPoints.includes('superadmin')" class="side-link" :class="{ active: route === 'superadmin' }" @click="$emit('go', 'superadmin')">{{ t.superadmin }}</button>

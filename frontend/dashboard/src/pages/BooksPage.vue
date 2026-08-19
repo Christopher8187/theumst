@@ -7,7 +7,7 @@ defineProps({
   error: Boolean
 });
 const bookDraft = defineModel("bookDraft", { required: true });
-defineEmits(["save", "edit", "reset", "delete", "refresh"]);
+defineEmits(["save", "edit", "reset", "delete", "refresh", "set-demo"]);
 </script>
 
 <template>
@@ -63,9 +63,18 @@ defineEmits(["save", "edit", "reset", "delete", "refresh"]);
               <span>{{ book.section_count }} {{ t.sections }}</span>
               <span>{{ book.knowledge_count }} {{ t.objects }}</span>
               <span v-if="book.version">{{ book.version }}</span>
+              <span class="demo-visibility-chip" :class="{ enabled: book.demo_enabled }">
+                {{ book.demo_enabled ? t.demoEnabled : t.demoDisabled }}
+              </span>
             </div>
           </div>
           <div class="row-actions">
+            <button
+              class="demo-toggle-button"
+              :class="{ enabled: book.demo_enabled }"
+              type="button"
+              @click="$emit('set-demo', book, !book.demo_enabled)"
+            >{{ book.demo_enabled ? t.disableDemo : t.enableDemo }}</button>
             <button type="button" @click="$emit('edit', book)">{{ t.edit }}</button>
             <button class="danger-button" type="button" @click="$emit('delete', book)">{{ t.delete }}</button>
           </div>
