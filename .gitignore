@@ -6,6 +6,7 @@ __pycache__/
 node_modules/
 frontend/dashboard/dist/
 frontend/webpage/dist/
+frontend/demo/dist/
 .local/
 *.log
 .coverage
