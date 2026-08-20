@@ -1,31 +1,31 @@
-# Theumst context
+# Theumst
 
-Shared Product Workspace relationships and terms live in
+This context defines Theumst application and deployment language. Shared
+Product Workspace relationships and terms live in
 `C:\Business\product\CONTEXT-MAP.md`.
 
-## Theumst terms
+## Language
 
-### Theumst
-
+**Theumst**:
 The application containing the public website, signed-in dashboard, Web Demo,
-FastAPI backend, PostgreSQL data, Qdrant semantic vectors, object-storage
-integrations, and deployment code.
+backend, databases, storage integrations, and deployment code.
+_Avoid_: Website repository, website project
 
-### Web Demo
+**Web Demo**:
+The isolated frontend application served after the internal proxy checks the
+signed-in user's access.
+_Avoid_: Demo website, public website
 
-The isolated frontend application served from its own container after the
-internal proxy checks the signed-in user's access.
-
-### COM deployment
-
+**COM deployment**:
 The `theumst.com` deployment using the COM server and DigitalOcean Spaces.
+_Avoid_: Production promotion, COM child
 
-### CN deployment
-
+**CN deployment**:
 The `theumst.cn` deployment using the CN server and Aliyun Object Storage
 Service.
+_Avoid_: Production promotion, CN child
 
-### Local deployment
-
-The Windows development deployment that runs the Theumst services with Docker
-Compose and local storage settings.
+**Local deployment**:
+The Windows development deployment using Docker Compose and local storage
+settings.
+_Avoid_: Test website, lab deployment
