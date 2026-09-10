@@ -3,7 +3,7 @@ import { onMounted, ref } from "vue";
 import { apiFetch, assetUrl } from "../../../urls.js";
 import SiteHeader from "../components/SiteHeader.vue";
 
-defineProps({ tr: Function, session: Object });
+const props = defineProps({ tr: Function, session: Object });
 defineEmits(["navigate", "set-language"]);
 
 const token = ref(new URLSearchParams(location.search).get("token") || "");
@@ -19,7 +19,7 @@ onMounted(() => {
 async function submit() {
   if (password.value !== confirmation.value) {
     state.value = "error";
-    message.value = tr("reset.mismatch");
+    message.value = props.tr("reset.mismatch");
     return;
   }
 
@@ -32,9 +32,9 @@ async function submit() {
       body: JSON.stringify({ token: token.value, new_password: password.value })
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || tr("reset.invalid"));
+    if (!response.ok) throw new Error(data.detail || props.tr("reset.invalid"));
     state.value = "success";
-    message.value = tr("reset.success");
+    message.value = props.tr("reset.success");
   } catch (error) {
     state.value = "error";
     message.value = error.message;
