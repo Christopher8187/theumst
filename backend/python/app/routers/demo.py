@@ -19,8 +19,9 @@ from ..schemas import (
     DemoReviewPayload,
     DemoStudyStatePayload,
 )
-from ..services.qdrant import qdrant_service
+from ..services.atlas_graph import fetch_atlas_graph
 from ..services.graph_sidecar import GRAPH_ROLES, fetch_contents, fetch_focused_graph
+from ..services.qdrant import qdrant_service
 
 
 router = APIRouter(prefix="/api/demo", tags=["web-demo"])
@@ -291,8 +292,9 @@ def get_grimoire_graph(
     descendant_depth: Annotated[int, Query(ge=0, le=GRAPH_MAX_DEPTH)] = 2,
     include: str = "support,assessment",
     limit: Annotated[int, Query(ge=1, le=GRAPH_MAX_NODES)] = GRAPH_MAX_NODES,
+    view: Literal["book_order", "atlas"] = "book_order",
 ):
-    """Return one bounded book-order learning map around the requested item."""
+    """Return a bounded book-order projection or explicit Atlas dependencies."""
     _demo_user(request)
     if not isinstance(ancestor_depth, int) or not 0 <= ancestor_depth <= GRAPH_MAX_DEPTH:
         raise HTTPException(status_code=422, detail=f"ancestor_depth must be between 0 and {GRAPH_MAX_DEPTH}")
@@ -301,6 +303,8 @@ def get_grimoire_graph(
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= GRAPH_MAX_NODES:
         raise HTTPException(status_code=422, detail=f"limit must be between 1 and {GRAPH_MAX_NODES}")
     include_roles = _graph_include_roles(include)
+    if view not in {"book_order", "atlas"}:
+        raise HTTPException(status_code=422, detail="Unsupported graph view")
 
     with transaction() as (_, cur):
         cur.execute(
@@ -315,15 +319,20 @@ def get_grimoire_graph(
         if not cur.fetchone():
             raise HTTPException(status_code=404, detail="Book not found")
         try:
-            graph = fetch_focused_graph(
-                cur,
-                grimoire_id=grimoire_id,
-                focus=focus,
-                ancestor_depth=ancestor_depth,
-                descendant_depth=descendant_depth,
-                include_roles=include_roles,
-                limit=limit,
-            )
+            if view == "atlas":
+                graph = fetch_atlas_graph(
+                    cur, grimoire_id=grimoire_id, focus=focus, limit=limit,
+                )
+            else:
+                graph = fetch_focused_graph(
+                    cur,
+                    grimoire_id=grimoire_id,
+                    focus=focus,
+                    ancestor_depth=ancestor_depth,
+                    descendant_depth=descendant_depth,
+                    include_roles=include_roles,
+                    limit=limit,
+                )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail="Learning item not found in this book") from exc
         except ValueError as exc:

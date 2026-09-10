@@ -7,6 +7,7 @@ const MAX_SIMILAR_LIMIT = 25;
 export async function fetchGraphSlice(grimoireId, focusId, options = {}) {
   const params = new URLSearchParams({
     focus: String(focusId),
+    view: "atlas",
     ancestor_depth: String(options.ancestorDepth ?? 2),
     descendant_depth: String(options.descendantDepth ?? 2),
     include: "support,assessment",

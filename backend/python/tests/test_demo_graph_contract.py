@@ -122,6 +122,29 @@ def test_graph_etag_revalidation_returns_304(monkeypatch):
     assert result.body == b""
 
 
+def test_atlas_view_uses_stored_dependencies_and_keeps_book_visibility(monkeypatch):
+    cursor = Cursor()
+    monkeypatch.setattr(demo, "_demo_user", lambda request: {"user_id": 5})
+    monkeypatch.setattr(demo, "transaction", lambda: transaction_for(cursor))
+    called = []
+    def authored(cur, **kwargs):
+        called.append(kwargs)
+        return {**graph_result(), "authored_dependencies": True, "edges": [{
+            "source_knowledge_id": 10, "target_knowledge_id": 11, "relation_type": "dependency",
+        }]}
+    monkeypatch.setattr(demo, "fetch_atlas_graph", authored)
+    response = Response()
+    result = demo.get_grimoire_graph(7, Request(), response, focus="11", view="atlas")
+    assert result["authored_dependencies"] is True
+    assert called == [{"grimoire_id": 7, "focus": "11", "limit": 150}]
+    assert "source_metadata->>'demo'" in cursor.queries[0][0]
+    cursor.book_exists = False
+    with pytest.raises(HTTPException) as error:
+        demo.get_grimoire_graph(7, Request(), Response(), focus="11", view="atlas")
+    assert error.value.status_code == 404
+    assert len(called) == 1
+
+
 @pytest.mark.parametrize(
     "arguments, detail",
     [

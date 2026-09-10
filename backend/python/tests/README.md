@@ -6,4 +6,6 @@ The endpoint and service unit tests use scripted cursors or HTTP transports. The
 
 `test_book_ingestion_database.py` requires `THEUMST_DATABASE_INTEGRATION=1`. It inserts real books, nested sections, objects and projection metadata in PostgreSQL, checks returned identities, then rolls back. It does not send vectors to Qdrant. Its default skip must be reported separately. Conftest import fallbacks are for unit tests; a real-service run must have actual psycopg2 and password hashing dependencies installed.
 
+`test_atlas_graph_database.py` uses the same disposable-database opt-in and rollback. It checks the demo route against stored dependency edges, undirected traversal, inactive endpoints, unrelated relation types, bounds and missing relations. `test_real_analysis_sample.py` builds the sample manifest with Node and checks the object metadata consumed by ingestion.
+
 Release acceptance also exercises the current endpoints against PostgreSQL and Qdrant, independent realm positions, hidden-source note persistence, and real schema upgrade/fresh initialization. The [browser objectives](../../../docs/testing/web-demo.md) describe observable flows; [testing](../../../docs/testing.md) owns evidence requirements. Keep temporary users, vectors and databases separate from production.

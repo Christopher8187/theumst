@@ -34,7 +34,9 @@ watch(
   },
 );
 const relations = computed(() =>
-  props.graph?.authored_dependencies === true ? props.graph.edges || [] : [],
+  props.graph?.authored_dependencies === true
+    ? (props.graph.edges || []).filter((edge) => edge.relation_type === "dependency")
+    : [],
 );
 const layout = computed(() =>
   buildAtlas(
@@ -248,7 +250,7 @@ watch([layout, scale], center, { flush: "post" });
         </select></label
       >
     </footer>
-    <p v-if="layout.omitted || layout.unlabelled" role="status">
+    <p v-if="graph?.truncated || layout.omitted || layout.unlabelled" role="status">
       {{ t.limitedArrows }}
     </p>
   </section>

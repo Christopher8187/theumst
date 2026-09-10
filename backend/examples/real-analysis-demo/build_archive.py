@@ -50,7 +50,7 @@ process.stdout.write(JSON.stringify(data));
         "label": node["title"],
         "statement": node["text"] + "\n\n$$" + node["math"] + "$$",
         "working": workings.get(node["id"], ""),
-        "metadata": {"demo_order": node["id"], "order": [node["id"]], "prototype_item": node["id"]},
+        "source_metadata": {"demo_order": node["id"], "order": [node["id"]], "prototype_item": node["id"]},
     } for node in sample["nodes"]]
     graph = {
         "contract_version": 1,
