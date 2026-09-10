@@ -1,0 +1,9 @@
+# Administration
+
+Managers, admins and superadmins use Books and Media. Ordinary users retain their own profile, keys and permitted Web Demo access. Admins can promote an ordinary account to manager; they cannot use that action to downgrade another privileged account. Arbitrary PostgreSQL execution belongs to Superadmin tools.
+
+Books supports creation and editing of title, publisher, ISBN, date, published version and source key. The visibility control requires active knowledge before enabling a book in the Web Demo. Hiding withholds reader source material and preserves personal progress/writing. Authorized management remains available to inspect, update and unhide it. See [Web Demo](web-demo.md) for reader behavior.
+
+Delete permanently removes the book and cascades through connected SQL content according to foreign keys. Existing deletion does not clean every external vector or image record. That consistency work is owned by the [shared integration route](https://github.com/Christopher8187/product/issues/30). Hiding and deletion remain the two operations; no intermediate removal stage is added.
+
+Media supports draft and published news stories. Public endpoints return published posts. Managers can revise status or delete stories from the dashboard. `routers/content.py` owns these APIs; `BooksPage.vue` and `MediaPage.vue` own their interfaces. Read [security](security.md) before changing permissions and [testing](testing.md) for real-backend verification.

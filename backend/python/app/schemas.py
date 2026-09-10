@@ -80,6 +80,7 @@ class DemoProgressPayload(BaseModel):
 
 class DemoStudyStatePayload(BaseModel):
     knowledge_id: int = Field(gt=0)
+    realm: Literal['text', 'questions'] = 'text'
 
 
 class DemoNotePayload(BaseModel):

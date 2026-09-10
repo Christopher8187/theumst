@@ -287,21 +287,24 @@ def test_similar_translates_vector_service_errors_for_learners(monkeypatch):
     assert exc.value.detail == "Similar suggestions are temporarily unavailable."
 
 
-def test_crystallize_is_authenticated_and_honestly_retired(monkeypatch):
+def test_crystallize_reads_membership_and_checks_visibility(monkeypatch):
     monkeypatch.setattr(demo, "_demo_user", lambda request: {"user_id": 44})
-    cursor = ScriptedCursor(one=[{"allowed": True}])
+    members = [{"knowledge_id": 101, "is_default_in_crystal": True}]
+    cursor = ScriptedCursor(one=[{"knowledge_crystal_id": 7}], all_rows=[members])
     scripted_transactions(monkeypatch, cursor)
+    assert demo.crystallize(100, object())["results"] == members
+    assert cursor.executions[1][1] == (7,)
+    assert all("source_metadata->>'demo'" in sql for sql, _ in cursor.executions)
 
+
+def test_crystallize_requires_demo_access_before_reading(monkeypatch):
+    def denied(request):
+        raise HTTPException(403, "denied")
+    monkeypatch.setattr(demo, "_demo_user", denied)
+    monkeypatch.setattr(demo, "transaction", lambda: pytest.fail("unauthorized database access"))
     with pytest.raises(HTTPException) as exc:
         demo.crystallize(100, object())
-
-    assert exc.value.status_code == 410
-    assert exc.value.detail == {
-        "code": "crystallize_retired",
-        "message": "Crystallize is unavailable and has been retired.",
-        "replacement": "/api/demo/knowledge/100/similar?k=10&scope=book",
-    }
-    assert "source_metadata->>'demo'" in cursor.executions[0][0]
+    assert exc.value.status_code == 403
 
 
 def test_qdrant_point_query_uses_indexed_identity_and_never_sends_a_vector():

@@ -355,6 +355,9 @@ remote_permissions() {
 build_remote_env() {
     remote_context "$1"
     target_env="$2"
+    local target_db_password
+    target_db_password="$(remote_setting "DB_PASSWORD_${TARGET_SERVER}")"
+    target_db_password="${target_db_password:-${DB_PASSWORD:-postgres}}"
     umask 077
 
     cat > "$target_env" <<EOF
@@ -377,7 +380,7 @@ SMTP_USE_SSL=${SMTP_USE_SSL:-false}
 
 DB_NAME=${DB_NAME:-theumst}
 DB_USER=${DB_USER:-postgres}
-DB_PASSWORD=${DB_PASSWORD:-postgres}
+DB_PASSWORD=$target_db_password
 DB_HOST=db
 DB_PORT=5432
 DB_SCHEMA_STARTUP_MODE=disabled

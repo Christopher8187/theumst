@@ -1,7 +1,16 @@
 name: theumst-deploy
 
+x-runtime: &runtime
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   db:
+    <<: *runtime
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${DB_NAME:-theumst}
@@ -17,13 +26,15 @@ services:
       retries: 20
 
   qdrant:
-    image: qdrant/qdrant:latest
+    <<: *runtime
+    image: qdrant/qdrant:v1.17.0
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}
     volumes:
       - deploy_qdrant:/qdrant/storage
 
   backend:
+    <<: *runtime
     build:
       context: .
       dockerfile: backend/python/Dockerfile
@@ -85,6 +96,7 @@ services:
       retries: 30
 
   demo:
+    <<: *runtime
     build:
       context: .
       dockerfile: frontend/demo/Dockerfile
@@ -93,6 +105,7 @@ services:
       - "80"
 
   nginx:
+    <<: *runtime
     image: nginx:1.27-alpine
     ports:
       - "127.0.0.1:${HTTP_PORT:-8080}:80"

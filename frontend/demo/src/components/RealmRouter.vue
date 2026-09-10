@@ -23,7 +23,7 @@ const realms = [
 <template>
   <section class="realm-view">
     <header class="realm-header view-pad">
-      <div><p class="demo-kicker">SUMMONED GRIMOIRE</p><h1>{{ book?.title }}</h1></div>
+      <div><p class="demo-kicker">{{ t.summonedGrimoire }}</p><h1>{{ book?.title }}</h1></div>
       <button class="ghost-button" type="button" @click="$emit('grimoires')">✦ {{ t.grimoires }}</button>
     </header>
     <div class="realm-grid">

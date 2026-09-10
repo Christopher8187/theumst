@@ -203,6 +203,7 @@ export function normalizeGraph(payload = {}, fallbackFocus = null) {
 
   const responseFocus = integer(payload?.focus_knowledge_id);
   return {
+    authored_dependencies: payload?.authored_dependencies === true,
     nodes,
     edges,
     focus_knowledge_id: responseFocus ?? integer(fallbackFocus),

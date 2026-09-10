@@ -1,7 +1,16 @@
 name: theumst-deploy
 
+x-runtime: &runtime
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   db:
+    <<: *runtime
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${DB_NAME:-theumst}
@@ -9,7 +18,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     volumes:
       - deploy_pgdata:/var/lib/postgresql/data
-      - ./backend/sql:/docker-entrypoint-initdb.d:ro
+      - ./backend/sql/schema.sql:/docker-entrypoint-initdb.d/000_schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -17,13 +26,15 @@ services:
       retries: 20
 
   qdrant:
-    image: qdrant/qdrant:latest
+    <<: *runtime
+    image: qdrant/qdrant:v1.17.0
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}
     volumes:
       - deploy_qdrant:/qdrant/storage
 
   backend:
+    <<: *runtime
     build:
       context: .
       dockerfile: backend/python/Dockerfile
@@ -36,9 +47,20 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       DB_HOST: db
       DB_PORT: 5432
+      DB_SCHEMA_STARTUP_MODE: disabled
       SESSION_DAYS: ${SESSION_DAYS:-7}
       COOKIE_SECURE: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:-https://theumst.com,https://www.theumst.com,https://theumst.cn,https://www.theumst.cn}
+      PUBLIC_WEBPAGE_URL: ${PUBLIC_WEBPAGE_URL:-https://theumst.com}
+      PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-60}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-theumst}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
       QDRANT_ENABLED: "true"
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY in .env}
@@ -74,6 +96,7 @@ services:
       retries: 30
 
   demo:
+    <<: *runtime
     build:
       context: .
       dockerfile: frontend/demo/Dockerfile
@@ -82,9 +105,10 @@ services:
       - "80"
 
   nginx:
+    <<: *runtime
     image: nginx:1.27-alpine
     ports:
-      - "${HTTP_PORT:-8080}:80"
+      - "127.0.0.1:${HTTP_PORT:-8080}:80"
     volumes:
       - ./config/nginx.docker.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:

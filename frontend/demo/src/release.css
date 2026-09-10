@@ -1,0 +1,6 @@
+.availability-backdrop{position:fixed;inset:0;display:grid;place-items:center;background:#000c;z-index:900}.availability-backdrop section{max-width:500px;margin:20px;padding:25px;background:#202735;color:#f3f0e7;border:1px solid #c1ac76;border-radius:12px}.availability-backdrop button{margin:10px;padding:10px;background:#354154;color:inherit;border:1px solid #a3aec3}.note-panel select{max-width:100%;padding:8px;background:#273144;color:#f3f0e7}.study-split{min-width:0}.study-side-panel{min-width:0}.note-panel textarea,.notes-desk textarea{min-height:220px}
+.book-detail-grid > *, .summary-oracle { min-width: 0; }
+.summary-copy, .book-detail .view-heading h1 { overflow-wrap: anywhere; }
+@media (max-width: 1050px) {
+  .book-detail-grid { grid-template-columns: minmax(0, 1fr); }
+}

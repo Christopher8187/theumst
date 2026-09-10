@@ -25,7 +25,7 @@ from ..services.graph_sidecar import GRAPH_ROLES, fetch_contents, fetch_focused_
 
 router = APIRouter(prefix="/api/demo", tags=["web-demo"])
 REVIEW_ROLES = {"admin", "superadmin"}
-DEMO_VERSION = "0.0.1"
+DEMO_VERSION = "0.1.0"
 SIMILAR_MAX_K = 25
 SIMILAR_QUERY_OVERFETCH = 4
 GRAPH_MAX_NODES = 150
@@ -392,7 +392,7 @@ def _breadcrumbs(sections: list[dict[str, Any]]) -> dict[int, list[dict[str, Any
                 "name": current.get("section_name") or current["section_number"],
             })
             current = by_id.get(current.get("parent_section"))
-        result[section["section_id"]] = list(reversed(chain))[-3:]
+        result[section["section_id"]] = list(reversed(chain))
     return result
 
 
@@ -486,7 +486,7 @@ def get_grimoire_knowledge(grimoire_id: int, request: Request):
 
         cur.execute(
             """
-            SELECT current_knowledge_id, updated_at
+            SELECT current_knowledge_id, questions_knowledge_id, updated_at
             FROM demo_study_state
             WHERE user_id = %s AND grimoire_id = %s
             """,
@@ -500,6 +500,7 @@ def get_grimoire_knowledge(grimoire_id: int, request: Request):
         "knowledge": nodes,
         "relation_counts": relation_counts,
         "current_knowledge_id": state["current_knowledge_id"] if state else None,
+        "questions_knowledge_id": state["questions_knowledge_id"] if state else None,
     }
 
 
@@ -599,12 +600,13 @@ def update_study_state(
             raise HTTPException(status_code=404, detail="Knowledge object is not in this grimoire")
         cur.execute(
             """
-            INSERT INTO demo_study_state (user_id, grimoire_id, current_knowledge_id)
-            VALUES (%s, %s, %s)
+            INSERT INTO demo_study_state (user_id, grimoire_id, current_knowledge_id, questions_knowledge_id)
+            VALUES (%s, %s, CASE WHEN %s='text' THEN %s END, CASE WHEN %s='questions' THEN %s END)
             ON CONFLICT (user_id, grimoire_id) DO UPDATE SET
-                current_knowledge_id = EXCLUDED.current_knowledge_id
+                current_knowledge_id = CASE WHEN %s='text' THEN EXCLUDED.current_knowledge_id ELSE demo_study_state.current_knowledge_id END,
+                questions_knowledge_id = CASE WHEN %s='questions' THEN EXCLUDED.questions_knowledge_id ELSE demo_study_state.questions_knowledge_id END
             """,
-            (user["user_id"], grimoire_id, payload.knowledge_id),
+            (user["user_id"], grimoire_id, payload.realm, payload.knowledge_id, payload.realm, payload.knowledge_id, payload.realm, payload.realm),
         )
     return {"ok": True}
 
@@ -629,8 +631,12 @@ def list_notes(
             f"""
             SELECT n.demo_note_id, n.grimoire_id, n.knowledge_id, n.note_type,
                    n.tag, n.content, n.created_at, n.updated_at,
-                   lk.label AS knowledge_label, lg.title AS book_title
+                   CASE WHEN g.source_metadata->>'demo'='true' AND COALESCE(k.is_active,true) THEN lk.label END AS knowledge_label,
+                   CASE WHEN g.source_metadata->>'demo'='true' THEN lg.title END AS book_title,
+                   COALESCE(g.source_metadata->>'demo'='true' AND COALESCE(k.is_active,true),false) AS source_available
             FROM demo_note n
+            LEFT JOIN grimoire g ON g.grimoire_id=n.grimoire_id
+            LEFT JOIN knowledge k ON k.knowledge_id=n.knowledge_id
             LEFT JOIN language_knowledge lk
               ON lk.knowledge_id = n.knowledge_id AND lk.language_id = 1
             LEFT JOIN language_grimoire lg
@@ -1005,29 +1011,34 @@ def find_similar_knowledge(
     }
 
 
-@router.get("/crystallize/{knowledge_id}", deprecated=True)
+@router.get("/knowledge/{knowledge_id}/neighbors")
+def neighbors(knowledge_id: int, request: Request, k: Annotated[int, Query(ge=1, le=25)] = 10):
+    _demo_user(request)
+    from ..services.discovery import find_neighbors
+    return find_neighbors(knowledge_id, k)
+
+
+@router.get("/crystallize/{knowledge_id}")
 def crystallize(knowledge_id: int, request: Request):
     _demo_user(request)
-    with transaction() as (_, cur):
-        cur.execute(
-            """
-            SELECT 1
-            FROM knowledge k
-            JOIN section s ON s.section_id = k.section_id
-            JOIN grimoire g ON g.grimoire_id = s.grimoire_id
-            WHERE k.knowledge_id = %s
-              AND k.is_active
-              AND g.source_metadata->>'demo' = 'true'
-            """,
-            (knowledge_id,),
-        )
-        if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Knowledge object not found")
-    raise HTTPException(
-        status_code=410,
-        detail={
-            "code": "crystallize_retired",
-            "message": "Crystallize is unavailable and has been retired.",
-            "replacement": f"/api/demo/knowledge/{knowledge_id}/similar?k=10&scope=book",
-        },
-    )
+    with transaction() as (_,cur):
+        cur.execute("""
+            SELECT k.knowledge_crystal_id FROM knowledge k
+            JOIN section s ON s.section_id=k.section_id JOIN grimoire g ON g.grimoire_id=s.grimoire_id
+            WHERE k.knowledge_id=%s AND k.is_active AND g.source_metadata->>'demo'='true'
+        """, (knowledge_id,))
+        source=cur.fetchone()
+        if not source:
+            raise HTTPException(404, 'Knowledge object not found')
+        cur.execute("""
+            SELECT k.knowledge_id, s.grimoire_id, lk.label, lk.statement, lg.title AS book_title,
+                   k.is_default_in_crystal
+            FROM knowledge k JOIN section s ON s.section_id=k.section_id
+            JOIN grimoire g ON g.grimoire_id=s.grimoire_id
+            JOIN language_knowledge lk ON lk.knowledge_id=k.knowledge_id AND lk.language_id=1
+            JOIN language_grimoire lg ON lg.grimoire_id=g.grimoire_id AND lg.language_id=1
+            WHERE k.knowledge_crystal_id=%s AND k.is_active AND g.source_metadata->>'demo'='true'
+            ORDER BY k.is_default_in_crystal DESC, k.knowledge_id
+        """, (source['knowledge_crystal_id'],))
+        results=list(cur.fetchall())
+    return {'results':results, 'knowledge_crystal_id':source['knowledge_crystal_id']}

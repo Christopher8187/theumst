@@ -9,6 +9,7 @@ import {
 
 defineOptions({ name: "ContentsTree" });
 const props = defineProps({
+  t: {type:Object, default:()=>({})},
   items: { type: Array, default: () => [] },
   currentSectionId: { type: [Number, String], default: null },
   pageSize: { type: Number, default: 48 }
@@ -30,7 +31,7 @@ function isExpanded(row) {
 }
 
 function sectionLabel(item) {
-  return String(item.section_name || item.section_number || "Untitled section");
+  return String(item.section_name || item.section_number || props.t.untitledSection || "");
 }
 
 function revealCurrent(sectionId) {
@@ -132,11 +133,11 @@ async function movePage(direction) {
 
 <template>
   <div class="contents-browser">
-    <p v-if="!allRows.length" class="contents-empty">No sections are available for this book.</p>
+    <p v-if="!allRows.length" class="contents-empty">{{ t.emptySections }}</p>
     <template v-else>
       <div class="contents-window-summary" role="status">
-        <span>Sections {{ pageStart + 1 }}–{{ pageEnd }} of {{ allRows.length }} currently visible</span>
-        <span v-if="allRows.length > safePageSize">Only this bounded window is rendered.</span>
+        <span>{{ pageStart + 1 }}–{{ pageEnd }} / {{ allRows.length }} {{ t.sectionsVisible }}</span>
+        <span v-if="allRows.length > safePageSize"></span>
       </div>
       <button
         v-if="pageStart > 0"
@@ -144,9 +145,9 @@ async function movePage(direction) {
         class="contents-page-button"
         @click="movePage(-1)"
       >
-        ↑ Show earlier visible sections
+        ↑ {{ t.earlierSections }}
       </button>
-      <ol class="contents-tree contents-level-1" role="tree" aria-label="Book contents">
+      <ol class="contents-tree contents-level-1" role="tree" :aria-label="t.bookContents">
         <li v-for="row in visibleRows" :key="row.key" role="none" data-contents-row>
           <div
             class="contents-row"
@@ -158,7 +159,7 @@ async function movePage(direction) {
               type="button"
               class="contents-toggle"
               tabindex="-1"
-              :aria-label="`${isExpanded(row) ? 'Collapse' : 'Expand'} ${sectionLabel(row.item)}`"
+              :aria-label="`${isExpanded(row) ? t.collapseSection : t.expandSection} ${sectionLabel(row.item)}`"
               @click="toggle(row)"
             >
               <span aria-hidden="true">{{ isExpanded(row) ? '−' : '+' }}</span>
@@ -189,7 +190,7 @@ async function movePage(direction) {
         class="contents-page-button"
         @click="movePage(1)"
       >
-        Show later visible sections ↓
+        {{ t.laterSections }} ↓
       </button>
     </template>
   </div>

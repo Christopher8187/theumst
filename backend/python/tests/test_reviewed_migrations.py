@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_reviewed_sources_have_exact_checksums_and_exclude_historical_seeds():
     settings = SimpleNamespace(sql_dir=ROOT / "backend/sql")
     sources = reviewed_migrations.validated_migration_sources(settings)
-    assert [migration.filename for migration, _ in sources] == ["006_knowledge_graph.sql"]
+    assert [migration.filename for migration, _ in sources] == ["006_knowledge_graph.sql", "007_study_positions.sql"]
     assert "007_research_corpus_access.sql" not in Path(
         reviewed_migrations.__file__
     ).read_text(encoding="utf-8")
@@ -111,7 +111,7 @@ def test_runner_applies_only_a_wholly_missing_reviewed_migration(monkeypatch):
     def fake_transaction():
         yield object(), cursor
 
-    (migration,) = reviewed_migrations.REVIEWED_MIGRATIONS
+    migration = reviewed_migrations.REVIEWED_MIGRATIONS[0]
     sources = ((migration, ROOT / "backend/sql/006_knowledge_graph.sql"),)
     monkeypatch.setattr(reviewed_migrations, "transaction", fake_transaction)
     monkeypatch.setattr(

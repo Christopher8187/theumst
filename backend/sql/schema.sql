@@ -358,6 +358,7 @@ CREATE TABLE IF NOT EXISTS demo_study_state (
     user_id int NOT NULL REFERENCES "user"(user_id) ON DELETE CASCADE,
     grimoire_id int NOT NULL REFERENCES grimoire(grimoire_id) ON DELETE CASCADE,
     current_knowledge_id int REFERENCES knowledge(knowledge_id) ON DELETE SET NULL,
+    questions_knowledge_id int REFERENCES knowledge(knowledge_id) ON DELETE SET NULL,
     updated_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, grimoire_id)
 );

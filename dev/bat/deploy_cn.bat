@@ -15,7 +15,7 @@ if defined WSLENV (
 )
 
 pushd "%~dp0..\.."
-bash dev/sh/agent_deploy.sh CN
+bash dev/sh/agent_deploy.sh CN %*
 set "STATUS=%ERRORLEVEL%"
 popd
 exit /b %STATUS%

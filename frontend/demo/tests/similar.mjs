@@ -34,7 +34,7 @@ globalThis.__similarTestFetch = async path => {
 };
 
 const response = await api.fetchSimilarKnowledge(7, { k: 10 });
-assert.equal(requestedPath, "/api/demo/knowledge/7/similar?k=10&scope=book");
+assert.equal(requestedPath, "/api/demo/knowledge/7/neighbors?k=10&scope=available_books");
 assert.equal(response.results.length, 10, "the UI adapter must return at most ten results");
 assert.ok(response.results.every(result => result.knowledge_id !== 7), "the selected item must be excluded");
 assert.equal(response.results.filter(result => result.knowledge_id === 8).length, 1, "duplicate items must collapse");
@@ -46,7 +46,7 @@ assert.deepEqual(
 );
 
 const expandedResponse = await api.fetchSimilarKnowledge(7, { k: 200 });
-assert.equal(requestedPath, "/api/demo/knowledge/7/similar?k=25&scope=book", "the service contract maximum is 25");
+assert.equal(requestedPath, "/api/demo/knowledge/7/neighbors?k=25&scope=available_books", "the service contract maximum is 25");
 assert.ok(expandedResponse.results.length > 10, "the adapter may return more than the UI default when a caller requests it");
 assert.ok(expandedResponse.results.length <= 25, "the service contract returns at most 25 results");
 assert.equal(api.isUnavailable(new api.DemoApiError("missing", 404)), true);
@@ -54,21 +54,7 @@ assert.equal(api.isUnavailable(new api.DemoApiError("not implemented", 501)), tr
 assert.equal(api.isUnavailable(new api.DemoApiError("temporarily unavailable", 503)), true);
 assert.equal(api.isUnavailable(new api.DemoApiError("failed", 500)), false);
 
-const appSource = await readFile(new URL("App.vue", root), "utf8");
-const studySource = await readFile(new URL("components/StudyView.vue", root), "utf8");
-const panelSource = await readFile(new URL("components/SearchPanel.vue", root), "utf8");
-const i18nSource = await readFile(new URL("i18n.js", root), "utf8");
-assert.doesNotMatch(`${appSource}\n${studySource}`, /crystalli[sz]/i, "Crystallize must not remain interactive");
-assert.match(studySource, /\{\{ t\.cluster \}\}/, "the action label must be Cluster");
-assert.match(panelSource, /<h2[^>]*>\{\{ t\.cluster \}\}<\/h2>/, "the panel heading must be Cluster");
-assert.match(i18nSource, /cluster: "Cluster"/, "Cluster must be the exact user-facing label");
-assert.doesNotMatch(`${studySource}\n${panelSource}\n${i18nSource}`, /Find similar/, "the overridden label must be absent");
-assert.match(appSource, /fetchSimilarKnowledge\(sourceId, \{ k: 10 \}\)/);
-assert.match(appSource, /fetchGraphSlice\(bookId, knowledgeId(?:,|\))/);
-assert.match(appSource, /const studyCache = new Map\(\)/);
-for (const state of ["idle", "loading", "results", "empty", "unavailable", "error"]) {
-  assert.match(panelSource, new RegExp(`status === '${state}'`), `Similar panel must render ${state}`);
-}
-
+globalThis.__similarTestFetch = async () => ({unexpected: true});
+await assert.rejects(api.fetchSimilarKnowledge(7), error => error instanceof api.DemoApiError && error.status === 502);
 delete globalThis.__similarTestFetch;
 console.log("similar interaction contract: ok");

@@ -32,7 +32,7 @@ function accountTypeLabel(value) {
         <h1>{{ t.demoTitle }}</h1>
         <p class="muted">{{ t.demoText }}</p>
       </div>
-      <span class="demo-version">Web Demo Version 0.0.1</span>
+      <span class="demo-version">Web Demo Version 0.1.0</span>
     </header>
 
     <div v-if="loading" class="dashboard-loading">{{ t.demoLoading }}</div>

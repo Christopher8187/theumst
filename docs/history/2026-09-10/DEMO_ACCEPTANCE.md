@@ -1,3 +1,5 @@
+Historical input. Read current docs from the repository README.
+
 # Protected Web Demo acceptance matrix
 
 This document records the Demo Team's focused acceptance surface. It is not a release declaration and does not cover shared authentication, storage, migrations, ingestion, Nginx, infrastructure, or deployment.

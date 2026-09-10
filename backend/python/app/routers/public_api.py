@@ -10,7 +10,6 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.responses import RedirectResponse
 
 from ..config import get_settings
 from ..database import transaction
@@ -38,23 +37,21 @@ def read_public_storage(path: str):
     key = storage.clean_key(path)
     with transaction() as (_, cur):
         cur.execute(
-            "SELECT 1 FROM book_image WHERE storage_key = %s AND is_active LIMIT 1",
+            """SELECT 1 FROM book_image bi JOIN grimoire g ON g.grimoire_id=bi.grimoire_id
+               WHERE bi.storage_key=%s AND bi.is_active AND g.source_metadata->>'demo'='true' LIMIT 1""",
             (key,),
         )
         if cur.fetchone() is None:
             raise HTTPException(status_code=404, detail="Book image not found")
-    response_headers = {"Cache-Control": "public, max-age=300"}
-    if storage.storage_mode() == "LOCAL":
-        return Response(
-            content=storage.read_bytes(key),
-            media_type=storage.media_type_for(key),
-            headers=response_headers,
-        )
-    return RedirectResponse(
-        storage.signed_read_url(key),
-        status_code=307,
-        headers=response_headers,
-    )
+    response_headers = {
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        # Book images can be SVG. Serving them through this governed origin
+        # must not grant embedded scripts access to application cookies/state.
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    }
+    return Response(content=storage.read_bytes(key), media_type=storage.media_type_for(key), headers=response_headers)
+
 
 
 @router.get("/knowledge")
@@ -76,6 +73,7 @@ def read_knowledge_collection(
     rows = list_knowledge(
         language_id=language_id, limit=requested, offset=offset,
         grimoire_id=grimoire_id, section_id=section_id, working_type=type,
+        include_hidden=key["key_type"] == "master",
     )
     return {
         "items": rows, "limit": requested, "offset": offset,
@@ -87,7 +85,7 @@ def read_knowledge_collection(
 def read_one_knowledge(knowledge_id: int, request: Request, language_id: int = Query(1, gt=0)):
     key = authenticate_api_key(request)
     return {
-        "item": get_knowledge(knowledge_id, language_id),
+        "item": get_knowledge(knowledge_id, language_id, include_hidden=key["key_type"] == "master"),
         "key_type": key["key_type"], "rate_remaining": key.get("rate_remaining"),
     }
 

@@ -8,7 +8,7 @@ from app.reviewed_migrations import MigrationSafetyError, apply_reviewed_migrati
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Apply checksum-pinned database migration 006 after a verified backup."
+        description="Apply checksum-pinned database reviewed migrations after a verified backup."
     )
     parser.add_argument("--backup-sha256", required=True)
     arguments = parser.parse_args()

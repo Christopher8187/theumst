@@ -21,7 +21,7 @@ function openInlineImage(event) {
     <div class="knowledge-meta">
       <span class="type-chip" :class="node.type">{{ node.type }}</span>
       <span>#{{ node.knowledge_id }}</span>
-      <span>{{ node.label }}</span>
+      <span v-html="renderMath(node.label || '')"></span>
       <strong :title="mode === 'questions' ? t.questionSymbol : t.bookSymbol">{{ mode === 'questions' ? '?' : '▥' }}</strong>
     </div>
     <section class="knowledge-section statement-section">
@@ -33,10 +33,10 @@ function openInlineImage(event) {
       <div class="math-content" v-html="working" @click="openInlineImage"></div>
       <div v-if="node.images?.length" class="knowledge-images">
         <button v-for="image in node.images" :key="image.source_image_id" type="button" @click="$emit('open-image', image)">
-          ▧ {{ image.semantic_context_name || `Image ${image.source_image_id}` }}
+          ▧ {{ image.semantic_context_name || `${t.bookImage} ${image.source_image_id}` }}
         </button>
       </div>
-      <button class="sound-corner" type="button" @click="$emit('soon', 'sound')">▶</button>
+      <button class="sound-corner" type="button" :aria-label="t.listen" @click="$emit('soon', 'sound')">▶</button>
     </section>
   </article>
   <div v-else class="knowledge-empty">{{ t.selectNode }}</div>

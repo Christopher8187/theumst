@@ -1,8 +1,25 @@
 <script setup>
+import { computed } from "vue";
+import ContentsTree from "./ContentsTree.vue";
+import { buildContentsTree } from "../domain/contents";
 import BookObject from "./BookObject.vue";
 
-defineProps({ t: Object, book: Object, contents: Array, summoning: Boolean });
+const props = defineProps({
+  t: Object,
+  book: Object,
+  contents: Array,
+  summoning: Boolean,
+});
 defineEmits(["summon"]);
+const tree = computed(() =>
+  buildContentsTree(props.contents).flatMap((section) =>
+    section.children.length &&
+    (section.is_book_root === true ||
+      ["", "0"].includes(String(section.section_number ?? "")))
+      ? section.children
+      : [section],
+  ),
+);
 </script>
 
 <template>
@@ -18,21 +35,27 @@ defineEmits(["summon"]);
     <div class="book-detail-grid">
       <div class="book-pedestal">
         <BookObject :title="book.title" large />
-        <p><span>{{ t.isbn }}:</span> {{ book.isbn || '—' }}</p>
+        <p>
+          <span>{{ t.isbn }}:</span> {{ book.isbn || "—" }}
+        </p>
       </div>
       <div class="summary-oracle">
         <div class="oracle-head">
           <span class="oracle-sigil">✦</span>
-          <div><p class="demo-kicker">UMST SYNTHESIS</p><h2>{{ t.aiSummary }}</h2></div>
+          <div>
+            <p class="demo-kicker">THEUMST</p>
+            <h2>{{ t.summary }}</h2>
+          </div>
         </div>
         <p class="summary-copy">{{ book.summary || book.title }}</p>
         <h3>{{ t.contents }}</h3>
-        <ol class="contents-list">
-          <li v-for="section in contents" :key="section.section_id">
-            <span>{{ section.section_number }}</span>{{ section.section_name }}
-          </li>
-        </ol>
-        <button class="primary-button summon-button" :class="{ summoning }" type="button" @click="$emit('summon')">
+        <ContentsTree :t="t" :items="tree" />
+        <button
+          class="primary-button summon-button"
+          :class="{ summoning }"
+          type="button"
+          @click="$emit('summon')"
+        >
           <span>✧</span>{{ book.summoned ? t.summoned : t.summon }}
         </button>
       </div>

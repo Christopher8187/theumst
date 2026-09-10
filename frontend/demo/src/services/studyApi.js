@@ -42,12 +42,15 @@ export async function fetchSimilarKnowledge(knowledgeId, options = {}) {
   ));
   const params = new URLSearchParams({
     k: String(requestedLimit),
-    scope: "book"
+    scope: "available_books"
   });
-  const payload = await demoFetch(`/api/demo/knowledge/${knowledgeId}/similar?${params}`, {
+  const payload = await demoFetch(`/api/demo/knowledge/${knowledgeId}/neighbors?${params}`, {
     signal: options.signal
   });
-  return { results: normalizeSimilarResults(payload.results, knowledgeId, requestedLimit) };
+  if (!payload || !Array.isArray(payload.results)) {
+    throw new DemoApiError("Malformed neighbor response", 502);
+  }
+  return { ...payload, results: normalizeSimilarResults(payload.results, knowledgeId, requestedLimit) };
 }
 
 export function isUnavailable(reason) {

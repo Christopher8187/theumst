@@ -1,3 +1,5 @@
+Historical input. Read current docs from the repository README.
+
 # Docker quick reference
 
 The complete source-to-live instructions are in [`README.md`](README.md).

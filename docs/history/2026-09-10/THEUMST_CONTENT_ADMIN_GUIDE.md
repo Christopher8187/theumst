@@ -1,3 +1,5 @@
+Historical input. Read current docs from the repository README.
+
 # theumst website and content administration guide
 
 This guide covers the database-backed content-management workflow. The protected interactive prototype added later is documented separately in `THEUMST_WEB_DEMO_GUIDE.md`.

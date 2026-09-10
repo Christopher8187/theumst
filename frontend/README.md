@@ -1,26 +1,7 @@
-# Frontend layout
+# Frontend applications
 
-The two Vue apps stay separate:
+Theumst has three Vue applications. [Public site](webpage/README.md) covers public pages and account forms. [Dashboard](dashboard/README.md) covers signed-in profile and permitted management tools. [Web Demo](demo/README.md) covers the library and study workflow behind its access check.
 
-- `webpage/` is the public site on local port `5173`.
-- `dashboard/` is the logged-in app on local port `5174`.
+Each directory owns `package.json`, Vite configuration and a Dockerfile. `urls.js` supplies shared URL configuration. Public and dashboard build outputs are served by FastAPI; the demo build is served by its isolated Nginx container. [Frontend architecture](../docs/architecture/frontend.md) explains shared sessions and state boundaries.
 
-They share `frontend/urls.js` for local/prod URL helpers.
-
-Static images now live under the backend:
-
-```text
-backend/assets/images/
-```
-
-The backend serves them at `/images/...`. During local Vite development, `VITE_ASSET_BASE=http://localhost:8000/images` points both Vue apps to the backend asset server. In deployment, nginx proxies everything to FastAPI, so `/images/...` still works.
-
-Each app uses the same simple structure:
-
-- `src/components/` for reusable UI pieces.
-- `src/pages/` for page-level screens/content.
-- `src/router/` for route names and route decisions.
-- `src/utils/` for small helpers such as i18n code.
-- `src/App.vue` as the small coordinator for the app.
-
-The public webpage is now real Vue components, not raw HTML fragments injected through `v-html`.
+Install locked dependencies with `npm ci` inside each application and run `npm run build`. A coordinated application release builds all three. Deterministic demo checks and browser coverage are documented in [testing](../docs/testing.md).

@@ -1,3 +1,5 @@
+Historical input. Read current docs from the repository README.
+
 # The Ultimate Mega Study Tool — Web Demo Version 0.0.1 guide
 
 This release adds a protected, interactive study prototype in an isolated container. It is designed as the first usable layer of the wider UMST ecosystem: structured learning today, and richer expert-reviewed benchmarking, model evaluation, AI training, and AI-safety research over time.

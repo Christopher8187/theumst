@@ -1,0 +1,15 @@
+# Atlas
+
+The accepted [Section Atlas resolution](https://github.com/Christopher8187/product/issues/28#issuecomment-5600385536) keeps a familiar reader on the left and a local Atlas on the right. All available objects in the base grimoire are eligible. Only objects qualifying by either book-position distance or undirected authored-dependency distance enter the bounded view. The two distances have independent controls.
+
+There are exactly two views. Reading rows packs smallest-section groups across alternating rows, restarting within each larger subsection. Hierarchy places groups in generally downward dependency layers. Both layouts place the enclosing direct subsections using the same selected view. Smallest sections have soft fills; direct subsections below the whole-book root have curved borders. Preserve full nested ancestry in the reader.
+
+Gold arrows represent the complete reader order. Solid gold joins truly consecutive available positions; dotted gold spans omitted positions. A count-only `+N outside view` label sits beside its own dotted arrow, avoiding cards, headings, arrows, other labels and borders. Counts describe omitted available positions, never hidden source material. Labels do not expand intervals. Continue visits one next object and recenters; Back restores the previous visit. Navigation leaves completion unchanged.
+
+Dependency arrows remain separate, including when their endpoints match gold arrows. Their ports and segments remain distinct. Dependency input must be explicitly authored; the generated `book_order_v1` response is not such input. With no authored dependency data, retain ordered navigation and state that dependency data is unavailable. [Data architecture](architecture/data.md) owns the existing stores and later integration decision.
+
+The layout ranks strongly connected section groups without deleting object relationships. This supports cycles introduced by grouping, but does not settle the later producer/consumer cycle rules. Orthogonal routing avoids cards/headings and occupied segments; gap labels are placed after routing. Unexpected routing failures are visible and require verification, not invented edges.
+
+The 0.1.0 limits are 24 objects and 72 arrows. Chrome 152 checks covered 8/19, 16/43 and 24/70 object/arrow combinations. A dense case with 72 supplied dependency edges rendered 23 objects and 72 total arrows, including 22 order arrows. It displayed the arrow-limit notice and measured 60.1 ms through layout and 67.3 ms through the second painted frame. At 1440, 768 and 390 CSS pixels the page had no horizontal overflow; the Atlas retained its own scrollable viewport. These fixture measurements support the selected bounds, not a universal latency guarantee. Do not raise them without further measurements. Math must render safely. See [testing](testing.md) and [browser objectives](testing/web-demo.md).
+
+Activate an outside-view count with pointer, Enter or Space to report the omitted range of book positions. This leaves the view unchanged; Continue still visits one next object. Nested groups restart their own rows and preserve the section hierarchy.

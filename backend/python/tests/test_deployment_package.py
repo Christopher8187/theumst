@@ -99,9 +99,10 @@ def test_production_demo_is_isolated_and_proxy_protected():
 
 def test_agent_deployment_and_complete_readme_are_present():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "Deploy theumst.com from source to a live website" in readme
-    assert "Deploy theumst.cn from source to a live website" in readme
-    assert "Create and promote Christopher" in readme
+    assert "docs/operations.md" in readme
+    operations = (ROOT / "docs/operations.md").read_text(encoding="utf-8")
+    assert "COM" in operations and "CN" in operations
+    assert "backup" in operations.lower()
     script = (ROOT / "dev/sh/agent_deploy.sh").read_text(encoding="utf-8")
     assert 'remote_full_deploy "$TARGET"' in script
     assert 'chmod 600 "$RUNTIME_SSH_KEY_DIR/$KEY_NAME"' in script

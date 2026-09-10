@@ -327,6 +327,20 @@ class QdrantService:
             for point in points
         ]
 
+    def query_candidates(self, *, collection: str, point_id: str,
+                         candidate_ids: list[str], limit: int) -> list[dict[str, Any]]:
+        """Score only the compatible, visible embedding IDs selected by SQL."""
+        if not candidate_ids:
+            return []
+        if not 1 <= limit <= 256:
+            raise ValueError('limit must be between 1 and 256')
+        name = quote(collection, safe='')
+        response = self._request('POST', f'/collections/{name}/points/query', json={
+            'query': str(point_id), 'filter': {'must': [{'has_id': candidate_ids}]},
+            'limit': limit, 'with_payload': False, 'with_vector': False,
+        })
+        return response.get('result', {}).get('points', [])
+
     def upsert(
         self,
         *,

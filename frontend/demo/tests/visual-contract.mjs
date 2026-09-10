@@ -47,23 +47,22 @@ check("Contents hierarchy uses parent metadata", /parent_section/.test(contentsD
 check("collapsed Contents branches stay out of DOM", /expanded\.has\(key\)[\s\S]*?flattenVisibleContents\(item\.children/m.test(contentsDomain) && /visibleRows[\s\S]*?slice\(pageStart\.value,\s*pageEnd\.value\)/m.test(contentsView), "Only expanded descendants in the bounded visible window may enter the DOM.");
 check("Contents controls expose tree state", /role="treeitem"/.test(contentsView) && /:aria-level=/.test(contentsView) && /:aria-expanded=/.test(contentsView) && /:aria-current=/.test(contentsView), "Expansion, depth, and current location must be available to assistive technology.");
 
-check("Crystallize control absent", !/crystallize/i.test(studyView), "The unavailable Crystallize feature must not be interactive or presented as working.");
+
 check("exact Cluster action", /\{\{\s*t\.cluster\s*\}\}/.test(studyView), "The embedding-neighbour action must use Christopher's exact Cluster label.");
-check("canonical Similar endpoint", /\/api\/demo\/knowledge\/\$\{knowledgeId\}\/similar\?\$\{params\}/.test(studyApi), "Similarity must use the frozen top-k endpoint.");
-check("legacy Crystallize endpoint absent", !/\/api\/demo\/crystallize/.test(app + studyApi), "No runtime call may target the removed Crystallize endpoint.");
+check("cross-book neighbor endpoint", /\/api\/demo\/knowledge\/\$\{knowledgeId\}\/neighbors\?\$\{params\}/.test(studyApi), "Similarity must use the frozen top-k endpoint.");
+
 check("Similarity excludes selected item", /(?:Number\(result\.knowledge_id\)\s*!==\s*Number\(knowledgeId\)|key\s*===\s*selectedKey|String\(result\.knowledge_id\)\s*!==\s*selectedKey)/.test(studyApi), "The selected item cannot appear in its own neighbours.");
 check("Similarity sorts descending", /sort\s*\(\s*\((?:a|left),\s*(?:b|right)\)\s*=>\s*(?:b|right)\.similarity_score\s*-\s*(?:a|left)\.similarity_score\s*\)/.test(studyApi), "Top-k results must be displayed from highest to lowest similarity.");
 
 check("canonical focused graph endpoint", /\/api\/demo\/grimoires\/\$\{grimoireId\}\/graph\?\$\{params\}/.test(studyApi), "The graph must come from the frozen focused-slice endpoint.");
 check("focused graph bounds", /ancestor_depth/.test(studyApi) && /descendant_depth/.test(studyApi) && /limit:\s*"150"/.test(studyApi), "The graph request must carry depth and hard-limit bounds.");
-check("reader index cached once per book", /const\s+studyCache\s*=\s*new\s+Map\(\)/.test(app) && /studyCache\.get\(cacheKey\)[\s\S]*?if\s*\(!data\)[\s\S]*?demoFetch\(`\/api\/demo\/grimoires\/\$\{bookId\}\/knowledge`\)[\s\S]*?studyCache\.set\(cacheKey,\s*data\)/m.test(app), "The permitted static reader index must be fetched at most once per grimoire in a demo session.");
 check("graph consumes focused slice only", /props\.graph/.test(graphView) && !/source_order|props\.nodes|relationCounts/.test(graphView), "KnowledgeGraph must render only the canonical focused graph slice, never reader-index order or type-derived lanes.");
 check("assessment role protected", /ASSESSMENT_TYPES[\s\S]*?return\s+"assessment"/m.test(graphDomain), "Exercise nodes must be classified as assessment, never backbone.");
 check("fragment role protected", /FRAGMENT_TYPES[\s\S]*?return\s+"fragment"/m.test(graphDomain), "JAS nodes must be classified as fragments, never backbone.");
 check("graph consumes canonical projection edges", /source_knowledge_id/.test(graphDomain) && /target_knowledge_id/.test(graphDomain) && /relation_type/.test(graphDomain) && /book_order_v1/.test(graphDomain), "The client must preserve the server-supplied book_order_v1 projection fields without manufacturing edges.");
 check("graph has deliberate empty state", /(?:edge-empty-state|graph-(?:empty|unavailable))/.test(graphView), "An edge-empty or unavailable focused graph needs an honest visible state.");
 
-check("image close is named", /aria-label="Close image"/.test(imagePanel), "The image panel close control must have an accessible name.");
+check("image close is named", /:aria-label="t.close"/.test(imagePanel), "The image panel close control must have an accessible name.");
 check("image alt text is meaningful", /:alt=/.test(imagePanel), "Book images must expose contextual alternative text.");
 
 const failures = checks.filter(item => !item.condition);

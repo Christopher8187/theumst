@@ -69,6 +69,10 @@ REVIEWED_MIGRATIONS = (
         ),
         shared_markers=(Marker("relation", "public.section_book_parent_idx"),),
     ),
+    ReviewedMigration(
+        key="study_positions_v1", filename="007_study_positions.sql", sha256="0d107f66c82a24ef01d6a3fb439c250e45526ca6ddafef0838d427ce2fbace97",
+        exclusive_markers=(Marker("column", "public.demo_study_state.questions_knowledge_id"),),
+    ),
 )
 
 
@@ -175,7 +179,7 @@ def apply_reviewed_migrations(
     backup_sha256: str,
     settings: Settings | None = None,
 ) -> dict[str, Any]:
-    """Apply only checksum-pinned, wholly missing migration 006."""
+    """Apply only checksum-pinned, wholly missing reviewed migrations."""
     backup_fingerprint = validate_backup_sha256(backup_sha256)
     sources = validated_migration_sources(settings)
     actions: list[dict[str, str]] = []

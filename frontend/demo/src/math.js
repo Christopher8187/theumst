@@ -13,16 +13,21 @@ export function renderMath(value) {
   const source = String(value || "");
   let cursor = 0;
   let output = "";
-  const matcher = /\$\$([\s\S]+?)\$\$|<%%\s*image\b[\s\S]*?%%>/gi;
+  const matcher =
+    /\$\$([\s\S]+?)\$\$|(?<!\\)\$([^$\n]+?)(?<!\\)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|<%%\s*image\b[\s\S]*?%%>/gi;
   for (const match of source.matchAll(matcher)) {
-    output += escapeHtml(source.slice(cursor, match.index)).replaceAll("\n", "<br>");
-    if (match[1] !== undefined) {
+    output += escapeHtml(source.slice(cursor, match.index)).replaceAll(
+      "\n",
+      "<br>",
+    );
+    const math = match[1] ?? match[2] ?? match[3] ?? match[4];
+    if (math !== undefined) {
       try {
-        output += katex.renderToString(match[1], {
-          displayMode: true,
+        output += katex.renderToString(math, {
+          displayMode: match[1] !== undefined || match[3] !== undefined,
           throwOnError: false,
           strict: false,
-          trust: false
+          trust: false,
         });
       } catch {
         output += `<code>${escapeHtml(match[0])}</code>`;

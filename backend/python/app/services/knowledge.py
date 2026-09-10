@@ -359,8 +359,11 @@ def list_knowledge(
     grimoire_id: int | None = None,
     section_id: int | None = None,
     working_type: str | None = None,
+    include_hidden: bool = False,
 ) -> list[dict[str, Any]]:
     conditions = ["lk.language_id = %s", "k.is_active"]
+    if not include_hidden:
+        conditions.append("g.source_metadata->>'demo'='true'")
     params: list[Any] = [language_id]
     if grimoire_id is not None:
         conditions.append("s.grimoire_id = %s"); params.append(grimoire_id)
@@ -395,7 +398,7 @@ def list_knowledge(
         return list(cur.fetchall())
 
 
-def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
+def get_knowledge(knowledge_id: int, language_id: int, *, include_hidden: bool = False) -> dict[str, Any]:
     with transaction() as (_, cur):
         cur.execute(
             """
@@ -440,14 +443,14 @@ def get_knowledge(knowledge_id: int, language_id: int) -> dict[str, Any]:
             JOIN grimoire g ON g.grimoire_id = s.grimoire_id
             LEFT JOIN semantic_projection sp ON sp.knowledge_id = k.knowledge_id
                 AND sp.language_id = lk.language_id AND sp.is_active
-            WHERE k.knowledge_id = %s AND k.is_active
+            WHERE k.knowledge_id = %s AND k.is_active AND (%s OR g.source_metadata->>'demo'='true')
             GROUP BY k.knowledge_id, kc.likes, lk.language_id, lk.statement, lk.working,
                      lk.label, lk.working_summary, lk.ref_id,
                      lk.labelled_references, lk.object_reference_labels,
                      lk.loose_references_guessed_objects,
                      s.section_id, s.source_key, g.grimoire_id, g.source_key
             """,
-            (language_id, knowledge_id),
+            (language_id, knowledge_id, include_hidden),
         )
         row = cur.fetchone()
         if not row:
