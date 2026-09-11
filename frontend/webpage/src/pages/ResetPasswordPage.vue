@@ -1,7 +1,6 @@
 <script setup>
 import { onMounted, ref } from "vue";
-import { apiFetch, assetUrl } from "../../../urls.js";
-import SiteHeader from "../components/SiteHeader.vue";
+import { apiFetch } from "../../../urls.js";
 
 const props = defineProps({ tr: Function, session: Object });
 defineEmits(["navigate", "set-language"]);
@@ -43,13 +42,6 @@ async function submit() {
 </script>
 
 <template>
-  <SiteHeader
-    :tr="tr"
-    compact
-    :session="session"
-    @navigate="$emit('navigate', $event)"
-    @set-language="$emit('set-language', $event)"
-  />
 
   <main class="login-page">
     <section class="login-shell">
@@ -62,7 +54,6 @@ async function submit() {
 
       <section class="login-card">
         <div class="login-card-top">
-          <img :src="assetUrl('logo.png')" :alt="tr('alt.logo')">
           <div>
             <p>{{ tr("reset.title") }}</p>
             <h2>{{ tr("reset.cardHeading") }}</h2>

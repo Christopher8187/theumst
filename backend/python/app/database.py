@@ -53,7 +53,7 @@ def _sql_files(sql_dir: Path) -> list[Path]:
 def initialize_database(max_attempts: int = 30) -> None:
     """Apply the local-development schema replay.
 
-    Production releases use the explicit checksummed 006/007 runner instead.
+    Production releases use the explicit checksummed reviewed runner instead.
     Keeping the guard here prevents another caller from accidentally replaying
     historical fixture/seed migrations outside an explicitly local stack.
     """

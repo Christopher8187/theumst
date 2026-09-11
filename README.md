@@ -1,8 +1,8 @@
-# Theumst 0.1.0
+# Theumst 0.2.0
 
 Theumst turns structured books into a reader with saved study positions, shared completion, personal notes and discovery across available books. A reader signs in on the public site, requests Web Demo access from the dashboard, summons a grimoire and enters Text, Notes or Questions. The other realm entries describe future learning activities and currently show a coming-soon message.
 
-The public site, signed-in dashboard and protected Web Demo are three separate Vue applications. One FastAPI backend handles accounts, permissions, content management, study state and publishing. PostgreSQL holds book structure and user state; Qdrant holds semantic vectors; book images use local storage, DigitalOcean Spaces on COM or Aliyun OSS on CN. The internal Nginx proxy checks Web Demo access before serving its separate container. Read [application architecture](docs/architecture/application.md) for request paths and [data architecture](docs/architecture/data.md) for ownership.
+The public site and signed-in dashboard share a desktop of movable windows over a quiet library and cave illustration. Profile holds account details and optional News subscriptions. The protected Web Demo keeps its existing interface and separate Vue build. One FastAPI backend handles accounts, permissions, content management, study state and publishing. PostgreSQL holds book structure and user state; Qdrant holds semantic vectors; book images use local storage, DigitalOcean Spaces on COM or Aliyun OSS on CN. The internal Nginx proxy checks Web Demo access before serving its separate container. Read [application architecture](docs/architecture/application.md) for request paths and [data architecture](docs/architecture/data.md) for ownership.
 
 ## Common work
 
@@ -12,6 +12,6 @@ Read [CONTEXT.md](CONTEXT.md) for Theumst meanings and its link to shared knowle
 
 Content managers use dashboard Books and Media. [Administration](docs/administration.md) explains hiding, deletion and roles. Publishers use the master-key [Whole-book upload](docs/ingestion.md). Read [security](docs/security.md) before changing access or publishing keys and [account recovery](docs/account-recovery.md) for SMTP and reset behavior.
 
-Before publishing an update, follow [testing](docs/testing.md), [release identity](docs/releases.md) and [operations](docs/operations.md). COM and CN have independent data and settings. The 0.1.0 delivery targets COM only. The [0.1.0 release record](https://github.com/Christopher8187/theumst/releases/tag/v0.1.0) records publication, verification and the deployed COM revision.
+Before publishing an update, follow [testing](docs/testing.md), [release identity](docs/releases.md) and [operations](docs/operations.md). COM and CN have independent data and settings. The 0.2.0 delivery targets COM only and preserves Web Demo 0.1.0. [News subscriptions](docs/news-subscriptions.md) describes consent, announcement publication and delivery operation.
 
 Agent reading paths and repository procedures start in [AGENTS.md](AGENTS.md). Current explanations live under `docs/`; [historical material](docs/history/README.md) and [proposed graph effects](docs/plans/graph-effects.md) are separate from current behavior.

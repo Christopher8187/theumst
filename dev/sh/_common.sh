@@ -368,6 +368,11 @@ COOKIE_SECURE=true
 CORS_ORIGINS=https://${DOMAIN},https://www.${DOMAIN}
 PUBLIC_WEBPAGE_URL=https://${DOMAIN}
 PASSWORD_RESET_TTL_MINUTES=${PASSWORD_RESET_TTL_MINUTES:-60}
+EMAIL_VERIFICATION_TTL_HOURS=${EMAIL_VERIFICATION_TTL_HOURS:-24}
+RESEND_API_KEY=${RESEND_API_KEY:-}
+RESEND_WEBHOOK_SECRET=${RESEND_WEBHOOK_SECRET:-}
+NEWS_DELIVERY_ENABLED=${NEWS_DELIVERY_ENABLED:-false}
+NEWS_POLL_SECONDS=${NEWS_POLL_SECONDS:-10}
 
 SMTP_HOST=${SMTP_HOST:-}
 SMTP_PORT=${SMTP_PORT:-587}
@@ -417,11 +422,38 @@ EOF
     fi
 }
 
+release_source_revision() {
+    local revision
+    if [ -f "$ROOT/RELEASE_REVISION" ]; then
+        # An exact Git archive has no .git directory. Its caller supplies the
+        # independently verified published revision as release metadata.
+        revision="$(cat "$ROOT/RELEASE_REVISION")"
+    elif command -v git >/dev/null 2>&1 &&
+        [ "$(git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" = true ] &&
+        [ -z "$(git -C "$ROOT" rev-parse --show-prefix)" ]; then
+        [ -z "$(git -C "$ROOT" status --porcelain --untracked-files=normal)" ] || {
+            echo "Deployment requires a clean source tree or an exact export with RELEASE_REVISION." >&2
+            return 1
+        }
+        revision="$(git -C "$ROOT" rev-parse --verify HEAD)" || return 1
+    else
+        echo "Deployment requires RELEASE_REVISION or a clean Git repository root." >&2
+        return 1
+    fi
+    [[ "$revision" =~ ^[0-9a-fA-F]{40}$ ]] || {
+        echo "RELEASE_REVISION must contain exactly 40 hexadecimal characters." >&2
+        return 1
+    }
+    printf '%s\n' "$revision"
+}
+
 remote_upload() {
     remote_context "$1"
     [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
 
-    local work_dir stage archive archive_name remote_archive remote_stage archive_size cleanup_command
+    local work_dir stage archive archive_name remote_archive remote_stage archive_size cleanup_command source_revision archive_sha256
+    source_revision="$(release_source_revision)" || return 1
+    command -v sha256sum >/dev/null 2>&1 || { echo "Required command is missing: sha256sum" >&2; return 1; }
     work_dir="$(mktemp -d 2>/dev/null || mktemp -d -t theumst_upload)"
     stage="$work_dir/stage"
     archive_name="theumst-${TARGET_SERVER}-$(date +%Y%m%d%H%M%S)-$$.tar.gz"
@@ -459,9 +491,13 @@ remote_upload() {
     # single network upload and never sends COM credentials to CN or vice versa.
     build_remote_env "$TARGET_SERVER" "$stage/.env"
     chmod 600 "$stage/.env"
+    printf '%s\n' "$source_revision" > "$stage/RELEASE_REVISION"
     tar -czf "$archive" -C "$stage" .
+    archive_sha256="$(sha256sum "$archive" | awk '{print $1}')"
 
     archive_size="$(du -h "$archive" | awk '{print $1}')"
+    echo "Source revision: $source_revision"
+    echo "Deployment archive SHA-256: $archive_sha256"
     echo "Uploading one archive ($archive_size) to $REMOTE:$remote_archive..."
     scp "${SSH_OPTIONS[@]}" -i "$KEY" "$archive" "$REMOTE:$remote_archive"
 
@@ -473,11 +509,14 @@ remote_upload() {
         incoming='$remote_stage'; \
         previous='${REMOTE_ROOT}.previous'; \
         if [ -e \"\$previous\" ]; then echo 'A retained previous release already exists; resolve it before deploying.' >&2; exit 1; fi; \
+        printf '%s  %s\\n' '$archive_sha256' '$remote_archive' | sha256sum --check --status || { echo 'Deployment archive SHA-256 mismatch; current source preserved.' >&2; exit 1; }; \
         rm -rf \"\$incoming\"; \
         mkdir -p \"\$incoming\"; \
         tar -xzf '$remote_archive' -C \"\$incoming\"; \
         test -f \"\$incoming/compose.deploy.yml\"; \
         test -f \"\$incoming/.env\"; \
+        grep -Fx '$source_revision' \"\$incoming/RELEASE_REVISION\" >/dev/null; \
+        printf '%s\\n' '$archive_sha256' > \"\$incoming/DEPLOYMENT_ARCHIVE_SHA256\"; \
         chmod 600 \"\$incoming/.env\"; \
         rm -f '$remote_archive'; \
         if [ -d '$REMOTE_ROOT' ]; then $SUDO mv '$REMOTE_ROOT' \"\$previous\"; fi; \

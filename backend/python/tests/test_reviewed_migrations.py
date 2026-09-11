@@ -19,7 +19,10 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_reviewed_sources_have_exact_checksums_and_exclude_historical_seeds():
     settings = SimpleNamespace(sql_dir=ROOT / "backend/sql")
     sources = reviewed_migrations.validated_migration_sources(settings)
-    assert [migration.filename for migration, _ in sources] == ["006_knowledge_graph.sql", "007_study_positions.sql"]
+    assert [migration.filename for migration, _ in sources] == [
+        "006_knowledge_graph.sql", "007_study_positions.sql", "008_news_subscriptions.sql",
+        "009_media_create_requests.sql",
+    ]
     assert "007_research_corpus_access.sql" not in Path(
         reviewed_migrations.__file__
     ).read_text(encoding="utf-8")
@@ -216,6 +219,7 @@ def test_disabled_startup_calls_schema_gate_before_dependencies(monkeypatch, tmp
 
     settings = SimpleNamespace(
         db_schema_startup_mode="disabled",
+        news_delivery_enabled=False,
         cors_origins=(),
         server="COM",
         local_storage_dir="__AUTO__",

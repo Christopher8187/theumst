@@ -1,19 +1,11 @@
 <script setup>
-import { assetUrl } from "../../../urls.js";
-import SiteHeader from "../components/SiteHeader.vue";
 
-defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean });
+
+defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean, loginMessage: String, authBusy: Boolean });
 defineEmits(["navigate", "set-language", "signup"]);
 </script>
 
 <template>
-  <SiteHeader
-    :tr="tr"
-    compact
-    :session="session"
-    @navigate="$emit('navigate', $event)"
-    @set-language="$emit('set-language', $event)"
-  />
 
   <main class="login-page">
     <section class="login-shell">
@@ -26,13 +18,13 @@ defineEmits(["navigate", "set-language", "signup"]);
 
       <section class="login-card">
         <div class="login-card-top">
-          <img :src="assetUrl('logo.png')" :alt="tr('alt.logo')">
           <div>
             <p>{{ tr("signup.title") }}</p>
             <h2>{{ tr("signup.cardHeading") }}</h2>
           </div>
         </div>
 
+        <p v-if="loginMessage" class="login-status is-error" role="alert">{{loginMessage}}</p>
         <form @submit.prevent="$emit('signup', $event)">
           <label>
             <span>{{ tr("signup.username") }}</span>
@@ -49,7 +41,7 @@ defineEmits(["navigate", "set-language", "signup"]);
             <input type="password" name="password" autocomplete="new-password" required>
           </label>
 
-          <button type="submit">{{ tr("signup.submit") }}</button>
+          <button type="submit" :disabled="authBusy">{{ tr("signup.submit") }}</button>
           <p class="auth-form-note">{{ tr("signup.verifyNote") }}</p>
           <a class="secondary-action" href="/login" @click.prevent="$emit('navigate', '/login')">{{ tr("signup.login") }}</a>
         </form>

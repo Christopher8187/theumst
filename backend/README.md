@@ -7,3 +7,5 @@ Read [backend architecture](../docs/architecture/backend.md) before changing rou
 Use [operations](../docs/operations.md) for setup/startup and [RUN.md](RUN.md) for current operating findings. Run the relevant modules from [the test guide](python/tests/README.md); importing a route with stubbed dependencies does not establish PostgreSQL or Qdrant behavior.
 
 The [Real Analysis demo sample](examples/real-analysis-demo/README.md) packages the saved Section Atlas material for Whole-book upload without changing the application or its schema.
+
+[News subscriptions](../docs/news-subscriptions.md) describes explicit email consent, Media announcement preview and publishing, the persistent delivery worker and verified provider suppression. The worker is disabled by default. Account security emails continue through SMTP; announcements use Resend's HTTP API with saved idempotency keys.

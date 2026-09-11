@@ -1,6 +1,6 @@
 # Application architecture
 
-The public Vue site presents books, news and account forms. The dashboard is a separate Vue build for profile, API keys and permitted management pages. The Web Demo is a third Vue build containing the library, realm selection and study interface. [Frontend architecture](frontend.md) describes their state and navigation.
+The public site and dashboard are separate Vue builds that share the desktop, background, windows and Profile. Public windows present learning information, News and account forms. Signed-in dashboard tools provide API keys and permitted management pages. The Web Demo is a third, unchanged Vue build containing the library, realm selection and study interface. [Frontend architecture](frontend.md) describes their state and navigation.
 
 FastAPI serves the public and dashboard build outputs, owns authenticated APIs and publishes health endpoints. In deployment, host Nginx terminates TLS and forwards to the loopback-bound internal proxy. That proxy serves `/demo/` from the isolated demo container after an auth subrequest to `/api/demo/auth-check`. Requests under `/api/` reach the backend. API failures must remain API responses instead of falling through to a Vue page.
 

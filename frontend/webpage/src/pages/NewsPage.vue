@@ -1,7 +1,6 @@
 <script setup>
 import { onMounted, ref } from "vue";
 import { apiFetch, apiUrl, assetUrl } from "../../../urls.js";
-import SiteHeader from "../components/SiteHeader.vue";
 
 defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean });
 defineEmits(["navigate", "set-language", "login", "signup"]);
@@ -24,7 +23,6 @@ onMounted(async () => {
 </script>
 
 <template>
-  <SiteHeader :tr="tr" title-key="news.title" :session="session" @navigate="$emit('navigate', $event)" @set-language="$emit('set-language', $event)" />
   <main class="site-container news-page">
     <div class="news-page-intro"><p>{{ tr("news.intro") }}</p><span>{{ posts.length }} {{ tr("news.updates") }}</span></div>
     <div class="news-feed">

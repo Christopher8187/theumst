@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import asyncio
 import os
 from pathlib import Path
 
@@ -12,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from .config import get_settings
 from .database import initialize_database
 from .reviewed_migrations import assert_database_schema_ready
-from .routers import admin, api_keys, auth, content, demo, frontend, health, public_api, superadmin, users
+from .routers import admin, api_keys, auth, content, demo, frontend, health, news, public_api, superadmin, users
+from .services.news import delivery_loop, ensure_news_delivery_configured
 from .services.qdrant import qdrant_service
 
 
@@ -54,7 +56,19 @@ def create_app(*, initialize_services: bool = True) -> FastAPI:
                 # The SQL application remains available if Qdrant is temporarily
                 # offline; /health/qdrant exposes the degraded dependency.
                 print(f"Qdrant initialization warning: {exc}")
-        yield
+        worker = None
+        if initialize_services and settings.news_delivery_enabled:
+            ensure_news_delivery_configured(settings)
+            worker = asyncio.create_task(delivery_loop(settings))
+        try:
+            yield
+        finally:
+            if worker:
+                worker.cancel()
+                try:
+                    await worker
+                except asyncio.CancelledError:
+                    pass
 
     application = FastAPI(
         title="UMST API",
@@ -82,6 +96,7 @@ def create_app(*, initialize_services: bool = True) -> FastAPI:
     application.include_router(users.router)
     application.include_router(api_keys.router)
     application.include_router(content.router)
+    application.include_router(news.router)
     application.include_router(demo.router)
     application.include_router(admin.router)
     application.include_router(superadmin.router)

@@ -30,9 +30,11 @@ from ..security import (
 from ..services.email import (
     EmailConfigurationError,
     ensure_email_configured,
+    send_email_change_email,
     send_email_verification_email,
     send_password_reset_email,
 )
+from ..services.news import confirm_subscription, set_subscription, stop_subscription_for_email_change
 
 
 router = APIRouter(tags=["authentication"])
@@ -161,7 +163,7 @@ async def _deliver_email_change(recipient: str, raw_token: str) -> bool:
     )
     try:
         await run_in_threadpool(
-            send_email_verification_email,
+            send_email_change_email,
             recipient,
             verification_url,
             settings=settings,
@@ -257,6 +259,9 @@ async def login(request: Request):
         row = cur.fetchone()
     if not row or not verify_password(password, row["password_hash"]):
         return _error(request, "/login?error=bad-login", "Incorrect username or password", 401)
+    if str(form.get("news_opt_in", "")).lower() in {"on", "true", "1"}:
+        with transaction() as (_, cur):
+            set_subscription(cur, int(row["user_id"]), True, "login")
     if row["email_verified_at"] is None:
         return _error(
             request,
@@ -340,6 +345,7 @@ def confirm_email_verification(payload: EmailVerificationRequest):
             'UPDATE "user" SET email_verified_at = now() WHERE user_id = %s',
             (token["user_id"],),
         )
+        confirm_subscription(cur, token["user_id"])
         cur.execute(
             "UPDATE email_verification_token SET used_at = now() WHERE user_id = %s AND used_at IS NULL",
             (token["user_id"],),
@@ -426,6 +432,7 @@ def confirm_email_change(payload: EmailVerificationRequest):
             'UPDATE "user" SET email = %s, email_verified_at = now() WHERE user_id = %s',
             (token["new_email"], token["user_id"]),
         )
+        stop_subscription_for_email_change(cur, token["user_id"])
         cur.execute(
             "UPDATE email_change_token SET used_at = now() WHERE user_id = %s AND used_at IS NULL",
             (token["user_id"],),

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -223,3 +225,121 @@ def test_remote_release_paths_use_sudo_under_var_www():
     for section in (upload, start, release):
         assert '$SUDO rm -rf \\"\\$previous\\"' not in section
         assert "$SUDO rm -rf '${REMOTE_ROOT}.previous'" not in section
+
+
+def _bash_result(commands: list[str]) -> subprocess.CompletedProcess[str]:
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash is not installed")
+    return subprocess.run(
+        [bash, "-c", "\n".join([
+            "set -euo pipefail",
+            "source " + shlex.quote((ROOT / "dev/sh/_common.sh").as_posix()),
+            *commands,
+        ])],
+        capture_output=True, text=True,
+    )
+
+
+def _source_revision(directory: Path) -> subprocess.CompletedProcess[str]:
+    return _bash_result([
+        "ROOT=" + shlex.quote(directory.as_posix()),
+        "release_source_revision",
+    ])
+
+
+def test_release_revision_accepts_explicit_export_metadata(tmp_path):
+    revision = "a1" * 20
+    (tmp_path / "RELEASE_REVISION").write_text(revision + "\n")
+    result = _source_revision(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == revision
+
+
+@pytest.mark.parametrize("invalid", ["", "a" * 39, "g" * 40, "a" * 40 + "\nother"])
+def test_release_revision_rejects_invalid_export_metadata(tmp_path, invalid):
+    (tmp_path / "RELEASE_REVISION").write_text(invalid)
+    result = _source_revision(tmp_path)
+    assert result.returncode != 0
+    assert "40 hexadecimal" in result.stderr
+
+
+def test_release_revision_requires_exact_repository_root_and_clean_head(tmp_path):
+    git = shutil.which("git")
+    if not git:
+        pytest.skip("git is not installed")
+    def run_git(*args):
+        return subprocess.run([git, "-C", str(tmp_path), *args], check=True, capture_output=True, text=True).stdout.strip()
+
+    run_git("init")
+    run_git("config", "user.name", "Deployment fixture")
+    run_git("config", "user.email", "deployment@example.invalid")
+    (tmp_path / "app.txt").write_text("committed source\n")
+    run_git("add", "app.txt")
+    run_git("commit", "-m", "Fixture source")
+    revision = run_git("rev-parse", "HEAD")
+    result = _source_revision(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == revision
+    nested = tmp_path / "nested-export"
+    nested.mkdir()
+    assert _source_revision(nested).returncode != 0
+    (tmp_path / "app.txt").write_text("uncommitted edit\n")
+    assert _source_revision(tmp_path).returncode != 0
+    run_git("restore", "app.txt")
+    (tmp_path / "untracked.txt").write_text("extra source\n")
+    assert _source_revision(tmp_path).returncode != 0
+
+
+@pytest.mark.parametrize("tamper", [False, True])
+def test_upload_verifies_transferred_bytes_before_changing_source(tmp_path, tamper):
+    source = tmp_path / "source"
+    destination = tmp_path / "remote-app"
+    source.mkdir()
+    destination.mkdir()
+    revision = "b2" * 20
+    (source / "RELEASE_REVISION").write_text(revision + "\n")
+    (source / "compose.deploy.yml").write_text("services: {}\n")
+    (source / "app.txt").write_text("new application\n")
+    (destination / "app.txt").write_text("previous application\n")
+    remote_archive = tmp_path / "remote-upload.tar.gz"
+    remote_stage = tmp_path / "remote-incoming"
+    archive_copy = tmp_path / "retained-upload.tar.gz"
+    # Run the real packaging/extraction commands against temporary directories.
+    # Only transport, target configuration and ownership changes are substituted.
+    result = _bash_result([
+        *[
+            name + '="$(normalize_host_path ' + shlex.quote(path.as_posix()) + ')"'
+            for name, path in [
+                ("ROOT", source), ("TEST_REMOTE_ROOT", destination),
+                ("TEST_REMOTE_ARCHIVE", remote_archive),
+                ("TEST_REMOTE_STAGE", remote_stage), ("TEST_ARCHIVE_COPY", archive_copy),
+            ]
+        ],
+        "remote_context() { TARGET_SERVER=COM; REMOTE_ROOT=$TEST_REMOTE_ROOT; SSH_OPTIONS=(); KEY=unused; REMOTE=local; SSH_USER=fixture; }",
+        "remote_sudo() { :; }",
+        "build_remote_env() { printf 'SERVER=COM\\n' > \"$2\"; }",
+        "chown() { :; }; export -f chown",
+        "scp() { cp \"${@: -2:1}\" \"$TEST_ARCHIVE_COPY\"; cp \"$TEST_ARCHIVE_COPY\" \"$TEST_REMOTE_ARCHIVE\"; "
+        + ("printf 'changed in transit' >> \"$TEST_REMOTE_ARCHIVE\"; " if tamper else "") + "}",
+        "ssh() { local script=\"${@: -1}\"; script=${script//\"$remote_stage\"/\"$TEST_REMOTE_STAGE\"}; script=${script//\"$remote_archive\"/\"$TEST_REMOTE_ARCHIVE\"}; bash -c \"$script\"; }",
+        "remote_upload COM",
+    ])
+    digest = hashlib.sha256(archive_copy.read_bytes()).hexdigest()
+    assert "Deployment archive SHA-256: " + digest in result.stdout
+    assert "Source revision: " + revision in result.stdout
+    if tamper:
+        assert result.returncode != 0
+        assert "SHA-256 mismatch" in result.stderr
+        assert (destination / "app.txt").read_text() == "previous application\n"
+        assert not Path(str(destination) + ".previous").exists()
+        assert not remote_stage.exists()
+        assert remote_archive.exists()
+    else:
+        assert result.returncode == 0, result.stderr
+        assert (destination / "app.txt").read_text() == "new application\n"
+        assert (destination / "RELEASE_REVISION").read_text().strip() == revision
+        assert (destination / "DEPLOYMENT_ARCHIVE_SHA256").read_text().strip() == digest
+        assert (destination / ".env").read_text() == "SERVER=COM\n"
+        assert (Path(str(destination) + ".previous") / "app.txt").read_text() == "previous application\n"
+        assert not remote_archive.exists()

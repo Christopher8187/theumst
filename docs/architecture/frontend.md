@@ -2,7 +2,11 @@
 
 Each of the three applications has its own package manifest, Vite configuration, source directory and Dockerfile. The public site and dashboard builds are copied into the backend image. The demo has a separate Nginx image. Shared URL definitions live in `frontend/urls.js`.
 
-The public site has account forms and public page navigation. The dashboard uses Vue Router and requests access-controlled profile, book, media and administrative APIs. The demo's root composes library, detail, realm, reader and notes views. All use the same backend session model.
+The public site and dashboard entry components both mount `frontend/shared/DesktopApp.vue`. It composes public pages, account state and window navigation using browser history. Dashboard route metadata selects the permitted tools, which load asynchronously and request access-controlled book, media and administrative APIs. Profile and subscriptions live in their own window. The demo's root composes library, detail, realm, reader and notes views. All use the same backend session model.
+
+Windows remain mounted when closed, preserving their scroll position and tool drafts for the visit. Opening Profile resets its selected tab to Details. The shared scene renderer mounts once and disposes listeners, drawing resources and its animation frame on unmount. Opening or dragging a window does not pause rotation. The existing scene pause button controls rotation, and reduced-motion preferences determine its initial default. Camera direction starts at the library desk on each visit. Color and scene settings persist in browser storage; the margin note keeps its fixed warm paper colors.
+
+The approved illustration uses a mild shader projection and drifting light. It is not a modeled 3D room. The artwork is drawn before the canvas becomes visible, avoiding an initial change of framing. Browsers without WebGL receive the still illustration. Shared Three.js source retains its MIT license. The [shared component guide](../../frontend/shared/README.md) describes responsibilities and events.
 
 The demo caches compact book order while fetching the selected object's detail separately. Persisted completion belongs to knowledge-object IDs. Text and Questions have independent PostgreSQL positions. The current side panel, Atlas distance controls and Back history are temporary UI state. An excursion records the original book, object and realm so returning restores the original study context.
 

@@ -73,6 +73,32 @@ REVIEWED_MIGRATIONS = (
         key="study_positions_v1", filename="007_study_positions.sql", sha256="0d107f66c82a24ef01d6a3fb439c250e45526ca6ddafef0838d427ce2fbace97",
         exclusive_markers=(Marker("column", "public.demo_study_state.questions_knowledge_id"),),
     ),
+    ReviewedMigration(
+        key="news_subscriptions_v1", filename="008_news_subscriptions.sql",
+        sha256="76cf6c87f1527ce1d1b62c554081c9a998fe361a77baa219447b03836f571a43",
+        exclusive_markers=(
+            Marker("column", "public.media_post.email_introduction"),
+            Marker("relation", "public.news_subscription"),
+            Marker("relation", "public.news_consent_event"),
+            Marker("relation", "public.news_suppression"),
+            Marker("relation", "public.news_announcement"),
+            Marker("relation", "public.news_delivery"),
+            Marker("relation", "public.news_delivery_due_idx"),
+            Marker("relation", "public.news_provider_event"),
+        ),
+    ),
+    ReviewedMigration(
+        key="media_create_requests_v1", filename="009_media_create_requests.sql",
+        sha256="d0dff232132ccab64be2ab95ccef36cf8dcaa6c2bea678a37a8be37c845330ea",
+        exclusive_markers=(
+            Marker("relation", "public.media_create_request"),
+            Marker("relation", "public.media_create_request_pkey"),
+            Marker("column", "public.media_create_request.user_id"),
+            Marker("column", "public.media_create_request.request_id"),
+            Marker("column", "public.media_create_request.payload_sha256"),
+            Marker("column", "public.media_create_request.response"),
+        ),
+    ),
 )
 
 

@@ -60,7 +60,7 @@ function localDate(value) {
 
     <p v-if="message" class="message key-output" :class="{ error }">{{ message }}</p>
     <div v-if="loading" class="dashboard-loading">{{ t.usersLoading }}</div>
-    <div v-else-if="visibleUsers.length" class="users-table-wrap">
+    <div v-else-if="visibleUsers.length" class="users-table-wrap" tabindex="0" role="region" :aria-label="t.usersTitle">
       <table class="users-table">
         <thead>
           <tr>

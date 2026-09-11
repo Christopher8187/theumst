@@ -2,6 +2,10 @@
 
 PostgreSQL is authoritative for users, roles/access, sessions, keys, books, sections, knowledge objects, language-specific content, crystals, semantic projection metadata and study state. Qdrant stores vectors addressed by embedding identity. Storage adapters hold image bytes, with `book_image` connecting them to books and objects.
 
+News uses `media_post` for the published story and immutable `news_announcement`/`news_delivery` rows for an explicitly selected announcement and its consenting audience. `news_subscription` binds a choice to one account email, `news_consent_event` records consent changes, and `news_provider_event`/`news_suppression` persist verified delivery feedback. Migration 008 creates no subscriber data. [News subscriptions](../news-subscriptions.md) owns the state transitions, duplicate prevention and unsubscribe behavior.
+
+Migration 009 adds `media_create_request`, keyed by editor and client request UUID. Its payload fingerprint and original response share the publication transaction, preventing a creation retry from becoming a second post and announcement. Rows are removed with their editor account; a post deletion does not permit its old create request to run again.
+
 Books use `grimoire_id`, sections use `section_id`, and source-specific knowledge uses `knowledge_id`. Source keys identify publisher data for updates. A book version is its published edition/version. Crystal membership uses `knowledge_crystal_id`; the preferred instance is marked by `is_default_in_crystal`. Crystallization reads membership directly and filters hidden sources.
 
 `user_grimoire` holds a user's summoned books. `demo_knowledge_progress` has one completion row per user/object. `demo_study_state` preserves independent Text and Questions positions. Hiding a book changes reader visibility without deleting these rows. `demo_note` permits multiple attached notes and separate scribbles. Hidden source labels and links are withheld while the user's writing remains readable. Deletion is different and follows existing foreign-key actions.

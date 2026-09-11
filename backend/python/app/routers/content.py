@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException, Request
 from ..database import transaction
 from ..dependencies import require_access
 from ..schemas import BookDemoVisibility, BookPayload, MediaPostPayload
+from ..services.news import queue_announcement
+from ..services.media_creation import create_media_once
 
 
 router = APIRouter(tags=["content"])
@@ -218,8 +220,13 @@ def _unique_slug(cur, title: str, exclude_id: int | None = None) -> str:
         suffix += 1
 
 
-def _list_media(cur, public_only: bool):
+def _list_media(cur, public_only: bool, slug: str | None = None):
     where = "WHERE mp.status = 'published' AND mp.published_at <= now()" if public_only else ""
+    params = ()
+    if slug is not None:
+        where += " AND mp.slug = %s"
+        params = (slug,)
+    management = "" if public_only else ", mp.email_introduction, (SELECT created_at FROM news_announcement a WHERE a.media_post_id = mp.media_post_id) AS announcement_queued_at"
     cur.execute(
         f"""
         SELECT
@@ -235,11 +242,12 @@ def _list_media(cur, public_only: bool):
             mp.updated_at,
             mp.grimoire_id,
             u.username AS author
+            {management}
         FROM media_post mp
         LEFT JOIN "user" u ON u.user_id = mp.created_by_user_id
         {where}
         ORDER BY COALESCE(mp.published_at, mp.created_at) DESC, mp.media_post_id DESC
-        """
+        """, params,
     )
     return list(cur.fetchall())
 
@@ -249,6 +257,15 @@ def public_news():
     with transaction() as (_, cur):
         posts = _list_media(cur, public_only=True)
     return {"posts": posts}
+
+
+@router.get("/api/news/{slug}")
+def public_news_post(slug: str):
+    with transaction() as (_, cur):
+        posts = _list_media(cur, public_only=True, slug=slug)
+    if not posts:
+        raise HTTPException(status_code=404, detail="News post not found")
+    return {"post": posts[0]}
 
 
 @router.get("/api/content/media")
@@ -263,39 +280,59 @@ def list_media(request: Request):
 def create_media(payload: MediaPostPayload, request: Request):
     user = _media_access(request)
     with transaction() as (_, cur):
-        slug = _unique_slug(cur, payload.title)
-        cur.execute(
-            """
-            INSERT INTO media_post
-                (created_by_user_id, grimoire_id, title, slug, excerpt, body, image_url, status, published_at)
-            VALUES (%s, %s, %s, %s, %s, %s, NULLIF(%s, ''), %s,
-                    CASE WHEN %s = 'published' THEN now() ELSE NULL END)
-            RETURNING media_post_id, slug
-            """,
-            (
-                user["user_id"], payload.grimoire_id, payload.title.strip(), slug, payload.excerpt.strip(),
-                payload.body.strip(), payload.image_url, payload.status, payload.status,
-            ),
+        return create_media_once(
+            cur, user_id=user["user_id"], payload=payload,
+            create=lambda: _create_media(cur, payload, user),
         )
-        row = cur.fetchone()
-    return {"ok": True, **row}
+
+
+def _create_media(cur, payload: MediaPostPayload, user: dict) -> dict:
+    # Different request IDs still need distinct slugs when two editors publish
+    # the same title together. Editorial creates are serialized through selection.
+    cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("theumst.media-slugs",))
+    slug = _unique_slug(cur, payload.title)
+    cur.execute(
+        """
+        INSERT INTO media_post
+            (created_by_user_id, grimoire_id, title, slug, excerpt, body, image_url, status, published_at, email_introduction)
+        VALUES (%s, %s, %s, %s, %s, %s, NULLIF(%s, ''), %s,
+                CASE WHEN %s = 'published' THEN now() ELSE NULL END, %s)
+        RETURNING media_post_id, slug
+        """,
+        (
+            user["user_id"], payload.grimoire_id, payload.title.strip(), slug, payload.excerpt.strip(),
+            payload.body.strip(), payload.image_url, payload.status, payload.status, payload.email_introduction.strip(),
+        ),
+    )
+    row = cur.fetchone()
+    announcement = {"announcement_queued": False, "announcement_id": None}
+    if payload.announce:
+        announcement = queue_announcement(cur, media_post_id=row["media_post_id"], user_id=user["user_id"],
+                                          title=payload.title.strip(), introduction=payload.email_introduction.strip(), slug=row["slug"])
+    return {"ok": True, **row, **announcement}
 
 
 @router.put("/api/content/media/{media_post_id}")
 def update_media(media_post_id: int, payload: MediaPostPayload, request: Request):
-    _media_access(request)
+    user = _media_access(request)
     with transaction() as (_, cur):
-        slug = _unique_slug(cur, payload.title, exclude_id=media_post_id)
+        cur.execute("SELECT slug FROM media_post WHERE media_post_id = %s FOR UPDATE", (media_post_id,))
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Post not found")
+        cur.execute("SELECT 1 FROM news_announcement WHERE media_post_id = %s", (media_post_id,))
+        if cur.fetchone() and payload.status != "published":
+            raise HTTPException(status_code=409, detail="Announced news must stay published so email links keep working")
         cur.execute(
             """
             UPDATE media_post SET
                 title = %s,
-                slug = %s,
                 excerpt = %s,
                 body = %s,
                 image_url = NULLIF(%s, ''),
                 grimoire_id = %s,
                 status = %s,
+                email_introduction = %s,
                 published_at = CASE
                     WHEN %s = 'published' THEN COALESCE(published_at, now())
                     ELSE NULL
@@ -304,21 +341,29 @@ def update_media(media_post_id: int, payload: MediaPostPayload, request: Request
             RETURNING media_post_id, slug
             """,
             (
-                payload.title.strip(), slug, payload.excerpt.strip(), payload.body.strip(),
+                payload.title.strip(), payload.excerpt.strip(), payload.body.strip(),
                 payload.image_url, payload.grimoire_id,
-                payload.status, payload.status, media_post_id,
+                payload.status, payload.email_introduction.strip(), payload.status, media_post_id,
             ),
         )
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Post not found")
-    return {"ok": True, **row}
+        announcement = {"announcement_queued": False, "announcement_id": None}
+        if payload.announce:
+            announcement = queue_announcement(cur, media_post_id=media_post_id, user_id=user["user_id"],
+                                              title=payload.title.strip(), introduction=payload.email_introduction.strip(), slug=row["slug"])
+    return {"ok": True, **row, **announcement}
 
 
 @router.delete("/api/content/media/{media_post_id}")
 def delete_media(media_post_id: int, request: Request):
     _media_access(request)
     with transaction() as (_, cur):
+        cur.execute("SELECT media_post_id FROM media_post WHERE media_post_id = %s FOR UPDATE", (media_post_id,))
+        cur.execute("SELECT 1 FROM news_announcement WHERE media_post_id = %s", (media_post_id,))
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail="Announced news cannot be deleted because its email links must keep working")
         cur.execute(
             "DELETE FROM media_post WHERE media_post_id = %s RETURNING media_post_id",
             (media_post_id,),

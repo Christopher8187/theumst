@@ -5,6 +5,8 @@ WORKDIR /app/frontend/dashboard
 COPY frontend/dashboard/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY frontend/urls.js ../urls.js
+COPY frontend/shared ../shared
+COPY frontend/webpage/src ../webpage/src
 COPY frontend/dashboard ./
 
 FROM base AS dev

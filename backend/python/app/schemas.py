@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -58,12 +59,30 @@ class BookDemoVisibility(BaseModel):
 
 
 class MediaPostPayload(BaseModel):
+    request_id: UUID | None = None
     title: str = Field(min_length=1, max_length=300)
     excerpt: str = Field(default="", max_length=1000)
     body: str = Field(min_length=1, max_length=100_000)
     image_url: str | None = Field(default=None, max_length=2000)
     grimoire_id: int | None = Field(default=None, gt=0)
     status: Literal["draft", "published"] = "published"
+    email_introduction: str = Field(default="", max_length=5000)
+    announce: bool = False
+
+    @model_validator(mode="after")
+    def announcement_requires_published_copy(self) -> "MediaPostPayload":
+        if self.announce and (self.status != "published" or not self.email_introduction.strip()):
+            raise ValueError("An announcement requires a published post and an email introduction")
+        return self
+
+
+class NewsEmailPreview(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    email_introduction: str = Field(min_length=1, max_length=5000)
+
+
+class SubscriptionUpdate(BaseModel):
+    news: bool
 
 
 class DemoAccessRequestPayload(BaseModel):

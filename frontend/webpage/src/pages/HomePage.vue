@@ -1,7 +1,6 @@
 <script setup>
 import { onMounted, ref } from "vue";
 import { apiFetch, apiUrl, assetUrl } from "../../../urls.js";
-import SiteHeader from "../components/SiteHeader.vue";
 
 defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean });
 const emit = defineEmits(["navigate", "set-language", "login", "signup"]);
@@ -28,13 +27,6 @@ onMounted(async () => {
 </script>
 
 <template>
-  <SiteHeader
-    :tr="tr"
-    show-user-card
-    :session="session"
-    @navigate="go"
-    @set-language="$emit('set-language', $event)"
-  />
 
   <main>
     <section class="home-hero site-container">

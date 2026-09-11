@@ -1,6 +1,5 @@
 <script setup>
 import { assetUrl } from "../../../urls.js";
-import SiteHeader from "../components/SiteHeader.vue";
 
 defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean });
 defineEmits(["navigate", "set-language", "login", "signup"]);
@@ -13,13 +12,6 @@ const team = [
 </script>
 
 <template>
-  <SiteHeader
-    :tr="tr"
-    title-key="about.title"
-    :session="session"
-    @navigate="$emit('navigate', $event)"
-    @set-language="$emit('set-language', $event)"
-  />
 
   <main class="site-container about-page">
     <section class="about-intro">

@@ -1,19 +1,10 @@
 <script setup>
-import SiteHeader from "../components/SiteHeader.vue";
 
 defineProps({ tr: Function, session: Object });
 defineEmits(["navigate", "set-language"]);
 </script>
 
 <template>
-  <SiteHeader
-    :tr="tr"
-    :title-key="'privacy.title'"
-    :session="session"
-    compact
-    @navigate="$emit('navigate', $event)"
-    @set-language="$emit('set-language', $event)"
-  />
   <main class="site-container privacy-page">
     <p class="section-kicker">Legal</p>
     <h1>Privacy policy</h1>

@@ -8,4 +8,6 @@ Reader visibility filters hidden books and inactive knowledge from content, disc
 
 Public branding images under `/images` are separate from book object storage. Startup checks their local paths do not overlap. Do not place book uploads under the public static-image directory.
 
+News consent belongs to the current account email and does not grant login or additional access. Subscriptions require the user's session; announcement publication and preview require Media access. Public unsubscribe tokens permit only stopping that subscription, and GET never changes it. Provider suppression events require a verified raw-body signature before persistence. [News subscriptions](news-subscriptions.md) owns these boundaries and the separation from required account security emails.
+
 Keep `.env`, private environment overrides, private keys and backups out of Git and published release attachments. COM and CN use target-specific settings. Preserve their existing configuration during updates. [Operations](operations.md) owns backup and deployment; [account recovery](account-recovery.md) owns reset-token behavior. Future security changes must state the concrete access boundary they alter.

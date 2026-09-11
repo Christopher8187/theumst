@@ -65,6 +65,67 @@ const ja = {
   demoProgram: "プライベートベータ", demoTitle: "学びの世界が形になり始めました。", demoText: "構造化された書籍をインタラクティブなグリモアとして探索し、生きた知識グラフを進み、UMST の学習・AI訓練エコシステムの基盤づくりに参加できます。", demoLoading: "デモ権限を確認中…", demoYourAccess: "アクセス権", demoReady: "グリモアが待っています", demoReadyText: "Webデモへのアクセスが許可されています。隔離された学習環境に入り、前回の続きから進めます。", demoPending: "審査中", demoPendingText: "チームが申請を確認します。承認後、入場ボタンが自動的に有効になります。", demoLocked: "プライベートベータ", demoLockedText: "最初の構造化学習体験へのアクセスを申請してください。", demoEnter: "Webデモへ入る", demoBetaAccess: "ベータアクセス", demoRequestReceived: "申請を受け付けました", demoRequestReceivedText: "申請は審査キューに安全に登録されています。", demoRequestTitle: "招待を申請", demoRequestText: "試したいことをチームに伝えてください。短いメッセージは任意です。", demoRequestMessage: "メッセージ", demoRequestPlaceholder: "知識グラフとノート機能を試したいです…", demoRequestAgain: "再申請", demoRequestButton: "アクセスを申請", demoAwaitingReview: "審査待ち", demoRequestSent: "デモアクセスを申請しました。", demoReviewQueue: "審査キュー", demoAccessRequests: "デモアクセス申請", demoPendingCount: "審査待ち", demoApprovedCount: "承認済み", demoTotalCount: "合計", demoNoMessage: "メッセージなし。", demoReject: "拒否", demoApprove: "承認", demoApproved: "ベータアクセスを承認しました。", demoRejected: "ベータアクセス申請を拒否しました。", demoNoRequests: "申請はありません", demoNoRequestsText: "新しいベータ申請は自動的にここへ表示されます。"
 };
 
+Object.assign(en, {
+  dashboardTools: "Dashboard tools", backToProfile: "Back to profile",
+  dashboardLoading: "Opening your tools…", dashboardLoadError: "Your tools could not be loaded. Please try again.",
+  saving: "Saving…", newsAnnouncement: "News announcement", emailIntroduction: "Email introduction",
+  emailIntroductionPlaceholder: "A short personal introduction to this update…",
+  emailIntroductionHelp: "The email uses this introduction and a link to the full News post.",
+  announceSubscribers: "Email this announcement to News subscribers when I save",
+  announcementConsent: "Optional. Only confirmed News subscribers receive announcements. Saving future edits will not send this announcement again.",
+  announcementPublishFirst: "Publish the post before announcing it by email.",
+  announcementAlreadyQueued: "This post has already been queued for announcement. You can keep editing the News post without sending another email.",
+  announcementQueued: "Announcement queued", announcementSaved: "Post saved. Its announcement is queued for News subscribers.",
+  previewEmail: "Preview email", emailPreviewLoading: "Preparing preview…", emailPreviewRequired: "Add a headline and email introduction first.",
+  emailPreviewTitle: "Email preview", emailSubject: "Subject:", plainTextVersion: "Plain text version",
+  emailPreviewNotice: "Preview only. No email is sent and the links are inactive.",
+  mediaRequestError: "The request could not be completed. Please try again.",
+  mediaSaveUncertain: "The save response was interrupted. Refresh the posts to check whether it saved before trying again.",
+  mediaCreateUncertain: "The save response was interrupted. Retry this saved submission to check its result. Your copy is kept unchanged.",
+  retrySavedSubmission: "Retry saved submission",
+  postSaved: "Post saved."
+});
+Object.assign(zh, {
+  dashboardTools: "控制台工具", backToProfile: "返回个人资料",
+  dashboardLoading: "正在打开工具…", dashboardLoadError: "无法加载工具，请重试。",
+  saving: "正在保存…", newsAnnouncement: "新闻邮件通知", emailIntroduction: "邮件导语",
+  emailIntroductionPlaceholder: "为这篇动态写一段简短的导语…",
+  emailIntroductionHelp: "邮件包含这段导语以及完整新闻文章的链接。",
+  announceSubscribers: "保存时向新闻订阅者发送此通知",
+  announcementConsent: "可选。仅向已确认订阅新闻的用户发送。之后保存修改不会再次发送此通知。",
+  announcementPublishFirst: "请先发布文章，再发送邮件通知。",
+  announcementAlreadyQueued: "此文章的邮件通知已加入发送队列。你可以继续编辑新闻文章，系统不会再次发送。",
+  announcementQueued: "通知已加入队列", announcementSaved: "文章已保存，新闻订阅通知已加入发送队列。",
+  previewEmail: "预览邮件", emailPreviewLoading: "正在生成预览…", emailPreviewRequired: "请先填写标题和邮件导语。",
+  emailPreviewTitle: "邮件预览", emailSubject: "主题：", plainTextVersion: "纯文本版本",
+  emailPreviewNotice: "仅供预览，不会发送邮件，链接不可用。",
+  mediaRequestError: "无法完成请求，请重试。",
+  mediaSaveUncertain: "保存响应已中断。请先刷新文章列表，检查是否已保存，再决定是否重试。",
+  mediaCreateUncertain: "保存响应已中断。请重试本次提交以确认结果，提交的内容保持不变。",
+  retrySavedSubmission: "重试本次提交",
+  postSaved: "文章已保存。"
+});
+Object.assign(ja, {
+  dashboardTools: "ダッシュボードのツール", backToProfile: "プロフィールに戻る",
+  dashboardLoading: "ツールを開いています…", dashboardLoadError: "ツールを読み込めませんでした。もう一度お試しください。",
+  saving: "保存中…", newsAnnouncement: "ニュースのお知らせ", emailIntroduction: "メールの紹介文",
+  emailIntroductionPlaceholder: "この更新について短い紹介文を入力…",
+  emailIntroductionHelp: "メールにはこの紹介文とニュース記事全文へのリンクが含まれます。",
+  announceSubscribers: "保存時にニュース購読者へこのお知らせをメールで送る",
+  announcementConsent: "任意です。購読を確認した方だけに送信します。後から記事を編集しても再送しません。",
+  announcementPublishFirst: "メールでお知らせするには記事を公開してください。",
+  announcementAlreadyQueued: "この記事のお知らせは送信待ちです。ニュース記事を編集してもメールは再送されません。",
+  announcementQueued: "お知らせは送信待ち", announcementSaved: "記事を保存しました。ニュース購読者へのお知らせは送信待ちです。",
+  previewEmail: "メールをプレビュー", emailPreviewLoading: "プレビューを準備中…", emailPreviewRequired: "先に見出しとメールの紹介文を入力してください。",
+  emailPreviewTitle: "メールのプレビュー", emailSubject: "件名：", plainTextVersion: "テキスト版",
+  emailPreviewNotice: "プレビュー専用です。メールは送信されず、リンクは無効です。",
+  mediaRequestError: "リクエストを完了できませんでした。もう一度お試しください。",
+  mediaSaveUncertain: "保存の応答が途切れました。再試行する前に記事を更新し、保存済みか確認してください。",
+  mediaCreateUncertain: "保存の応答が途切れました。同じ送信を再試行して結果を確認してください。送信内容は変更されません。",
+  retrySavedSubmission: "同じ送信を再試行",
+  postSaved: "記事を保存しました。"
+});
+
 const text = { en, zh, ja };
 
 export function useI18n() {

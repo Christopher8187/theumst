@@ -3,6 +3,8 @@ WORKDIR /app/frontend/webpage
 COPY frontend/webpage/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY frontend/urls.js ../urls.js
+COPY frontend/shared ../shared
+COPY frontend/dashboard/src ../dashboard/src
 COPY frontend/webpage ./
 RUN npm run build
 
@@ -11,6 +13,8 @@ WORKDIR /app/frontend/dashboard
 COPY frontend/dashboard/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY frontend/urls.js ../urls.js
+COPY frontend/shared ../shared
+COPY frontend/webpage/src ../webpage/src
 COPY frontend/dashboard ./
 RUN npm run build
 

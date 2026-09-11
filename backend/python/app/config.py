@@ -82,6 +82,11 @@ class Settings:
     regular_read_max_page_size: int
     master_read_max_page_size: int
 
+    resend_api_key: str = ""
+    resend_webhook_secret: str = ""
+    news_delivery_enabled: bool = False
+    news_poll_seconds: int = 10
+
     @classmethod
     def from_environment(cls) -> "Settings":
         root = PROJECT_ROOT
@@ -188,6 +193,10 @@ class Settings:
             regular_read_page_size=int(os.getenv("REGULAR_READ_PAGE_SIZE", "25")),
             regular_read_max_page_size=int(os.getenv("REGULAR_READ_MAX_PAGE_SIZE", "100")),
             master_read_max_page_size=int(os.getenv("MASTER_READ_MAX_PAGE_SIZE", "1000")),
+            resend_api_key=os.getenv("RESEND_API_KEY", "").strip(),
+            resend_webhook_secret=os.getenv("RESEND_WEBHOOK_SECRET", "").strip(),
+            news_delivery_enabled=_bool("NEWS_DELIVERY_ENABLED", False),
+            news_poll_seconds=max(2, int(os.getenv("NEWS_POLL_SECONDS", "10"))),
         )
 
 

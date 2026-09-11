@@ -1,19 +1,11 @@
 <script setup>
-import { assetUrl } from "../../../urls.js";
-import SiteHeader from "../components/SiteHeader.vue";
 
-defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean, passwordResetSuccess: Boolean, emailVerifiedSuccess: Boolean, loginMessage: String });
+
+defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean, passwordResetSuccess: Boolean, emailVerifiedSuccess: Boolean, loginMessage: String, authBusy: Boolean, newsLabel: String, optionalLabel: String });
 defineEmits(["navigate", "set-language", "login"]);
 </script>
 
 <template>
-  <SiteHeader
-    :tr="tr"
-    compact
-    :session="session"
-    @navigate="$emit('navigate', $event)"
-    @set-language="$emit('set-language', $event)"
-  />
 
   <main class="login-page">
     <section class="login-shell">
@@ -26,7 +18,6 @@ defineEmits(["navigate", "set-language", "login"]);
 
       <section class="login-card">
         <div class="login-card-top">
-          <img :src="assetUrl('logo.png')" :alt="tr('alt.logo')">
           <div>
             <p>{{ tr("login.title") }}</p>
             <h2>{{ tr("login.cardHeading") }}</h2>
@@ -49,7 +40,8 @@ defineEmits(["navigate", "set-language", "login"]);
             <input type="password" name="password" autocomplete="current-password" required>
           </label>
 
-          <button type="submit">{{ tr("login.submit") }}</button>
+          <label class="login-news"><input type="checkbox" name="news_opt_in" value="on"><span>{{newsLabel}}<small>{{optionalLabel}}</small></span></label>
+          <button type="submit" :disabled="authBusy">{{ tr("login.submit") }}</button>
           <a class="text-action" href="/forgot-password" @click.prevent="$emit('navigate', '/forgot-password')">{{ tr("login.forgot") }}</a>
           <a class="secondary-action" href="/signup" @click.prevent="$emit('navigate', '/signup')">{{ tr("login.signup") }}</a>
         </form>
