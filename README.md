@@ -1,4 +1,4 @@
-# Theumst 0.2.1
+# Theumst 0.2.2
 
 Theumst turns structured books into a reader with saved study positions, shared completion, personal notes and discovery across available books. A reader signs in on the public site, requests Web Demo access from the dashboard, summons a grimoire and enters Text, Notes or Questions. The other realm entries describe future learning activities and currently show a coming-soon message.
 

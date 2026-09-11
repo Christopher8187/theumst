@@ -65,6 +65,7 @@ export function createScene(host, artwork, onState) {
   let heading = 23,
     pitch = -12,
     goal = 23,
+    targetingLandmark = false,
     last = performance.now(),
     pointer = null,
     renderer,
@@ -95,14 +96,16 @@ export function createScene(host, artwork, onState) {
     stateEvent();
   }
   function look(direction) {
-    if (direction === "library") goal = 23;
-    else if (direction === "cave") goal = 255;
+    targetingLandmark = direction === "library" || direction === "cave";
+    if (direction === "library") goal = 5;
+    else if (direction === "cave") goal = 185;
     else goal += direction;
     stateEvent();
   }
   function toggleRotation() {
     settings.auto = !settings.auto;
     goal = heading;
+    targetingLandmark = false;
     saveScene();
     stateEvent();
   }
@@ -249,9 +252,14 @@ gl_FragColor=c;
       }
       const delta = Math.min((now - last) / 1000, 0.06);
       last = now;
-      const diff = ((goal - heading + 540) % 360) - 180;
+      const diff = (((goal - heading + 180) % 360) + 360) % 360 - 180;
       heading += diff * Math.min(delta * 2.6, 1);
-      if (settings.auto) {
+      // Reach the selected view before automatic drift moves its destination.
+      if (targetingLandmark && Math.abs(diff) < 0.05) {
+        heading = goal;
+        targetingLandmark = false;
+        stateEvent();
+      } else if (settings.auto && !targetingLandmark) {
         const drift = delta * settings.speed;
         heading += drift;
         goal += drift;
@@ -308,6 +316,7 @@ gl_FragColor=c;
       if (e.button !== 0) return;
       pointer = { x: e.clientX, y: e.clientY };
       goal = heading;
+      targetingLandmark = false;
       clearTimeout(pointerCueTimer);
       pointerCue.classList.remove("released");
       pointerCue.classList.add("dragging");

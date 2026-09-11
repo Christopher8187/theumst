@@ -200,9 +200,6 @@ button.role-card:hover {
 :root[data-palette="blue"] .window.focused .window-title {
   background: #c6dce3;
 }
-:root[data-palette="blue"] button:not(.role-card):not(.primary):not(.brand) {
-  background-color: #e4eff2;
-}
 :root[data-palette="blue"] .dock-item.open {
   background: #c8dee3;
 }
@@ -362,7 +359,7 @@ select:focus-visible {
 }
 button {
   border: 1px solid #617e86;
-  background: var(--paper);
+  background: var(--control);
   box-shadow:
     inset 1px 1px #fffef2,
     inset -1px -1px #b2bab0;
@@ -1052,6 +1049,21 @@ small {
   gap: 12px;
   font: 11px var(--mono);
 }
+.setting-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.language-symbol {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .setting output {
   font: 10px var(--mono);
   color: #5d7876;
@@ -1633,9 +1645,7 @@ button {
     inset 1px 1px var(--highlight),
     inset -1px -1px var(--chrome-edge);
 }
-button:hover,
-:root[data-palette="blue"]
-  button:not(.role-card):not(.primary):not(.brand):hover {
+button:hover {
   background-color: var(--control-hover);
 }
 .window-title {

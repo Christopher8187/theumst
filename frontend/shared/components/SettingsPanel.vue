@@ -37,9 +37,14 @@ const ranges = [
       >
     </div>
     <div class="setting">
-      <label for="language"
-        >{{ labels.language
-        }}<select
+      <label for="language">
+        <span class="setting-label">
+          <svg class="language-symbol" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 5h12M9 3v2M12 5c-1 6-4 9-9 11M5 8c1 3 4 6 7 8M13 21l4-10 4 10M14.5 17h5" />
+          </svg>
+          {{ labels.language }}
+        </span>
+        <select
           id="language"
           :value="language"
           @change="emit('language', ($event.target as HTMLSelectElement).value)"
@@ -100,7 +105,7 @@ const ranges = [
     <div class="settings-footer">
       <button class="quiet-link" @click="emit('privacy')">
         {{ labels.privacy }}</button
-      ><small>Theumst 0.2.1</small>
+      ><small>Theumst 0.2.2</small>
     </div>
   </div>
 </template>
