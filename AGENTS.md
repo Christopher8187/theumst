@@ -7,7 +7,8 @@ Read README.md, relevant CONTEXT.md definitions, the affected architecture or be
 | Work | Read |
 | --- | --- |
 | Architecture or work crossing application areas | docs/architecture/application.md and the relevant backend, frontend and data pages; affected component READMEs. |
-| Reader, notes, completion, language, ranking or navigation | frontend/demo/README.md, docs/web-demo.md, docs/architecture/data.md, docs/testing/web-demo.md. |
+| Desktop windows, entry URLs, account links or stale website builds | docs/architecture/frontend.md, frontend/shared/README.md and docs/architecture/backend.md; docs/operations.md for live serving checks. |
+| Web Demo reading, notes, completion, language, ranking or navigation | frontend/demo/README.md, docs/web-demo.md, docs/architecture/data.md, docs/testing/web-demo.md. |
 | Atlas layout, arrows, selection, Continue or gap counts | docs/atlas.md, docs/architecture/data.md, frontend/demo/README.md, docs/testing/web-demo.md. |
 | Authentication, keys, hiding, deletion or administration | docs/security.md, docs/administration.md, docs/architecture/backend.md, docs/architecture/data.md and relevant tests. |
 | Recovery or SMTP | docs/account-recovery.md, docs/security.md, backend/README.md and relevant tests. |

@@ -49,7 +49,9 @@ function move(event: PointerEvent) {
   }
 }
 function focusContent() {
-  nextTick(() => panel.value?.focus({ preventScroll: true }));
+  nextTick(() => {
+    if (props.open && props.active) panel.value?.focus({ preventScroll: true });
+  });
 }
 watch(
   () => props.open,

@@ -1,10 +1,10 @@
 import { computed, onMounted, ref, toValue, watch } from "vue";
-import { apiFetch, webpageUrl } from "../../../urls.js";
+import { apiFetch } from "../../../urls.js";
 import { canUseRoute } from "../router";
 import { useMediaPosts } from "./useMediaPosts.js";
 
-// Browser history and window visibility belong to DesktopApp; tool drafts live here.
-export function useDashboardTools({ initialRoute, onRouteChange, scrollToEditor, t }) {
+// Window navigation belongs to DesktopApp; tool drafts live here.
+export function useDashboardTools({ initialRoute, onRouteChange, onSessionExpired, scrollToEditor, t }) {
   const route = ref(toValue(initialRoute) || "demo");
   const output = ref("");
   const outputError = ref(false);
@@ -97,7 +97,7 @@ export function useDashboardTools({ initialRoute, onRouteChange, scrollToEditor,
   }
 
   function requireLogin(res) {
-    if (res.status === 401) location.href = webpageUrl("/login");
+    if (res.status === 401) onSessionExpired?.();
     return res;
   }
 

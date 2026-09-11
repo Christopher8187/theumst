@@ -6,7 +6,7 @@ const preferencesKey = "theumst.magical-lofi.preferences.v1";
 const windowFor = (page, name) => page.locator(`.window[data-page="${name}"]`);
 const dockFor = (page, name) => page.locator(`.dock-item[data-page="${name}"]`);
 
-async function simulatedServices(page, { signedIn = true, subscribed = false } = {}) {
+async function simulatedServices(page, { signedIn = true, subscribed = false, demoEnter = false, posts = [] } = {}) {
   let authenticated = signedIn;
   let news = subscribed;
   const loginRequests = [];
@@ -35,9 +35,10 @@ async function simulatedServices(page, { signedIn = true, subscribed = false } =
         consent_source: news ? "profile" : null, confirmed_at: news ? "2026-09-11T10:00:00Z" : null
       } });
     }
-    if (path === "/api/news") return route.fulfill({ json: { posts: [] } });
+    if (path === "/api/news") return route.fulfill({ json: { posts } });
+    if (path.startsWith("/api/news/")) return route.fulfill({ json: { post: posts.find(post => post.slug === path.slice(10)) } });
     if (path === "/api/api-keys") return route.fulfill({ json: { keys: [] } });
-    if (path === "/api/demo/access") return route.fulfill({ json: { can_enter: false, can_review: false, account_type: "user", request: null } });
+    if (path === "/api/demo/access") return route.fulfill({ json: { can_enter: demoEnter, can_review: false, account_type: "user", request: null } });
     unexpected.push(`${request.method()} ${path}`);
     return route.fulfill({ status: 404, json: { detail: "No simulated response for this request" } });
   });
@@ -102,6 +103,7 @@ test.describe("S: shared desktop regression", () => {
         const startsOpen = destination === "home";
         for (let cycle = 0; cycle < 2; cycle += 1) {
           await dockFor(page, destination).click();
+          await expect(page).toHaveURL("/");
           await expect(dockFor(page, destination)).toHaveAttribute("aria-pressed", String(!startsOpen));
           if (startsOpen) await expect(windowFor(page, destination)).toBeHidden();
           else await expect(windowFor(page, destination)).toBeVisible();
@@ -121,6 +123,7 @@ test.describe("S: shared desktop regression", () => {
       const service = await simulatedServices(page);
       await page.goto("/");
       await page.getByRole("button", { name: "Your profile", exact: true }).click();
+      await expect(page).toHaveURL("/");
       const profile = windowFor(page, "profile");
       const details = profile.getByRole("tab", { name: "Details", exact: true });
       const subscriptions = profile.getByRole("tab", { name: "Subscriptions", exact: true });
@@ -199,6 +202,7 @@ test.describe("S: shared desktop regression", () => {
       if (scenario.checked) await optIn.check();
       await login.getByRole("button", { name: "Log In", exact: true }).click();
       await expect(windowFor(page, "profile")).toBeVisible();
+      await expect(page).toHaveURL("/");
       expect(service.loginRequests).toHaveLength(1);
       expect(service.loginRequests[0].method).toBe("POST");
       expect(service.loginRequests[0].type).toContain("multipart/form-data;");
@@ -213,6 +217,89 @@ test.describe("S: shared desktop regression", () => {
       expect(service.unexpected).toEqual([]);
     });
   }
+
+  test("old public and Profile links open their windows at the root address", async ({ page }) => {
+    await simulatedServices(page);
+    await page.goto("/about?old-link=1");
+    await expect(windowFor(page, "about")).toBeVisible();
+    await expect(page).toHaveURL("/");
+    await page.goto("/dashboard/profile/");
+    await expect(windowFor(page, "profile")).toBeVisible();
+    await expect(page).toHaveURL("/");
+  });
+
+  test("News email links and article clicks keep the desktop at root", async ({ page }) => {
+    const post = { media_post_id: 1, slug: "first-news", title: "First news", excerpt: "A short introduction", body: "The full story", published_at: "2026-09-11T10:00:00Z" };
+    const service = await simulatedServices(page, { posts: [post] });
+    await page.goto("/news/first-news");
+    const news = windowFor(page, "news");
+    await expect(news.getByText("The full story")).toBeVisible();
+    await expect(page).toHaveURL("/");
+    await news.getByRole("link", { name: "First news" }).click();
+    await expect(page).toHaveURL("/");
+    expect(service.unexpected).toEqual([]);
+  });
+
+  test("dashboard tools keep root and only entering the real Demo navigates away", async ({ page }) => {
+    const service = await simulatedServices(page, { demoEnter: true });
+    await page.route("**/demo/", route => route.fulfill({ contentType: "text/html", body: "<h1>Separate Demo fixture</h1>" }));
+    await page.goto("/dashboard/api-keys/");
+    const dashboard = windowFor(page, "dashboard");
+    await expect(dashboard.locator('.side-link[aria-current="page"]')).toContainText("API Keys", { timeout: 15000 });
+    await expect(page).toHaveURL("/");
+    await dashboard.locator(".side-link").filter({ hasText: "Demo" }).click();
+    await expect(dashboard.locator(".demo-enter-button")).toBeVisible();
+    await expect(page).toHaveURL("/");
+    await dashboard.locator(".demo-enter-button").click();
+    await expect(page).toHaveURL("/demo/");
+    await expect(page.getByRole("heading", { name: "Separate Demo fixture" })).toBeVisible();
+    expect(service.unexpected).toEqual([]);
+  });
+
+  test("expired dashboard session opens Login without changing the URL", async ({ page }) => {
+    await simulatedServices(page);
+    await page.route("**/api/api-keys", route => route.fulfill({ status: 401, json: { detail: "Session expired" } }));
+    const expiredSession = page.waitForResponse(response =>
+      new URL(response.url()).pathname === "/api/api-keys" && response.status() === 401);
+    await page.goto("/dashboard/api-keys/");
+    await expiredSession;
+    await expect(windowFor(page, "login")).toBeVisible();
+    await expect(windowFor(page, "dashboard")).toBeHidden();
+    await expect(page).toHaveURL("/");
+  });
+
+  for (const kind of ["verify", "change"]) {
+    test(`email ${kind} link consumes its token without leaving it in the address`, async ({ page }) => {
+      await simulatedServices(page, { signedIn: false });
+      const requests = [];
+      const endpoint = kind === "change" ? "email-change" : "email-verification";
+      await page.route(`**/auth/${endpoint}/confirm`, route => {
+        requests.push(route.request().postDataJSON());
+        return route.fulfill({ json: { ok: true } });
+      });
+      await page.goto(`/verify-email?kind=${kind}&token=synthetic-${kind}-token`);
+      const verification = windowFor(page, "verifyEmail");
+      await expect(verification.locator(".login-status.is-success")).toBeVisible();
+      await expect(page).toHaveURL("/");
+      expect(requests).toEqual([{ token: `synthetic-${kind}-token` }]);
+      await verification.locator(".secondary-action").click();
+      await expect(windowFor(page, "login")).toBeVisible();
+      await expect(page).toHaveURL("/");
+    });
+  }
+
+  test("signup verification opens inside the desktop without a document navigation", async ({ page }) => {
+    await simulatedServices(page, { signedIn: false });
+    await page.route("**/auth/signup", route => route.fulfill({ json: { requires_email_verification: true, redirect: "/verify-email?sent=1" } }));
+    await page.goto("/signup");
+    const signup = windowFor(page, "signup");
+    await signup.locator('input[name="username"]').fill("test_reader");
+    await signup.locator('input[name="email"]').fill("reader@example.invalid");
+    await signup.locator('input[name="password"]').fill("simulated-only-password");
+    await signup.locator('button[type="submit"]').click();
+    await expect(windowFor(page, "verifyEmail").locator(".login-status.is-success")).toBeVisible();
+    await expect(page).toHaveURL("/");
+  });
 
   test("scene keeps rotating through window interactions and stops only at Pause", async ({ page }) => {
     test.setTimeout(60000);

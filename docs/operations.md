@@ -36,6 +36,8 @@ Record the deployment artifact SHA-256 and source revision. Check root page, `/h
 
 ## Recovery and troubleshooting
 
+When an old website remains visible after deployment, compare `RELEASE_REVISION`, HTML asset references and `Cache-Control` from both HTTPS hostnames before attributing it to caching or DNS. Public and dashboard HTML must revalidate as described in [backend architecture](architecture/backend.md); [frontend architecture](architecture/frontend.md#desktop-navigation-and-entry-urls) owns the visible root URL. A current server response does not establish which build an open tab is running. Inspect that tab, then reload while bypassing cache with Ctrl+Shift+R when needed. Record unavailable browser observations instead of claiming the cause was reproduced. Changing window URLs is not a cache fix.
+
 On failed application startup, retain logs and both source trees. Inspect Compose status, backend schema errors, internal-proxy upstream resolution and dependency health. Restore the previous application tree only after confirming its compatibility with the current schema. Restore PostgreSQL from the verified backup only when a live-data rollback is explicitly authorized; restoring source alone does not undo SQL changes.
 
 SSH connection timeout means remote state was not inspected. A missing Docker engine is a local runtime problem; simulated service tests cannot replace database checks. [Certificate renewal](certificate-renewal.md) owns COM/CN renewal differences. [Backend RUN](../backend/RUN.md) and [dev RUN](../dev/RUN.md) retain useful current operating findings.

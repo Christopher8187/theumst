@@ -2,6 +2,8 @@
 
 `backend/python/app/main.py` builds FastAPI, installs CORS and compression, mounts public branding images, and includes the routers. `app.py` at the Python root is a compatibility entry; the container uses `app.main:app`.
 
+`routers/frontend.py` serves public and dashboard HTML with `Cache-Control: no-cache, must-revalidate`, retaining ETag and Last-Modified validators. The policy follows the selected HTML file, including a single-page fallback, while non-HTML build assets keep their existing file-response behavior. This requires revalidation on future navigations; it does not replace JavaScript already running in an open tab. The Web Demo remains served by its separate protected container.
+
 Routers separate accounts, user profile, API keys, content, Web Demo, admin tools, superadmin tools, public publishing/reading, health and frontend delivery. `dependencies.py` authenticates sessions and keys and checks database-backed access. A hidden frontend button is never the authorization boundary.
 
 Services own storage adapters, knowledge persistence, Whole-book upload, graph sidecars, email, Qdrant access and semantic discovery. `database.transaction()` opens a PostgreSQL connection, commits on success and rolls back on error. External vector/image writes do not share that transaction; see [ingestion](../ingestion.md).

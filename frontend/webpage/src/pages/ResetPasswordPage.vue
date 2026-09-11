@@ -1,19 +1,20 @@
 <script setup>
-import { onMounted, ref } from "vue";
+import { ref, watch } from "vue";
 import { apiFetch } from "../../../urls.js";
 
-const props = defineProps({ tr: Function, session: Object });
+const props = defineProps({ tr: Function, session: Object, entryQuery: { type: String, default: "" } });
 defineEmits(["navigate", "set-language"]);
 
-const token = ref(new URLSearchParams(location.search).get("token") || "");
+const token = ref("");
 const password = ref("");
 const confirmation = ref("");
-const state = ref(token.value ? "idle" : "error");
-const message = ref(token.value ? "" : "This reset link is incomplete or invalid.");
-
-onMounted(() => {
-  if (token.value) history.replaceState(null, "", "/reset-password");
-});
+const state = ref("idle");
+const message = ref("");
+watch(() => props.entryQuery, value => {
+  token.value = new URLSearchParams(value).get("token") || "";
+  state.value = token.value ? "idle" : "error";
+  message.value = token.value ? "" : props.tr("reset.invalid");
+}, { immediate: true });
 
 async function submit() {
   if (password.value !== confirmation.value) {

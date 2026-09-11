@@ -2,7 +2,6 @@
 import {
   computed,
   defineAsyncComponent,
-  onBeforeUnmount,
   onMounted,
   ref,
   watch,
@@ -28,6 +27,7 @@ import MemberCard from "./components/MemberCard.vue";
 import HomeContent from "./components/HomeContent.vue";
 import NewsContent from "./components/NewsContent.vue";
 import { useDesktopWindows } from "./composables/useDesktopWindows.js";
+import { consumeDesktopEntry } from "./composables/desktopEntry.js";
 import { readPreferences, savePreferences } from "./composables/preferences.js";
 import { desktopText, roleName } from "./desktopText.js";
 import "./desktop.css";
@@ -69,32 +69,27 @@ watch(
 const dashboardRoute = ref("demo"),
   newsSlug = ref(""),
   profileTab = ref("details");
-const query = new URLSearchParams(location.search);
+const entry = consumeDesktopEntry();
+const query = entry.searchParams;
+const accountQueries = ref<Record<string, string>>({});
 const loginError = ref(query.get("error") === "bad-login"),
   loginMessage = ref(""),
   authBusy = ref(false);
-const resetSuccess = query.get("reset") === "success",
-  verifiedSuccess =
+const resetSuccess = ref(query.get("reset") === "success"),
+  verifiedSuccess = ref(
     query.get("verified") === "success" ||
-    query.get("email-changed") === "success";
+    query.get("email-changed") === "success",
+  );
 const requestedDestination = ref(query.get("next") || "");
-const initialPath = location.pathname;
-function updateUrl(path: string) {
-  if (location.pathname !== path) history.pushState(null, "", path);
-}
 function focus(id: string) {
   open(id);
 }
-function show(id: string, changeUrl = true) {
+function show(id: string) {
   if (id === "profile" && !user.value) {
     id = "login";
   }
   if (id === "profile") profileTab.value = "details";
   open(id);
-  if (changeUrl) {
-    const path = id === "profile" ? "/dashboard/profile/" : pages[id]?.path;
-    if (path) updateUrl(path);
-  }
 }
 function closePage(id: string) {
   close(id);
@@ -122,15 +117,29 @@ function dockToggle(id: string) {
   else show(id);
 }
 function navigate(path: string) {
-  if (path.startsWith("/dashboard")) {
-    if (path.includes("/profile")) show("profile");
-    else openDashboard(routeFromPath(path));
-    return;
-  }
   const url = new URL(path, location.origin);
+  if (url.origin !== location.origin) return;
   if (url.searchParams.has("next"))
     requestedDestination.value = url.searchParams.get("next") || "";
-  show(pageNameFromPath(url.pathname));
+  if (url.pathname.startsWith("/dashboard")) {
+    if (url.pathname.includes("/profile")) show("profile");
+    else openDashboard(routeFromPath(url.pathname));
+    return;
+  }
+  if (url.pathname.startsWith("/news/")) {
+    try { article(decodeURIComponent(url.pathname.slice(6))); }
+    catch { show("news"); }
+    return;
+  }
+  const page = pageNameFromPath(url.pathname);
+  if (page === "resetPassword" || page === "verifyEmail")
+    accountQueries.value[page] = url.search;
+  if (page === "login") {
+    resetSuccess.value = url.searchParams.get("reset") === "success";
+    verifiedSuccess.value = url.searchParams.get("verified") === "success" ||
+      url.searchParams.get("email-changed") === "success";
+  }
+  show(page);
 }
 function openDashboard(route = dashboardRoute.value) {
   if (!user.value) {
@@ -141,7 +150,6 @@ function openDashboard(route = dashboardRoute.value) {
   dashboardRoute.value = route;
   open("profile");
   open("dashboard");
-  updateUrl("/dashboard/" + route + "/");
 }
 function subscriptions() {
   if (!user.value) {
@@ -150,22 +158,18 @@ function subscriptions() {
   }
   open("profile");
   profileTab.value = "subscriptions";
-  updateUrl("/dashboard/profile/");
 }
 function article(slug: string) {
   newsSlug.value = slug;
   open("news");
-  updateUrl("/news/" + encodeURIComponent(slug));
 }
-function syncPath() {
-  const path = location.pathname;
-  if (path.startsWith("/dashboard/")) {
-    if (path.includes("/profile")) show("profile", false);
-    else openDashboard(routeFromPath(path));
-  } else if (path.startsWith("/news/")) {
-    newsSlug.value = decodeURIComponent(path.slice(6));
-    open("news");
-  } else show(pageNameFromPath(path), false);
+function sessionExpired() {
+  requestedDestination.value = "/dashboard/" + dashboardRoute.value + "/";
+  user.value = null;
+  close("dashboard");
+  close("profile");
+  close("card");
+  show("login");
 }
 async function loadSession() {
   loadingSession.value = true;
@@ -195,7 +199,7 @@ async function submitAuth(event: Event, action: string) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (data.code === "email_delivery_failed") {
-        location.href = "/verify-email?delivery=failed";
+        navigate("/verify-email?delivery=failed");
         return;
       }
       loginError.value =
@@ -204,7 +208,7 @@ async function submitAuth(event: Event, action: string) {
       return;
     }
     if (data.requires_email_verification) {
-      location.href = data.redirect || "/verify-email?sent=1";
+      navigate(data.redirect || "/verify-email?sent=1");
       return;
     }
     await loadSession();
@@ -265,18 +269,17 @@ watch(
   { immediate: true },
 );
 onMounted(async () => {
-  if (!initialPath.startsWith("/dashboard/")) syncPath();
+  const initialDestination = entry.pathname + entry.search;
+  if (!entry.pathname.startsWith("/dashboard/")) navigate(initialDestination);
   await loadSession();
-  if (initialPath.startsWith("/dashboard/")) {
-    if (user.value) syncPath();
+  if (entry.pathname.startsWith("/dashboard/")) {
+    if (user.value) navigate(initialDestination);
     else {
-      requestedDestination.value = initialPath;
+      requestedDestination.value = entry.pathname;
       show("login");
     }
   }
-  addEventListener("popstate", syncPath);
 });
-onBeforeUnmount(() => removeEventListener("popstate", syncPath));
 </script>
 <template>
   <SceneBackground
@@ -350,10 +353,8 @@ onBeforeUnmount(() => removeEventListener("popstate", syncPath));
         v-else-if="w.id === 'dashboard' && user"
         :initial-route="dashboardRoute"
         :language="lang"
-        @route-change="
-          dashboardRoute = $event;
-          updateUrl('/dashboard/' + $event + '/');
-        "
+        @route-change="dashboardRoute = $event"
+        @session-expired="sessionExpired"
         @back-profile="
           closePage('dashboard');
           show('profile');
@@ -403,6 +404,7 @@ onBeforeUnmount(() => removeEventListener("popstate", syncPath));
         :email-verified-success="verifiedSuccess"
         :login-message="loginMessage"
         :auth-busy="authBusy"
+        :entry-query="accountQueries[w.id]"
         :news-label="labels.subscribe"
         :optional-label="labels.optional"
         @navigate="navigate"

@@ -1,17 +1,16 @@
 <script setup>
-import { onMounted, ref } from "vue";
+import { ref, watch } from "vue";
 import { apiFetch } from "../../../urls.js";
 
-defineProps({ tr: Function, session: Object });
+const props = defineProps({ tr: Function, session: Object, entryQuery: { type: String, default: "" } });
 defineEmits(["navigate", "set-language"]);
 
 const state = ref("idle");
 const message = ref("");
 const email = ref("");
 
-async function confirmToken(token) {
+async function confirmToken(token, kind) {
   state.value = "loading";
-  const kind = new URLSearchParams(location.search).get("kind");
   const endpoint = kind === "change" ? "/auth/email-change/confirm" : "/auth/email-verification/confirm";
   const res = await apiFetch(endpoint, {
     method: "POST",
@@ -35,13 +34,14 @@ async function resend() {
   message.value = data.detail || "Email confirmation is temporarily unavailable.";
 }
 
-onMounted(() => {
-  const query = new URLSearchParams(location.search);
+watch(() => props.entryQuery, value => {
+  const query = new URLSearchParams(value);
   const token = query.get("token");
-  if (token) confirmToken(token);
+  if (token) confirmToken(token, query.get("kind"));
   else if (query.get("sent") === "1") state.value = "sent";
   else if (query.get("delivery") === "failed") state.value = "error";
-});
+  else state.value = "idle";
+}, { immediate: true });
 </script>
 
 <template>
@@ -65,7 +65,7 @@ onMounted(() => {
         <p v-else-if="state === 'error'" class="login-status is-error">{{ message || tr("verify.failed") }}</p>
         <p v-else class="login-status">{{ tr("verify.instructions") }}</p>
 
-        <a v-if="state === 'success'" class="secondary-action" href="/login?verified=success">{{ tr("verify.login") }}</a>
+        <a v-if="state === 'success'" class="secondary-action" href="/login?verified=success" @click.prevent="$emit('navigate', '/login?verified=success')">{{ tr("verify.login") }}</a>
         <form v-else @submit.prevent="resend">
           <label><span>{{ tr("signup.email") }}</span><input v-model="email" type="email" autocomplete="email" required></label>
           <button type="submit" :disabled="state === 'loading'">{{ tr("verify.resend") }}</button>

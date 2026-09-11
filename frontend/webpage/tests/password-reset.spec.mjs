@@ -37,7 +37,7 @@ for (const [language, copy] of Object.entries(messages)) {
         await route.fulfill({ status: scenario === "invalid" ? 400 : 200, json: {} });
       });
       await page.goto("/reset-password?token=ui-regression-not-a-real-token");
-      await expect(page).toHaveURL(/\/reset-password$/);
+      await expect(page).toHaveURL("/");
       const fields = page.locator("input[type=password]");
       await fields.nth(0).fill("test-only-password-A");
       await fields.nth(1).fill(scenario === "mismatch" ? "test-only-password-B" : "test-only-password-A");

@@ -37,7 +37,12 @@ def _serve_vue(dist: Path, path: str, detail: str):
     if not index.exists():
         raise HTTPException(status_code=404, detail=detail)
     target = _safe_file(dist, path) if path else None
-    return FileResponse(target or index)
+    selected = target or index
+    # HTML selects a build's hashed assets. Revalidate it on each navigation,
+    # including SPA fallbacks requested through an asset-shaped URL. Keep the
+    # asset files' existing cache behavior and validators unchanged.
+    headers = {"Cache-Control": "no-cache, must-revalidate"} if selected.suffix.lower() in {".html", ".htm"} else None
+    return FileResponse(selected, headers=headers)
 
 
 @router.get("/dashboard")

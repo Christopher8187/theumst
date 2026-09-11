@@ -2,7 +2,7 @@
 
 Visitors browse public pages and news, create an account, sign in, verify their email or recover a password. Account forms call the backend; their local success messages do not establish that an email reached an inbox.
 
-`src/App.vue` mounts the [shared desktop](../shared/README.md). Existing `pages/` account forms use its window chrome; shared Home, News and Profile components own their current presentation. `utils/language.js` and the shared desktop translations own interface copy. Public routes and signed-in tools remain directly addressable. The shared transparent logo is also the browser-tab icon. Branding images under backend assets are distinct from governed book images.
+`src/App.vue` mounts the [shared desktop](../shared/README.md). Existing `pages/` account forms use its window chrome; shared Home, News and Profile components own their current presentation. `utils/language.js` and the shared desktop translations own interface copy. [Frontend architecture](../../docs/architecture/frontend.md#desktop-navigation-and-entry-urls) owns the single visible URL, compatibility links and account-token handling. The shared transparent logo is also the browser-tab icon. Branding images under backend assets are distinct from governed book images.
 
 Build with `npm ci` then `npm run build`. Local Vite uses port 5173. Read [account recovery](../../docs/account-recovery.md) for SMTP and [security](../../docs/security.md) for authentication. Backend tests for email claims, password recovery and frontend policy cover associated behavior; the release browser checks separately cover visible flows.
 

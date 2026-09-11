@@ -2,7 +2,17 @@
 
 Each of the three applications has its own package manifest, Vite configuration, source directory and Dockerfile. The public site and dashboard builds are copied into the backend image. The demo has a separate Nginx image. Shared URL definitions live in `frontend/urls.js`.
 
-The public site and dashboard entry components both mount `frontend/shared/DesktopApp.vue`. It composes public pages, account state and window navigation using browser history. Dashboard route metadata selects the permitted tools, which load asynchronously and request access-controlled book, media and administrative APIs. Profile and subscriptions live in their own window. The demo's root composes library, detail, realm, reader and notes views. All use the same backend session model.
+The public site and dashboard entry components both mount `frontend/shared/DesktopApp.vue`. It composes public pages, account state and window navigation. Dashboard route metadata selects the permitted tools, which load asynchronously and request access-controlled book, media and administrative APIs. Profile and subscriptions live in their own window. The demo's root composes library, detail, realm, reader and notes views. All use the same backend session model.
+
+## Desktop navigation and entry URLs
+
+The public site and signed-in dashboard form one desktop at `https://theumst.com/`. Opening public pages, a News article, account forms, Profile, Settings or a dashboard tool changes window state while the address remains `/`. Window choices do not create browser-history entries. Refreshing starts Home; saved appearance preferences remain. The Demo access/request panel is also a desktop window. Its actual Enter Demo link leaves for the protected `/demo/` application.
+
+Older public bookmarks, News email links and account confirmation/reset links remain entry addresses. Signed-in `/dashboard/...` bookmarks also select the requested tool. A signed-out dashboard entry first redirects to Login and does not retain the requested tool destination. For entries that reach the desktop, `desktopEntry.js` captures the initial path and query, then replaces the visible address with `/`. `DesktopApp.vue` opens the requested window and passes account-link data to its form. Tokens stay in memory, outside the address bar and browser storage. Refreshing after consuming a link starts Home; reopening the original email link lets the backend decide whether its token is still valid. Backend authentication, tool permissions and Demo checks remain authoritative.
+
+Build directories and API paths are implementation boundaries. Read this section before changing their relationship to visible navigation. Preserve News links for recipients and account-token handling. The [backend HTML cache policy](backend.md) makes document requests revalidate their build; it cannot replace an already-running old tab. [Operations](../operations.md) distinguishes server output from retained browser content.
+
+## Window and scene state
 
 Windows remain mounted when closed, preserving their scroll position and tool drafts for the visit. Opening Profile resets its selected tab to Details. The shared scene renderer mounts once and disposes listeners, drawing resources and its animation frame on unmount. Opening or dragging a window does not pause rotation. The existing scene pause button controls rotation, and reduced-motion preferences determine its initial default. Camera direction starts at the library desk on each visit. Color and scene settings persist in browser storage; the margin note keeps its fixed warm paper colors.
 

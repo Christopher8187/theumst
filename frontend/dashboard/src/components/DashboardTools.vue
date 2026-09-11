@@ -17,7 +17,7 @@ const props = defineProps({
   initialRoute: { type: String, default: "demo" },
   language: { type: String, default: "en" }
 });
-const emit = defineEmits(["route-change", "back-profile"]);
+const emit = defineEmits(["route-change", "back-profile", "session-expired"]);
 const { t, setLang } = useI18n();
 watch(() => props.language, setLang, { immediate: true });
 const editor = ref(null);
@@ -41,6 +41,7 @@ const {
 } = useDashboardTools({
   initialRoute: () => props.initialRoute,
   onRouteChange: (next) => emit("route-change", next),
+  onSessionExpired: () => emit("session-expired"),
   scrollToEditor,
   t
 });
