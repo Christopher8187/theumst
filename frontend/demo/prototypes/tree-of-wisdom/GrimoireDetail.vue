@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import type { SampleBook } from './books';
+import { useWisdomI18n } from './i18n';
+const {t}=useWisdomI18n();
 defineProps<{book:SampleBook;added:boolean}>();
 defineEmits<{add:[];enter:[];preview:[]}>();
 </script>
 
 <template>
-  <section class="grimoire-detail" :key="book.id" aria-label="Selected grimoire">
-    <div class="detail-heading"><p class="tech-label">{{book.subject}}<span>◦ {{book.count}} {{book.count===36?'objects':'passages'}}</span></p><h2>{{book.title}}</h2></div>
-    <p class="grimoire-summary">{{book.summary}}</p>
-    <div class="detail-action"><button class="summon-action" @click="added?$emit('enter'):$emit('add')"><span>{{added?'Enter grimoire':'Add grimoire'}}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><span class="added-state" :class="{added}">{{added?'✓ In your grimoires':'Available to add'}}</span></div>
-    <button class="preview-action" @click="$emit('preview')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v15M3 4c4-1 6 0 9 2 3-2 5-3 9-2v14c-4-1-6 0-9 2-3-2-5-3-9-2Z"/></svg>Read a sample <span>↗</span></button>
+  <section class="grimoire-detail" :key="book.id" :aria-label="t.selected">
+    <div class="detail-heading"><p class="tech-label">{{book.subject}}<span>◦ {{book.count}} {{book.id==='analysis'?t.objects:t.passages}}</span></p><h2>{{book.title}}</h2></div>
+    <p class="grimoire-summary">{{book.summary||book.title}}</p>
+    <div class="detail-action"><button class="summon-action" @click="added?$emit('enter'):$emit('add')"><span>{{added?t.enter:t.add}}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><span class="added-state" :class="{added}">{{added?'✓ '+t.inCollection:t.available}}</span></div>
+    <button class="preview-action" @click="$emit('preview')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v15M3 4c4-1 6 0 9 2 3-2 5-3 9-2v14c-4-1-6 0-9 2-3-2-5-3-9-2Z"/></svg>{{t.brief}} <span>↗</span></button>
   </section>
 </template>
 

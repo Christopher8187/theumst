@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import BookStatus from './BookStatus.vue';
 import type { SampleBook } from './books';
+import { useWisdomI18n } from './i18n';
+const {t}=useWisdomI18n();
 import ProjectedBook from './ProjectedBook.vue';
 import GrimoireDetail from './GrimoireDetail.vue';
 defineProps<{books:SampleBook[];selected?:SampleBook;added:boolean}>();
@@ -7,9 +10,9 @@ defineEmits<{select:[id:string];add:[];enter:[];preview:[]}>();
 </script>
 
 <template>
-  <section class="orbit-layout" aria-label="Orbit interface">
-    <div class="orbital-books"><div class="orbit-track" aria-hidden="true"></div><button v-for="(book,i) in books" :key="book.id" :class="{active:selected?.id===book.id}" :style="{'--slot':i}" :aria-pressed="selected?.id===book.id" @click="$emit('select',book.id)"><span class="orbital-mark">0{{i+1}}</span><ProjectedBook :book="book" large/><span class="orbital-title">{{book.title}}</span><span class="orbital-subject">{{book.subject}}</span></button></div>
-    <div class="orbit-details"><div class="orbit-detail-line"><i></i><span>GRIMOIRE SELECTED</span><i></i></div><GrimoireDetail v-if="selected" :book="selected" :added="added" @add="$emit('add')" @enter="$emit('enter')" @preview="$emit('preview')"/></div>
+  <section class="orbit-layout" :aria-label="t.orbit">
+    <div class="orbital-books"><div class="orbit-track" aria-hidden="true"></div><button v-for="(book,i) in books" :key="book.id" :class="{active:selected?.id===book.id}" :style="{'--slot':i}" :aria-pressed="selected?.id===book.id" @click="$emit('select',book.id)"><span class="orbital-mark">0{{i+1}}</span><ProjectedBook :book="book" large/><span class="orbital-title">{{book.title}}</span><span class="orbital-subject">{{book.subject}}</span><BookStatus :book="book"/></button></div>
+    <div class="orbit-details"><div class="orbit-detail-line"><i></i><span>{{t.selected}}</span><i></i></div><GrimoireDetail v-if="selected" :book="selected" :added="added" @add="$emit('add')" @enter="$emit('enter')" @preview="$emit('preview')"/></div>
   </section>
 </template>
 

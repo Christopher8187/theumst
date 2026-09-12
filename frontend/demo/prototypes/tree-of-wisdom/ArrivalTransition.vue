@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // One persistent scene and one progress value. Descent retraces ascent exactly.
 import { shallowRef, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { useWisdomI18n } from './i18n';
+const {t}=useWisdomI18n();
 import departure from '../../../shared/assets/between-dimensions-final.png';
 const props=defineProps<{destination:string;direction:'up'|'down'|null;at:'home'|'tree'}>();
 const emit=defineEmits<{done:[];progress:[value:number]}>();
@@ -39,7 +41,7 @@ onBeforeUnmount(()=>{disposed=true;cancelAnimationFrame(frame)});
 defineExpose({finish});
 </script>
 <template>
-  <div class="journey-stage" :class="{'in-transit':!!direction}" :data-position="progress.toFixed(3)" :aria-label="direction?(direction==='up'?'Ascending to the Tree of Wisdom':'Descending to the home scene'):undefined">
+  <div class="journey-stage" :class="{'in-transit':!!direction}" :data-position="progress.toFixed(3)" :aria-label="direction?(direction==='up'?t.ascending:t.descending):undefined">
     <div class="journey-space" aria-hidden="true"></div>
     <div class="journey-home" :style="homeStyle" aria-hidden="true"><img :src="departure" alt=""><div class="home-shade"></div></div>
     <div class="journey-mist" :style="mistStyle" aria-hidden="true"></div>

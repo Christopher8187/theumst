@@ -1,18 +1,30 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, shallowRef } from 'vue';
 import katex from 'katex';
+import ContentsTree from '../../src/components/ContentsTree.vue';
+import { buildContentsTree } from '../../src/domain/contents';
+import { useWisdomI18n } from './i18n';
 import type { SampleBook } from './books';
 const props=defineProps<{book:SampleBook;added:boolean}>();
 const emit=defineEmits<{close:[];add:[];enter:[]}>();
+const {t}=useWisdomI18n();
 const dialog=shallowRef<HTMLDialogElement|null>(null);
+const panel=shallowRef<'overview'|'contents'|'extract'>('overview');
 const page=shallowRef(0);
+const selectedSection=shallowRef<number|null>(null);
+const tree=computed(()=>buildContentsTree(props.book.contents||[]).flatMap(section=>section.children.length&&(section.is_book_root||['','0'].includes(String(section.section_number??'')))?section.children:[section]));
+const selectedSectionName=computed(()=>props.book.contents?.find(section=>section.section_id===selectedSection.value)?.section_name);
 const passage=computed(()=>props.book.passages[page.value]);
-const formula=computed(()=>passage.value.math?katex.renderToString(passage.value.math,{throwOnError:false,trust:false,displayMode:true}):'');
+const formula=computed(()=>passage.value?.math?katex.renderToString(passage.value.math,{throwOnError:false,trust:false,displayMode:true}):'');
 const answer=shallowRef(false);
+// Real Analysis has four chapter extracts. Each miniature has two chapters of two sections.
+const chapterGroups=computed(()=>tree.value.map((chapter,i)=>({title:chapter.section_name,number:chapter.section_number,first:props.book.id==='analysis'?i:i*2})));
+const chapter=computed(()=>chapterGroups.value.filter(group=>group.first<=page.value).at(-1));
 const previousFocus=document.activeElement as HTMLElement|null;
 function turn(next:number){page.value=Math.max(0,Math.min(props.book.passages.length-1,next));answer.value=false;}
 function keydown(event:KeyboardEvent){
   event.stopPropagation();
+  if(panel.value!=='extract')return;
   if(event.key==='ArrowLeft'){event.preventDefault();turn(page.value-1)}
   if(event.key==='ArrowRight'){event.preventDefault();turn(page.value+1)}
 }
@@ -21,15 +33,21 @@ onBeforeUnmount(()=>{dialog.value?.close();previousFocus?.focus()});
 </script>
 <template>
   <dialog ref="dialog" class="grimoire-reader" aria-labelledby="reader-title" @cancel.prevent="emit('close')" @keydown="keydown">
-    <header class="reader-heading"><div><small>{{book.subject}} <span> / SAMPLE</span></small><h2 id="reader-title">{{book.title}}</h2></div><button class="reader-close" aria-label="Close sample and return to grimoires" autofocus @click="emit('close')"><span>Back to grimoires</span> ×</button></header>
+    <header class="reader-heading"><div><small>{{book.subject}} <span> / {{t.brief}}</span></small><h2 id="reader-title">{{book.title}}</h2></div><button class="reader-close" :aria-label="t.closeBrief" autofocus @click="emit('close')"><span>{{t.back}}</span> ×</button></header>
     <div class="reader-body">
-      <aside class="reader-contents"><div class="reader-emblem" aria-hidden="true"><i></i><b>{{book.symbol}}</b><i></i></div><p class="contents-label">IN THESE PAGES</p><nav aria-label="Sample passages"><button v-for="(entry,i) in book.passages" :key="entry.title" :aria-current="page===i?'page':undefined" :aria-label="'Passage '+(i+1)+': '+entry.title" @click="turn(i)"><span>{{String(i+1).padStart(2,'0')}}</span><strong>{{entry.title}}</strong><i aria-hidden="true">↗</i></button></nav><p class="reader-note">A glimpse of the grimoire.<br>Take your time.</p></aside>
-      <section class="reading-stage" aria-label="Sample reading">
-        <article class="reading-page" :key="page" aria-live="polite"><div class="page-overline"><span>{{passage.kind}}</span><i></i><small>{{String(page+1).padStart(2,'0')}} / {{String(book.passages.length).padStart(2,'0')}}</small></div><h3>{{passage.title}}</h3><p>{{passage.text}}</p><div v-if="formula" class="reading-math" v-html="formula"></div><div v-if="passage.answer" class="answer-area"><button :aria-expanded="answer" @click="answer=!answer">{{answer?'Hide answer':'Reveal answer'}} <span>{{answer?'−':'+'}}</span></button><p v-if="answer">{{passage.answer}}</p></div><span class="page-watermark" aria-hidden="true">{{book.symbol}}</span></article>
-        <nav class="page-navigation" aria-label="Turn sample pages"><button aria-label="Previous passage" :disabled="page===0" @click="turn(page-1)">← <span>Previous</span></button><div class="page-dots" aria-hidden="true"><i v-for="(_,i) in book.passages" :key="i" :class="{current:page===i}"></i></div><button aria-label="Next passage" :disabled="page===book.passages.length-1" @click="turn(page+1)"><span>Next</span> →</button></nav>
+      <aside class="reader-contents"><div class="reader-emblem" aria-hidden="true"><i></i><b>{{book.symbol}}</b><i></i></div><nav :aria-label="t.brief"><button v-for="(value,i) in (['overview','contents','extract'] as const)" :key="value" :aria-current="panel===value?'page':undefined" @click="panel=value"><span>0{{i+1}}</span><strong>{{t[value]}}</strong><i aria-hidden="true">↗</i></button></nav><p class="reader-note">{{t.sourceNote}}</p></aside>
+      <section class="reading-stage" :aria-label="t[panel]">
+        <article v-if="panel==='overview'" class="reading-page brief-overview"><div class="page-overline"><span>{{t.summary}}</span><i></i><small>{{book.count}} {{book.id==='analysis'?t.objects:t.passages}}</small></div><h3>{{t.overview}}</h3><p>{{book.summary||book.title}}</p><dl class="brief-metadata"><div><dt>{{t.publisher}}</dt><dd>{{book.publisher||t.unavailable}}</dd></div><div><dt>{{t.edition}}</dt><dd>{{book.version||book.edition||t.unavailable}}</dd></div><div><dt>{{t.isbn}}</dt><dd>{{book.isbn||'—'}}</dd></div><div><dt>{{t.contents}}</dt><dd>{{tree.length}} {{t.chapters}}</dd></div></dl><div class="brief-progress"><span>{{t.progressLabel}}</span><strong>{{book.completed||0}} / {{book.count}}</strong><progress :aria-label="t.progressLabel" :value="book.completed||0" :max="book.count||1"></progress></div></article>
+        <div v-else-if="panel==='contents'" class="brief-contents"><h3>{{t.contents}}</h3><ContentsTree :t="t" :items="tree" :current-section-id="selectedSection" @select="selectedSection=$event"/><p v-if="selectedSectionName" class="section-selection">{{t.selectedSection}} · {{selectedSectionName}}</p></div>
+        <template v-else-if="passage">
+          <nav class="extract-chapters" :aria-label="t.contents"><button v-for="group in chapterGroups" :key="group.number" :aria-current="chapter?.number===group.number?'page':undefined" @click="turn(group.first)"><small>{{group.number}}</small><span>{{group.title}}</span></button></nav>
+          <article class="reading-page" :key="page" aria-live="polite" tabindex="0"><div class="page-overline"><span>{{passage.kind}}</span><i></i><small>{{String(page+1).padStart(2,'0')}} / {{String(book.passages.length).padStart(2,'0')}}</small></div><h3>{{passage.title}}</h3><p>{{passage.text}}</p><div v-if="formula" class="reading-math" v-html="formula"></div><div v-if="passage.answer" class="answer-area"><button :aria-expanded="answer" @click="answer=!answer">{{answer?t.hideAnswer:t.revealAnswer}} <span>{{answer?'−':'+'}}</span></button><p v-if="answer">{{passage.answer}}</p></div><span class="page-watermark" aria-hidden="true">{{book.symbol}}</span></article>
+          <nav class="page-navigation" :aria-label="t.samplePages"><button :aria-label="t.previousPassage" :disabled="page===0" @click="turn(page-1)">← <span>{{t.previous}}</span></button><div class="page-dots"><button v-for="(entry,i) in book.passages" :key="i" :class="{current:page===i}" :aria-label="t.samplePages+' '+(i+1)+': '+entry.title" :aria-current="page===i?'page':undefined" @click="turn(i)">{{i+1}}</button></div><button :aria-label="t.nextPassage" :disabled="page===book.passages.length-1" @click="turn(page+1)"><span>{{t.next}}</span> →</button></nav>
+        </template>
+        <p v-else class="reading-page">{{t.noExtract}}</p>
       </section>
     </div>
-    <footer class="reader-footer"><span>{{added?'✓ In your grimoires':book.passages.length+' pages to explore'}}</span><button @click="added?emit('enter'):emit('add')">{{added?'Enter grimoire':'Add grimoire'}} <span>↗</span></button></footer>
+    <footer class="reader-footer"><span>{{added?'✓ '+t.inCollection:t.available}}</span><button @click="added?emit('enter'):emit('add')">{{added?t.enter:t.add}} <span>↗</span></button></footer>
   </dialog>
 </template>
 <style scoped>
@@ -41,4 +59,12 @@ onBeforeUnmount(()=>{dialog.value?.close();previousFocus?.focus()});
 .reading-math{font-size:17px}
 @media(max-width:700px){.reading-math{font-size:13px}.reading-page h3{font-size:27px}}
 @media(max-width:340px){.reading-page{padding-left:18px;padding-right:18px}.reading-page h3{font-size:25px}.reading-page>p{font-size:13px;line-height:1.75}.reading-math{font-size:12px}}
+</style>
+<style scoped>
+.grimoire-reader{color-scheme:dark}.reading-page,.brief-contents,.reader-contents{scrollbar-width:thin;scrollbar-color:#94bccd70 transparent}.reader-body{grid-template-columns:27% 73%}.reader-contents{padding-top:32px}.brief-overview h3{font-size:30px;margin:22px 0 18px}.brief-overview>p{font-size:14px;line-height:1.8;margin-bottom:22px}.brief-metadata{display:grid;grid-template-columns:1fr 1fr;gap:18px 28px;margin:24px 0;padding-top:20px;border-top:1px solid #bbcae22b}.brief-metadata div{min-width:0}.brief-metadata dt{font:9px 'Courier New',monospace;color:#aebcd2;margin-bottom:7px}.brief-metadata dd{font:12px/1.5 'Segoe UI',sans-serif;color:#e1e4ed;margin:0;overflow-wrap:anywhere}.brief-progress{display:grid;grid-template-columns:1fr auto;gap:10px;color:#bcd4df;font-size:10px}.brief-progress strong{font:10px 'Courier New',monospace}.brief-progress progress{grid-column:1/-1;width:100%;height:3px;accent-color:#b0dce6}.brief-contents{padding:28px 32px;overflow:auto;flex:1;min-height:0;font:13px 'Segoe UI',sans-serif}.brief-contents>h3{font:29px Georgia,serif;margin:0 0 20px;color:#ece3eb}.brief-contents :deep(.contents-tree){list-style:none;margin:12px 0;padding:0}.brief-contents :deep(.contents-row){display:flex;align-items:center;gap:8px;border-bottom:1px solid #b8cfe212;min-height:46px;border-radius:4px}.brief-contents :deep(.contents-number){font:10px 'Courier New',monospace;color:#9ad7e1;flex-shrink:0}.brief-contents :deep(.contents-entry){flex:1;line-height:1.5;overflow-wrap:anywhere}.brief-contents :deep(.contents-toggle){min-width:26px;width:26px;height:28px;padding:0;background:#b5c7e014;border:1px solid #afcad63d;border-radius:4px;color:#ddc1ea}.brief-contents :deep(.contents-leaf){width:26px;text-align:center;color:#a5bfd2;flex-shrink:0}.brief-contents :deep(.contents-row.current){background:#bcd8f21a}.brief-contents :deep(.contents-window-summary){font-size:10px}.section-selection{font-size:10px;color:#bbdce5;border-top:1px solid #accfe227;padding-top:13px}.extract-chapters{display:flex;gap:6px;padding:16px 24px;border-bottom:1px solid #b5cce123;flex-shrink:0;overflow:auto}.extract-chapters button{display:flex;align-items:center;text-align:left;gap:9px;min-height:38px;flex:1;min-width:0;background:#b3c3e006;border:1px solid #b5c7df20;color:#b9c8d9;border-radius:4px;padding:9px 10px}.extract-chapters button[aria-current]{background:#a3dce516;border-color:#c4daf162;color:#dfedf3}.extract-chapters small{font:9px 'Courier New',monospace;color:#cfbde1}.extract-chapters span{font:10px/1.4 'Bahnschrift','Segoe UI',sans-serif}.reading-page:focus{outline-offset:-5px}.reader-note{font-size:10px}
+@media(max-width:700px){.reader-body{display:flex}.reader-contents{padding:10px 14px}.reader-contents nav strong{display:block;font-size:11px}.reader-contents nav button>span{display:none}.reader-contents nav button{min-width:0;padding:8px 7px}.brief-overview{padding:22px}.brief-overview h3{font-size:26px;margin:17px 0}.brief-overview>p{font-size:13px;line-height:1.7;margin-bottom:16px}.brief-metadata{gap:14px 20px;margin:19px 0;padding-top:16px}.brief-metadata dd{font-size:11px}.brief-metadata dt{font-size:8px}.brief-progress{font-size:9px}.brief-contents{padding:23px 18px;font-size:12px}.brief-contents>h3{font-size:25px;margin-bottom:17px}.brief-contents :deep(.contents-row){gap:5px}.brief-contents :deep(.contents-entry){padding:9px 4px}.brief-contents :deep(.contents-number){font-size:9px}.extract-chapters{padding:10px 14px;gap:6px}.extract-chapters button{padding:7px;gap:6px}.extract-chapters span{font-size:9px}.reader-footer>span{max-width:48%;line-height:1.5}.reader-footer button{white-space:nowrap}.reading-page{padding-top:20px}}
+@media(max-width:340px){.brief-overview{padding:19px}.brief-overview>p{font-size:12px}.brief-metadata{gap:12px}.brief-contents{padding:20px 14px}.brief-contents :deep(.contents-row){padding-left:calc(var(--contents-depth)*10px)}.extract-chapters span{font-size:8px}}
+</style>
+<style scoped>
+.page-dots{gap:4px}.page-dots button{font:9px 'Courier New',monospace;min-height:25px;width:25px;justify-content:center;border:1px solid #b5d3e52e;border-radius:50%;padding:0;color:#b4bdcd}.page-dots button.current{background:#c5bbe826;color:#e8d9f1;border-color:#cfb9e075}.page-navigation{padding-left:24px;padding-right:24px}@media(max-width:700px){.page-navigation{padding-left:15px;padding-right:15px}.page-navigation>button{gap:6px}.page-navigation>button span{font-size:10px}.page-dots button{width:21px;min-height:24px;font-size:8px}.page-dots{gap:3px}}
 </style>

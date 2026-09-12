@@ -8,7 +8,7 @@ to work inside the game.
 ## Run and compare
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=3&variant=B`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=4&variant=B`.
 Use the port reported by Vite if 5175 is occupied.
 
 All three variants keep the approved pale Sanctuary tree:
@@ -20,13 +20,35 @@ All three variants keep the approved pale Sanctuary tree:
 The bottom comparison controls and left/right arrow keys switch variants.
 `arrival=0` skips the initial ascent. `book=symmetry` or `book=light`
 selects a short sample. Search matches titles and subjects. The slash key focuses
-search. My grimoires filters the personal collection. Add grimoire adds the
-selection for this visit; Enter grimoire reaches a next-scene placeholder.
+search. My grimoires opens a separate personal collection with its own search,
+summary, publisher, progress, Brief and Open actions. Its search and the Tree
+search keep independent values. Add grimoire adds the selection for this visit;
+Enter grimoire reaches a next-scene placeholder.
 
-Read a sample opens a separate projected reading surface. Its passage choices,
-Previous/Next controls, Close, and Add/Enter actions stay in place. The arrow keys
-turn sample pages while it is open; Escape closes it. Closing restores the
-selection underneath. Samples do not expand the selection panel.
+Brief opens a separate reading view with Overview, Contents and Extract.
+Overview shows the supplied summary and metadata, contents count and progress.
+Contents uses the existing Demo's expandable chapter tree and keyboard controls.
+Real Analysis has four chapters and twenty section rows. Each short book has
+two chapters with two sections each, matching its four extract passages.
+Extract has chapter choices, numbered passage buttons and Previous/Next controls.
+The arrow keys turn passages only while Extract is selected; Escape closes Brief.
+Close and Add/Enter stay visible while the body scrolls. Closing restores the
+selection and focus underneath.
+
+The language selector uses the existing persisted Demo preference for English,
+Chinese and Japanese. Source book text stays in its supplied language.
+More contains the previous Review, Advice, Expand and Generate actions with
+their existing coming-soon behavior. Publisher and non-zero progress appear
+on the Tree's book choices. Collection order follows this visit's add/open activity.
+
+Optional URL scenarios make additional states inspectable:
+
+- `view=collection&scenario=empty-collection` opens an empty personal collection.
+- `scenario=empty-library` opens the unavailable-library state.
+- `scenario=progress` supplies 12/36 completed for Real Analysis and 2/4 for Symmetry.
+
+These progress values are explicitly labeled sample state. Adding or opening
+a grimoire never completes its contents.
 
 Descend is fixed at bottom left on desktop and top right on phones. It retraces
 the ascent to a local home-scene landing. Ascend to the tree travels back without
@@ -64,8 +86,8 @@ express this function. The original reference to “Domain Expansion” concerne
 mental growth through reading, not merely a place with a magical name.
 Mind Atlas and Horizon Map are candidate names for the planner, not settled
 terms. The relationship to the existing Outer grimoire view, journey editing,
-and how growth appears still need discussion. The current collection filter is
-only a simple step toward that future planner.
+and how growth appears still need discussion. The current personal collection
+does not implement that future planner.
 
 Design one scene at a time. Realms is likely next when Christopher is satisfied
 with this entrance. Do not treat this checkpoint as permission to implement
@@ -107,6 +129,26 @@ mounted by the current prototype.
 The built-in image tool generated the retained [pale tree](assets/sacred-tree-dawn.png)
 and [night alternative](assets/sacred-tree-night.png).
 See [the art prompt brief](art-prompts.md). Revisions 2 and 3 use the existing pale art.
+
+## Revision 4 and next implementation
+
+Revision 4 restores entrance and Brief functions identified by two independent
+GPT-5.6 Sol adversarial reviewers. Their findings, fixes and the browser checks
+are recorded in [the functionality review](functionality-review.md).
+The original Demo remains available at `/demo/` without the prototype parameter.
+The prototype's Enter action does not hand a selected book to that application.
+
+Christopher specified **0.0.4** for the next implemented Web Demo release.
+The previous Demo label **0.1.0** is erroneous. Update all production language
+labels and release documentation to 0.0.4 during that implementation cycle.
+The prototype's language values already carry that correction; revision `4`
+in its URL is only a prototype checkpoint. This work does not publish a release
+or change the website's separate version.
+
+Keep the working downstream Demo functions when integrating this entrance:
+Realms, Text, Questions, Notes, completion, discovery, Atlas, related knowledge,
+cross-book return, saved study positions and availability handling. This
+checkpoint does not replace them with the prototype's placeholder.
 
 ## EVE Online reference
 

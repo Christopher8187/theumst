@@ -1,15 +1,40 @@
 // Original, in-memory miniature books. No publication or account data is involved.
 export interface Passage { title: string; kind: string; text: string; math?: string; answer?: string }
+export interface BookSection { section_id:number; parent_section:number|null; section_number:string; section_name:string; is_book_root?:boolean }
 export interface SampleBook {
   id: string; title: string; short: string; subject: string; color: string;
   symbol: string; count: number; edition: string; summary: string;
   passages: Passage[];
+  publisher?:string; isbn?:string; version?:string; completed?:number; contents?:BookSection[];
 }
 export const books: SampleBook[] = [
   {
     id:'analysis', title:'Real Analysis', short:'Real Analysis', subject:'Mathematics',
     color:'#526c89',symbol:'ε',count:36,edition:'Existing demo sample',
-    summary:'A study of real numbers, continuity, integration, differentiation and sequences of functions.',
+    publisher:'Theumst demo examples',version:'1',
+    summary:'The 36-item Real Analysis sample from the Section Atlas discussion. Explore foundations, integration, differentiation, and sequences of functions through definitions, examples, theorems, and exercises. This is illustrative demo material, not a complete textbook.',
+    contents:[
+      {section_id:1,parent_section:null,section_number:'1',section_name:'Foundations'},
+      {section_id:2,parent_section:null,section_number:'2',section_name:'Integration'},
+      {section_id:3,parent_section:null,section_number:'3',section_name:'Differentiation'},
+      {section_id:4,parent_section:null,section_number:'4',section_name:'Sequences of functions'},
+      {section_id:5,parent_section:1,section_number:'1.1',section_name:'Sequences'},
+      {section_id:6,parent_section:1,section_number:'1.2',section_name:'Continuity'},
+      {section_id:7,parent_section:2,section_number:'2.1',section_name:'Partitions'},
+      {section_id:8,parent_section:2,section_number:'2.2',section_name:'Sums and refinement'},
+      {section_id:9,parent_section:2,section_number:'2.3',section_name:'Integrability'},
+      {section_id:10,parent_section:9,section_number:'2.3.1',section_name:'Continuous case'},
+      {section_id:11,parent_section:2,section_number:'2.4',section_name:'Exercises'},
+      {section_id:12,parent_section:2,section_number:'2.5',section_name:'Further properties'},
+      {section_id:13,parent_section:3,section_number:'3.1',section_name:'Derivatives'},
+      {section_id:14,parent_section:3,section_number:'3.2',section_name:'Rules'},
+      {section_id:15,parent_section:14,section_number:'3.2.1',section_name:'Composition'},
+      {section_id:16,parent_section:3,section_number:'3.3',section_name:'Mean values'},
+      {section_id:17,parent_section:4,section_number:'4.1',section_name:'Pointwise limits'},
+      {section_id:18,parent_section:4,section_number:'4.2',section_name:'Uniform limits'},
+      {section_id:19,parent_section:18,section_number:'4.2.1',section_name:'Exchanging limits'},
+      {section_id:20,parent_section:4,section_number:'4.3',section_name:'Series'},
+    ],
     passages:[
       {title:'Foundations',kind:'Chapter',text:'The real numbers, continuity and compactness.'},
       {title:'Integration',kind:'Chapter',text:'Riemann sums, integrability and the fundamental theorem of calculus.'},
@@ -40,3 +65,12 @@ export const books: SampleBook[] = [
     ],
   },
 ];
+
+// The two original miniature books have a deliberately short, authored hierarchy.
+for (const book of books.filter(book=>book.id!=='analysis')) {
+  book.contents=[
+    {section_id:101,parent_section:null,section_number:'1',section_name:book.id==='symmetry'?'Symmetries':'Light in a vacuum'},
+    {section_id:102,parent_section:null,section_number:'2',section_name:'Examples and practice'},
+    ...book.passages.map((passage,i)=>({section_id:110+i,parent_section:i<2?101:102,section_number:(i<2?'1.':'2.')+(i%2+1),section_name:passage.title})),
+  ];
+}
