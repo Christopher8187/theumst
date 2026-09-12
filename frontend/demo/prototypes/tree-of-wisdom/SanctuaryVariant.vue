@@ -1,0 +1,17 @@
+<script setup lang="ts">
+import type { SampleBook } from './books';
+defineProps<{books:SampleBook[];selected:string|null}>();
+defineEmits<{select:[id:string]}>();
+</script>
+<template>
+ <section class="sanctuary" :class="{previewing:selected}" aria-label="The sanctuary">
+  <div class="sanctuary-title"><span class="sun-mark">✧</span><h1>Tree of<br><em>Wisdom</em></h1><p>Enter with curiosity.</p></div>
+  <div class="sanctuary-list"><p class="list-kicker">A PATH INTO KNOWLEDGE</p><button v-for="(book,i) in books" :key="book.id" :class="{selected:selected===book.id}" @click="$emit('select',book.id)"><span class="book-number">0{{i+1}}</span><span class="book-copy"><small>{{book.subject}}</small><strong>{{book.title}}</strong><span>{{book.count}} {{book.count===36?'objects':'passages'}}</span></span><span class="book-arrow">↗</span></button><p class="sanctuary-note">Begin wherever wonder finds you.</p></div>
+  <span class="sanctuary-seal">✧</span>
+ </section>
+</template>
+<style scoped>
+.sanctuary{position:absolute;inset:0;color:#555346}.sanctuary-title{position:absolute;left:8%;top:17%;text-align:left}.sun-mark{font-size:27px;color:#98824c}.sanctuary-title h1{font:400 clamp(40px,5vw,69px)/.96 Georgia,serif;letter-spacing:-.047em;margin:18px 0}.sanctuary-title em{font-weight:400}.sanctuary-title p{font:italic 14px Georgia,serif;color:#777569}.sanctuary-list{position:absolute;right:7%;top:26%;width:33%;max-width:480px}.list-kicker{font:8px 'Courier New',monospace;letter-spacing:.22em;color:#8a8069;margin:0 0 21px}.sanctuary-list button{display:flex;align-items:center;width:100%;padding:20px 0 22px;text-align:left;background:transparent;color:inherit;border:0;border-top:1px solid #7c775345;cursor:pointer;gap:18px}.book-number{font:10px 'Courier New',monospace;color:#a09577;align-self:flex-start;margin-top:8px}.book-copy{display:flex;flex-direction:column;gap:8px}.book-copy small{font:8px 'Courier New',monospace;text-transform:uppercase;letter-spacing:.16em;color:#887d68}.book-copy strong{font:26px/1.1 Georgia,serif;letter-spacing:-.025em;font-weight:400}.book-copy>span{font:9px 'Courier New',monospace;color:#8a8479}.book-arrow{margin-left:auto;font-size:20px;color:#95835b;transition:transform .25s}.sanctuary-list button:hover .book-arrow{transform:translate(3px,-3px)}.sanctuary-list button:hover .book-copy strong,.sanctuary-list button.selected{color:#8a6b3f}.sanctuary-note{font:italic 11px Georgia,serif;color:#8b8270;margin:25px 0}.sanctuary-seal{position:absolute;left:36%;bottom:16%;font-size:24px;color:#a793624f}@media(max-width:700px){.sanctuary-title{left:8%;top:14%}.sanctuary-title h1{font-size:44px}.sun-mark{display:none}.sanctuary-title p{font-size:12px}.sanctuary-list{top:39%;left:8%;right:8%;width:auto;background:#f6f2e5b3;padding:16px 18px 4px;backdrop-filter:blur(4px);border:1px solid #e4ddca80}.list-kicker{margin-bottom:13px;font-size:7px}.sanctuary-list button{padding:13px 0;gap:14px}.book-copy strong{font-size:21px}.book-copy{gap:5px}.sanctuary-note{margin:17px 0}.sanctuary-seal{display:none}}
+@media(min-width:701px){.sanctuary-title{left:auto;right:7%;width:33%;top:14%}.sanctuary-title h1{font-size:clamp(39px,4.3vw,61px);margin:10px 0}.sun-mark{font-size:19px}.sanctuary-title p{margin:13px 0}.sanctuary-list{top:43%}.sanctuary-list button{padding:15px 0 17px}.book-copy strong{font-size:24px}.list-kicker{margin-bottom:14px}}
+.sanctuary-title,.sanctuary-list{transition:opacity .2s}.previewing .sanctuary-title,.previewing .sanctuary-list{opacity:0;visibility:hidden;pointer-events:none}
+</style>

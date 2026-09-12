@@ -32,6 +32,11 @@ The isolated frontend application served after the internal proxy checks the
 signed-in user's access.
 _Avoid_: Demo website, public website
 
+**Tree of Wisdom**:
+The sacred, tree-themed Web Demo entrance for discovering and choosing grimoires,
+set apart from the study spaces reached through the realms.
+_Avoid_: Arcane Library
+
 **Book version**:
 The published edition or version of a book.
 _Avoid_: Processing revision
@@ -39,6 +44,9 @@ _Avoid_: Processing revision
 **Summon**:
 Add a grimoire to a user's personal collection, which provides the reading
 list underlying that user's interactive learning.
+
+**Mind Palace**:
+The collection of knowledge objects a user has checked off.
 
 **Realm**:
 A study destination entered from a grimoire, which may also reach knowledge
