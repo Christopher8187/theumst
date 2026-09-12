@@ -1,82 +1,94 @@
-# Tree of Wisdom scene prototype
+# Sanctuary grimoire interface prototype
 
-Three entrance designs on the existing local `/demo/` route. This throwaway
-prototype supports the live discussion in
+This throwaway prototype supports
 [Settle improvements to the Theumst Web Demo](https://github.com/Christopher8187/product/issues/70).
-The question is how a sacred tree can introduce book discovery and selection.
+It explores selecting and adding grimoires in an interface intended eventually
+to work inside the game.
 
-## Open it
+## Run and compare
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&variant=C`.
-The development server may report a different port if 5175 is occupied.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=2&variant=A`.
+Use the port reported by Vite if 5175 is occupied.
 
-- `variant=A`: The sacred grove. Select illuminated symbols around a painted tree.
-- `variant=B`: The celestial tree. Pan and zoom a drawn tree among stars.
-- `variant=C`: The sanctuary. A pale tree above clouds, with books listed beside it.
-- `arrival=0`: Skip the initial ascent. Replay arrival remains available.
-- `book=analysis`, `book=symmetry`, or `book=light`: Open a book preview directly.
+All three variants keep the approved pale Sanctuary tree:
 
-Use the bottom bar or left/right arrow keys to compare variants. Escape closes
-the book preview. Search and My grimoires filter the books. Summon adds a book
-to the collection for this visit. Enter grimoire reaches a next-scene placeholder.
+- A, Projection: a projected inventory with selected-book details alongside it.
+- B, Orbit: floating book selections above a separate reading and action area.
+- C, Signals: compact book rows with an expanding detail area.
 
-## Christopher's decisions, 2026-09-12
+The bottom comparison controls and left/right arrow keys switch variants.
+`arrival=0` skips the initial ascent. `book=symmetry` or `book=light`
+selects a short sample. Search matches titles and subjects. The slash key focuses
+search. My grimoires filters the personal collection. Add grimoire adds the
+selection for this visit; Enter grimoire reaches a next-scene placeholder.
 
-- Design one scene at a time, beginning with the Tree of Wisdom, replacing the
-  Arcane Library name. Realms is likely next. Christopher decides when a scene
-  is satisfactory and ready to move on.
-- This tree is a sacred, holy place, separate from the ordinary study area.
-  The earlier cozy tree with study furniture was discarded.
-- The second generated image, the pale luminous tree above clouds, is preferred.
-  It appears in variant C and is the default. This selects an art direction;
-  it does not approve the complete variant C interface.
-- Explore an animated ascent from the homepage into space and up to the tree.
-  This prototype takes about 5.7 seconds and offers Skip and Replay. Reduced
-  motion skips the automatic arrival.
-- Use mathematics and science sample books. Symmetry & Transformations and
-  Light, Distance & Time each contain four short passages, including an exercise
-  and an answer. Real Analysis retains a longer-book presence, with four chapter
-  summaries previewing the existing 36-object illustrative sample.
-- Mind Palace means the collection of knowledge objects a user has checked off.
-  The definition is recorded in the repository glossary. Summoning or opening
-  a grimoire does not add its objects to the Mind Palace. Its visual form and
-  place in navigation remain open.
+Return home plays the descending transition and then navigates to
+`https://theumst.com/`. Replay ascent repeats the arrival. Both offer Skip.
+Reduced motion skips automatic arrival and shortens return to a still handoff.
 
-## Boundaries
+## Decisions and open questions
 
-All interaction state lives in memory and resets on reload. The prototype does
-not mount the real Demo App, read account data, call the backend, or publish its
-sample books. Decorative branches do not express authored dependencies or
-prerequisites. This is an image and CSS arrival experiment, not a modeled 3D
-space. The B tree is drawn in SVG.
+Christopher selected the pale tree above clouds from the first art pair.
+The Sanctuary is sacred and separate from the ordinary study area. The
+earlier domestic tree setting was discarded.
 
-The development-only boot condition is removed by the production build. The
-prototype, comparison controls and generated tree images stay out of release
-output. No release version, live Demo, or deployment has changed.
+The next correction replaces the homepage's retro window style in the Demo.
+Christopher wants a techy, sleek, neon, Lo-Fi grimoire interface, with Subnautica 2
+as a reference, because this Demo should eventually be in the game. The new
+proposals use blue translucent surfaces, fine luminous edges, cyan, pink and
+violet accents, and projected book shapes. No interface variant is approved yet.
 
-## Checks
+The observed [Subnautica 2 inventory screenshot](https://img.gamewith.net/img/original_be6467b40e96fc1de8c4901fccb32338.png)
+is reproduced in [GameWith's guide](https://gamewith.net/subnautica-2/75851).
+It informed the visual study; no game artwork or interface assets were copied
+into the prototype.
 
-Browser checks covered all three variants, arrow-key switching, search and
-personal collection filtering, preview dismissal, equation and answer
-disclosures, summoning, entry and return, B panning and zooming, and arrival
-completion. Desktop 1440 × 900, phone 390 × 844, and narrow 308 × 760 layouts
-were inspected. The narrow page had no horizontal overflow. No browser console
-warnings or errors were reported during these checks.
+Mind Palace remains the collection of knowledge objects a user has checked off,
+as defined in the repository glossary. Opening or adding a book does not check
+off its contents.
 
-`npm run build` passed. A search of `dist` found no prototype component names,
-tree assets, sample-book titles or prototype URL condition. These checks do not
-constitute acceptance of the real Demo or an implemented realms scene.
+Christopher wants to plan a journey of expanding knowledge: choose grimoires
+and decide where future study will lead. The proposed personal space's name must
+express this function. The original reference to “Domain Expansion” concerned
+mental growth through reading, not merely a place with a magical name.
+Mind Atlas and Horizon Map are candidate names for the planner, not settled
+terms. The relationship to the existing Outer grimoire view, journey editing,
+and how growth appears still need discussion. The current collection filter is
+only a simple step toward that future planner.
 
-## Art
+Design one scene at a time. Realms is likely next when Christopher is satisfied
+with this entrance. Do not treat this checkpoint as permission to implement
+the planner, redesign Realms, merge or deploy.
 
-The built-in image-generation tool produced both raster tree illustrations.
-Their retained prompt brief is in [art-prompts.md](art-prompts.md).
+## Verification and limits
 
-- [Night sacred tree](assets/sacred-tree-night.png)
-- [Preferred pale sanctuary](assets/sacred-tree-dawn.png)
+The original ascent moved the image down 80% while it remained visible.
+A browser measurement reproduced the edge inside the frame at approximately
+12 pixels, with opacity 1. The corrected movement scales the image enough to
+cover the viewport throughout its small translation; a cloud layer covers the
+handoff. The overlay is fixed to the viewport, including on scrolled phones.
+The same browser check passed for ascent and descent. Descent reached the actual
+homepage.
 
-Keep this source on `codex/tree-of-wisdom-prototype`, outside `main`, as a record
-of the alternatives. The owning discussion stays open until Christopher
-confirms shared understanding. Later implementation must preserve the accepted
-functional Demo decisions and follow the existing Wayfinder successors.
+Browser checks covered three layouts, search, collection filtering, adding,
+sample equations, disclosure expansion/collapse, entry and return. Desktop
+1440 × 900, phone 390 × 844 and narrow 308 × 760 layouts were checked. Narrow
+layouts scroll vertically without horizontal overflow. No console errors or
+warnings were observed.
+
+The Demo production build passed. Its output excludes these components and
+the generated tree assets. All sample interaction state is in memory; there
+are no account, backend, publication or saved-progress mutations. This is CSS,
+SVG and raster scene exploration, not modeled 3D or a working learning planner.
+
+## Source checkpoints
+
+Keep this work on `codex/tree-of-wisdom-prototype`, outside main.
+Commit `194e42b` preserves the earlier sacred-tree comparisons and retro
+preview. Their old components remain as reference material and are no longer
+mounted by the current prototype.
+
+The built-in image tool generated the retained [pale tree](assets/sacred-tree-dawn.png)
+and [night alternative](assets/sacred-tree-night.png).
+See [the art prompt brief](art-prompts.md). Revision 2 uses the existing pale art.

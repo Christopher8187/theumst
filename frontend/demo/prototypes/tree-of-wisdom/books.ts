@@ -9,7 +9,7 @@ export const books: SampleBook[] = [
   {
     id:'analysis', title:'Real Analysis', short:'Real Analysis', subject:'Mathematics',
     color:'#526c89',symbol:'ε',count:36,edition:'Existing demo sample',
-    summary:'Foundations, integration, differentiation and sequences of functions. The existing 36-object illustrative grimoire gives this tree a longer book to hold.',
+    summary:'A study of real numbers, continuity, integration, differentiation and sequences of functions.',
     passages:[
       {title:'Foundations',kind:'Chapter',text:'The real numbers, continuity and compactness.'},
       {title:'Integration',kind:'Chapter',text:'Riemann sums, integrability and the fundamental theorem of calculus.'},
