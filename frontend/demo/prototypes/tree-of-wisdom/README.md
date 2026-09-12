@@ -2,62 +2,71 @@
 
 This throwaway prototype supports
 [Settle improvements to the Theumst Web Demo](https://github.com/Christopher8187/product/issues/70).
-It explores selecting and adding grimoires in an interface intended eventually
-to work inside the game.
+It explores an interface intended eventually to work inside the game.
 
 ## Run and compare
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=4&variant=B`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=5&variant=A&arrival=0&book=symmetry`.
 Use the port reported by Vite if 5175 is occupied.
 
-All three variants keep the approved pale Sanctuary tree:
+Revision 5 keeps the Orbit grimoire chooser and the pale tree steady while
+comparing two independent design decisions. Christopher explicitly requested six
+variants for this round:
 
-- A, Projection: a projected inventory with selected-book details alongside it.
-- B, Orbit: the leading direction, with floating book selections and a compact description/action area. It is the default when no variant is specified.
-- C, Signals: compact book rows with an expanding detail area.
+| Variant | Study |
+| --- | --- |
+| A, Folio | A two-page Brief, summary on the left and Contents/Extract on the right. |
+| B, Contents beside | Expandable contents stay beside the reading pane, which opens on Extract. |
+| C, Side panel | A compact Brief at the right edge, leaving the scene visible. |
+| D, Top menu | My grimoires, Review, Advice, Expand and Progress in one top menu. |
+| E, Side rail | The same group in a persistent left rail; a strip below search on phones. |
+| F, Bottom dock | The same group in a persistent dock with reserved space above it. |
 
-The bottom comparison controls and left/right arrow keys switch variants.
-`arrival=0` skips the initial ascent. `book=symmetry` or `book=light`
-selects a short sample. Search matches titles and subjects. The slash key focuses
-search. My grimoires opens a separate personal collection with its own search,
-summary, publisher, progress, Brief and Open actions. Its search and the Tree
-search keep independent values. Add grimoire adds the selection for this visit;
-Enter grimoire reaches a next-scene placeholder.
+A-C open Brief; D-F show the entrance and navigation group. Choosing one group
+retains the other group's design. `brief=A|B|C` and `actions=D|E|F` preserve the
+combination in the URL. The comparison controls remain usable inside Brief.
+The previous A/B/C chooser alternatives are preserved at commit `ca22cc5`.
 
-Brief opens a separate reading view with Overview, Contents and Extract.
-Overview shows the supplied summary and metadata, contents count and progress.
-Contents uses the existing Demo's expandable chapter tree and keyboard controls.
-Real Analysis has four chapters and twenty section rows. Each short book has
-two chapters with two sections each, matching its four extract passages.
-Extract has chapter choices, numbered passage buttons and Previous/Next controls.
-The arrow keys turn passages only while Extract is selected; Escape closes Brief.
-Close and Add/Enter stay visible while the body scrolls. Closing restores the
-selection and focus underneath.
+The round removes the requested redundant labels and corrects Generate to Progress.
+See [the round 5 decisions and vocabulary mapping](round-five.md).
 
-The language selector uses the existing persisted Demo preference for English,
-Chinese and Japanese. Source book text stays in its supplied language.
-More contains the previous Review, Advice, Expand and Generate actions with
-their existing coming-soon behavior. Publisher and non-zero progress appear
-on the Tree's book choices. Collection order follows this visit's add/open activity.
+## Interaction
 
-Optional URL scenarios make additional states inspectable:
+`arrival=0` skips the initial ascent. `book=symmetry` or `book=light` selects a
+short book. Search matches titles and subjects; slash focuses it. My grimoires
+has its own search, summaries, progress, Brief and Open actions. Add grimoire
+adds the selection for this visit. Enter reaches the next-scene placeholder.
 
-- `view=collection&scenario=empty-collection` opens an empty personal collection.
-- `scenario=empty-library` opens the unavailable-library state.
-- `scenario=progress` supplies 12/36 completed for Real Analysis and 2/4 for Symmetry.
+Contents retains the existing expandable tree and keyboard behavior. Real Analysis
+has four chapters and twenty section rows. Both short books have two chapters
+with two sections each, matching their four extracts. Extract supports chapter
+choices, numbered passages, Previous/Next, arrow keys and answer reveal. Selecting
+a section with an available extract opens that extract. Metadata is under the
+closed Book details disclosure. Escape or the close icon closes Brief.
 
-These progress values are explicitly labeled sample state. Adding or opening
-a grimoire never completes its contents.
+On phones, A switches between its two pages and B switches between the contents
+pane and reading pane. C remains a single sheet. Add/Enter and the comparison
+controls remain outside each scrolling body.
 
-Descend is fixed at bottom left on desktop and top right on phones. It retraces
-the ascent to a local home-scene landing. Ascend to the tree travels back without
-losing the selected book or this visit's added grimoires. Both directions offer
-Skip. `place=home` opens the home-scene landing directly. Open homepage navigates
-to `https://theumst.com/`; the landing is a journey study, not the production
-homepage shell. Integration with production routing/browser history is deferred.
-Reduced motion skips automatic arrival and replaces travel with a brief still
-crossfade. All journey layers remain mounted at both endpoints.
+English, Chinese and Japanese use the existing persisted Demo preference.
+Review, Advice, Expand and Progress retain coming-soon behavior; their descriptions
+and feedback establish that these entrance actions apply across grimoires.
+
+Optional examples:
+
+- `variant=D&view=collection&scenario=empty-collection` opens an empty collection.
+- `variant=D&scenario=empty-library` opens the unavailable-library state.
+- `variant=D&scenario=progress` supplies 12/36 completed for Real Analysis and 2/4 for Symmetry.
+
+These are in-memory sample values. Opening or adding a grimoire does not complete
+its contents. The prototype makes no backend requests or account changes.
+
+Descend retraces ascent to a local home-scene landing. Ascend returns with the
+same book selection and collection. Both directions offer Skip; `place=home`
+starts at the landing. The external Open homepage link opens the live homepage.
+Integration with production routing and browser history remains deferred.
+Reduced motion skips automatic arrival and uses a brief crossfade for travel.
 
 ## Decisions and open questions
 
@@ -69,7 +78,7 @@ The next correction replaces the homepage's retro window style in the Demo.
 Christopher wants a techy, sleek, neon, Lo-Fi grimoire interface, with Subnautica 2
 as a reference, because this Demo should eventually be in the game. The new
 proposals use blue translucent surfaces, fine luminous edges, cyan, pink and
-violet accents, and projected book shapes. Christopher is leaning toward B, but has not approved a final entrance design.
+violet accents, and projected book shapes. Christopher leaned toward Orbit in the earlier chooser comparison; revision 5 holds that chooser steady while Brief and action placement remain undecided.
 
 The observed [Subnautica 2 inventory screenshot](https://img.gamewith.net/img/original_be6467b40e96fc1de8c4901fccb32338.png)
 is reproduced in [GameWith's guide](https://gamewith.net/subnautica-2/75851).
@@ -93,7 +102,10 @@ Design one scene at a time. Realms is likely next when Christopher is satisfied
 with this entrance. Do not treat this checkpoint as permission to implement
 the planner, redesign Realms, merge or deploy.
 
-## Verification and limits
+## Earlier verification and limits
+
+The observations below describe revisions 2 and 3. Revision 5 changes Brief's
+layout and navigation. Its current verification is in [round-five.md](round-five.md).
 
 Revision 2 fixed exposed image edges, but Christopher still found ascent
 uneven and descent absent. Its separately timed fades and final overlay removal
@@ -141,7 +153,7 @@ The prototype's Enter action does not hand a selected book to that application.
 Christopher specified **0.0.4** for the next implemented Web Demo release.
 The previous Demo label **0.1.0** is erroneous. Update all production language
 labels and release documentation to 0.0.4 during that implementation cycle.
-The prototype's language values already carry that correction; revision `4`
+The prototype's language values already carry that correction; revision `5`
 in its URL is only a prototype checkpoint. This work does not publish a release
 or change the website's separate version.
 

@@ -8,9 +8,9 @@ defineEmits<{add:[];enter:[];preview:[]}>();
 
 <template>
   <section class="grimoire-detail" :key="book.id" :aria-label="t.selected">
-    <div class="detail-heading"><p class="tech-label">{{book.subject}}<span>◦ {{book.count}} {{book.id==='analysis'?t.objects:t.passages}}</span></p><h2>{{book.title}}</h2></div>
+    <div class="detail-heading"><h2>{{book.title}}</h2></div>
     <p class="grimoire-summary">{{book.summary||book.title}}</p>
-    <div class="detail-action"><button class="summon-action" @click="added?$emit('enter'):$emit('add')"><span>{{added?t.enter:t.add}}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><span class="added-state" :class="{added}">{{added?'✓ '+t.inCollection:t.available}}</span></div>
+    <div class="detail-action"><button class="summon-action" @click="added?$emit('enter'):$emit('add')"><span>{{added?t.enter:t.add}}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div>
     <button class="preview-action" @click="$emit('preview')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v15M3 4c4-1 6 0 9 2 3-2 5-3 9-2v14c-4-1-6 0-9 2-3-2-5-3-9-2Z"/></svg>{{t.brief}} <span>↗</span></button>
   </section>
 </template>

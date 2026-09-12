@@ -12,7 +12,7 @@ export const books: SampleBook[] = [
     id:'analysis', title:'Real Analysis', short:'Real Analysis', subject:'Mathematics',
     color:'#526c89',symbol:'ε',count:36,edition:'Existing demo sample',
     publisher:'Theumst demo examples',version:'1',
-    summary:'The 36-item Real Analysis sample from the Section Atlas discussion. Explore foundations, integration, differentiation, and sequences of functions through definitions, examples, theorems, and exercises. This is illustrative demo material, not a complete textbook.',
+    summary:'Explore sequences, continuity, integration, derivatives and limits of functions through definitions, worked examples and exercises.',
     contents:[
       {section_id:1,parent_section:null,section_number:'1',section_name:'Foundations'},
       {section_id:2,parent_section:null,section_number:'2',section_name:'Integration'},

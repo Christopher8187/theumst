@@ -59,9 +59,14 @@ const ja:typeof en = {
   version:'Web Demo バージョン 0.0.4', progressLabel:'完了', chapters:'章', fixtures:'サンプル状態',
 };
 const extra:Record<string,typeof en>={en,zh,ja};
+const roundCopy:Record<string,Record<string,string>>={
+  en:{folio:'Folio',contentsBeside:'Contents beside',sidePanel:'Side panel',topMenu:'Top menu',sideRail:'Side rail',bottomDock:'Bottom dock',actions:'Actions',acrossGrimoires:'Across grimoires',acrossReview:'Spaced repetition across your grimoires',acrossAdvice:'Revisit collected advice',acrossExpand:'Discover knowledge beyond your grimoires',acrossProgress:'Study statistics and longer-term planning',bookDetails:'Book details',read:'Read',backToTree:'Back to grimoires'},
+  zh:{folio:'双页',contentsBeside:'侧边目录',sidePanel:'侧面板',topMenu:'顶部菜单',sideRail:'侧栏',bottomDock:'底部栏',actions:'功能',acrossGrimoires:'跨魔典',acrossReview:'跨魔典进行间隔复习',acrossAdvice:'回顾收集的建议',acrossExpand:'探索魔典之外的知识',acrossProgress:'学习统计与长期规划',bookDetails:'书籍信息',read:'阅读',backToTree:'返回魔典'},
+  ja:{folio:'見開き',contentsBeside:'目次を併置',sidePanel:'サイドパネル',topMenu:'上部メニュー',sideRail:'サイドバー',bottomDock:'下部ドック',actions:'機能',acrossGrimoires:'魔導書を横断',acrossReview:'魔導書を横断した間隔反復',acrossAdvice:'集めた助言を振り返る',acrossExpand:'魔導書の外の知識を探す',acrossProgress:'学習統計と長期計画',bookDetails:'書籍情報',read:'読む',backToTree:'魔導書に戻る'},
+};
 function createI18n(){
   const base=useDemoI18n();
-  return {...base,t:computed<Record<string,string>>(()=>({...base.t.value,...(extra[base.lang.value]||en)}))};
+  return {...base,t:computed<Record<string,string>>(()=>({...base.t.value,...(extra[base.lang.value]||en),...(roundCopy[base.lang.value]||roundCopy.en)}))};
 }
 const key:InjectionKey<ReturnType<typeof createI18n>>=Symbol('wisdom-language');
 export function provideWisdomI18n(){const value=createI18n();provide(key,value);return value}

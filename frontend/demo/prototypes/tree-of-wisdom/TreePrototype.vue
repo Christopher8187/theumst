@@ -4,17 +4,19 @@ import logo from '../../../shared/assets/logo-clear.svg';
 import dawn from './assets/sacred-tree-dawn.png';
 import { books } from './books';
 import { provideWisdomI18n, languageOptions } from './i18n';
-import ProjectionVariant from './ProjectionVariant.vue';
+import { variants, type Variant, type BriefDesign, type ActionPlacement } from './designOptions';
 import OrbitVariant from './OrbitVariant.vue';
-import SignalVariant from './SignalVariant.vue';
 import ArrivalTransition from './ArrivalTransition.vue';
 import ProjectedBook from './ProjectedBook.vue';
 import GrimoireReader from './GrimoireReader.vue';
 import GrimoireCollection from './GrimoireCollection.vue';
+import PrototypeSwitcher from './PrototypeSwitcher.vue';
+import AcrossGrimoireActions from './AcrossGrimoireActions.vue';
 const {lang,t,setLang}=provideWisdomI18n();
-type Variant='A'|'B'|'C';
 const params=new URLSearchParams(location.search);
-const variant=shallowRef<Variant>((['A','B','C'].includes(params.get('variant')||'')?params.get('variant'):'B') as Variant);
+const variant=shallowRef<Variant>(variants.includes(params.get('variant') as Variant)?params.get('variant') as Variant:'A');
+const briefDesign=shallowRef<BriefDesign>((['A','B','C'].includes(params.get('brief')||'')?params.get('brief'):['A','B','C'].includes(variant.value)?variant.value:'A') as BriefDesign);
+const actionsPlacement=shallowRef<ActionPlacement>((['D','E','F'].includes(params.get('actions')||'')?params.get('actions'):['D','E','F'].includes(variant.value)?variant.value:'D') as ActionPlacement);
 const selectedId=shallowRef(params.get('book')||'analysis');
 const scene=shallowRef<'tree'|'collection'|'realms'>(params.get('view')==='collection'?'collection':'tree');
 const librarySearch=shallowRef('');
@@ -23,14 +25,13 @@ const onlyMine=computed(()=>scene.value==='collection');
 const search=computed({get:()=>onlyMine.value?collectionSearch.value:librarySearch.value,set:value=>{if(onlyMine.value)collectionSearch.value=value;else {librarySearch.value=value;if(scene.value==='realms')goTree()}}});
 const sampleBooks=shallowRef(params.get('scenario')==='empty-library'?[]:books.map(book=>({...book,completed:params.get('scenario')==='progress'?(book.id==='analysis'?12:book.id==='symmetry'?2:0):0})));
 const added=shallowRef(params.get('scenario')==='empty-collection'?[]:['analysis']);
-const readerOpen=shallowRef(false);
-const toolsOpen=shallowRef(false);
 const toast=shallowRef('');
 let toastTimer:ReturnType<typeof setTimeout>|undefined;
 const place=shallowRef<'home'|'tree'>(params.get('place')==='home'?'home':'tree');
 const arrival=shallowRef<InstanceType<typeof ArrivalTransition>|null>(null);
 const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const journey=shallowRef<'up'|'down'|null>(place.value==='tree'&&params.get('arrival')!=='0'&&!reducedMotion?'up':null);
+const readerOpen=shallowRef(!journey.value&&place.value==='tree'&&scene.value==='tree'&&['A','B','C'].includes(variant.value));
 const journeyPosition=shallowRef(journey.value==='up'||place.value==='home'?0:1);
 const treeExposure=computed(()=>Math.max(0,Math.min(1,(journeyPosition.value-.88)/.12)));
 const homeExposure=computed(()=>Math.max(0,Math.min(1,(.12-journeyPosition.value)/.12)));
@@ -41,57 +42,61 @@ const shown=computed(()=>{
 const chosenBook=computed(()=>sampleBooks.value.find(book=>book.id===selectedId.value)||shown.value[0]);
 const collectionTotal=computed(()=>sampleBooks.value.filter(book=>added.value.includes(book.id)).length);
 const hasAdded=computed(()=>!!chosenBook.value&&added.value.includes(chosenBook.value.id));
-const variants={A:ProjectionVariant,B:OrbitVariant,C:SignalVariant};
-const names=computed(()=>({A:t.value.projection,B:t.value.orbit,C:t.value.signals}));
 function updateUrl(){
   const query=new URLSearchParams(location.search);
-  query.set('prototype','wisdom');query.set('revision','4');query.set('variant',variant.value);query.set('place',place.value);query.set('view',scene.value==='collection'?'collection':'tree');
+  query.set('prototype','wisdom');query.set('revision','5');query.set('variant',variant.value);query.set('brief',briefDesign.value);query.set('actions',actionsPlacement.value);query.set('place',place.value);query.set('view',onlyMine.value?'collection':'tree');
   chosenBook.value?query.set('book',chosenBook.value.id):query.delete('book');
   history.replaceState(null,'',location.pathname+'?'+query);
 }
 function select(id:string){selectedId.value=id;updateUrl()}
-function goTree(){scene.value='tree';toolsOpen.value=false;updateUrl()}
-function toggleCollection(){scene.value=onlyMine.value?'tree':'collection';toolsOpen.value=false;updateUrl()}
+function goTree(){scene.value='tree';updateUrl()}
+function toggleCollection(){readerOpen.value=false;scene.value=onlyMine.value?'tree':'collection';updateUrl()}
 function openBrief(id:string){select(id);readerOpen.value=true}
-function changeVariant(value:Variant){variant.value=value;updateUrl()}
-function cycle(step:number){const options:Variant[]=['A','B','C'];changeVariant(options[(options.indexOf(variant.value)+step+3)%3])}
-function add(){if(chosenBook.value&&!hasAdded.value)added.value=[chosenBook.value.id,...added.value]}
-function enter(id=chosenBook.value?.id){
-  if(!id)return;
-  select(id);added.value=[id,...added.value.filter(value=>value!==id)];readerOpen.value=false;scene.value='realms';updateUrl();
+function changeVariant(value:Variant){
+  variant.value=value;
+  if(['A','B','C'].includes(value)){briefDesign.value=value as BriefDesign;readerOpen.value=!!chosenBook.value}
+  else {actionsPlacement.value=value as ActionPlacement;readerOpen.value=false}
+  updateUrl();
 }
-function notifySoon(){toolsOpen.value=false;toast.value=t.value.comingSoon;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.value='',2600)}
-function journeyDone(){place.value=journey.value==='down'?'home':'tree';journey.value=null;updateUrl()}
-function travel(direction:'up'|'down'){readerOpen.value=false;toolsOpen.value=false;scene.value='tree';journey.value=direction;window.scrollTo({top:0,behavior:'instant'})}
+function cycle(step:number){changeVariant(variants[(variants.indexOf(variant.value)+step+variants.length)%variants.length])}
+function add(){if(chosenBook.value&&!hasAdded.value)added.value=[chosenBook.value.id,...added.value]}
+function enter(id=chosenBook.value?.id){if(!id)return;select(id);added.value=[id,...added.value.filter(value=>value!==id)];readerOpen.value=false;scene.value='realms';updateUrl()}
+function notifySoon(id:string){toast.value=t.value[id]+' · '+t.value.acrossGrimoires+' · '+t.value.comingSoon;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.value='',3200)}
+function journeyDone(){place.value=journey.value==='down'?'home':'tree';journey.value=null;if(place.value==='tree'&&['A','B','C'].includes(variant.value))readerOpen.value=true;updateUrl()}
+function travel(direction:'up'|'down'){readerOpen.value=false;scene.value='tree';journey.value=direction;window.scrollTo({top:0,behavior:'instant'})}
 function keydown(event:KeyboardEvent){
-  if(journey.value||readerOpen.value||place.value==='home'||(event.target as Element)?.closest('input,textarea,select,[contenteditable=true]'))return;
+  if(journey.value||readerOpen.value||place.value==='home'||(event.target as Element)?.closest('input,textarea,select,[contenteditable=true],.across-group'))return;
   if(event.key==='/'){event.preventDefault();document.querySelector<HTMLInputElement>('.grimoire-search input')?.focus()}
-  if(event.key==='Escape'){toolsOpen.value=false;goTree()}
+  if(event.key==='Escape')goTree();
   if(event.key==='ArrowLeft'){event.preventDefault();cycle(-1)}
   if(event.key==='ArrowRight'){event.preventDefault();cycle(1)}
 }
 watch(shown,list=>{if(scene.value==='tree'&&list.length&&!list.some(book=>book.id===selectedId.value)){selectedId.value=list[0].id;updateUrl()}},{immediate:true});
-watch(lang,()=>{document.title=t.value.sanctuary+' · '+t.value.brief});
-onMounted(()=>{document.title=t.value.sanctuary+' · '+t.value.brief;const icon=document.createElement('link');icon.id='wisdom-favicon';icon.rel='icon';icon.href=logo;document.head.append(icon);window.addEventListener('keydown',keydown);updateUrl()});
+watch(lang,()=>{document.title='Theumst · '+t.value.brief});
+onMounted(()=>{document.title='Theumst · '+t.value.brief;const icon=document.createElement('link');icon.id='wisdom-favicon';icon.rel='icon';icon.href=logo;document.head.append(icon);window.addEventListener('keydown',keydown);updateUrl()});
 onBeforeUnmount(()=>{clearTimeout(toastTimer);window.removeEventListener('keydown',keydown);document.getElementById('wisdom-favicon')?.remove()});
 </script>
 <template>
-  <main class="wisdom-prototype" :class="['interface-'+variant,{'showing-realms':scene==='realms','showing-collection':onlyMine,'at-home':place==='home','travelling':!!journey}]">
+  <main class="wisdom-prototype interface-B" :class="['actions-'+actionsPlacement,{'brief-C-open':readerOpen&&briefDesign==='C','showing-realms':scene==='realms','showing-collection':onlyMine,'at-home':place==='home','travelling':!!journey}]">
     <ArrivalTransition ref="arrival" :destination="dawn" :direction="journey" :at="place" @done="journeyDone" @progress="journeyPosition=$event"/>
-    <div class="home-landing" :style="{opacity:homeExposure}" :inert="!!journey||place!=='home'" :aria-hidden="place!=='home'||!!journey"><img class="landing-logo" :src="logo" alt="Theumst"><div class="home-threshold"><small>{{t.awaiting}}</small><h1>{{t.tree}}</h1><button @click="travel('up')">{{t.ascend}} <span>↑</span></button><a href="https://theumst.com/">{{t.openHomepage}} ↗</a></div><p class="landing-prototype">{{t.prototype}} · {{names[variant]}}</p></div>
+    <div class="home-landing" :style="{opacity:homeExposure}" :inert="!!journey||place!=='home'" :aria-hidden="place!=='home'||!!journey"><img class="landing-logo" :src="logo" alt="Theumst"><div class="home-threshold"><button @click="travel('up')">{{t.ascend}} <span>↑</span></button><a href="https://theumst.com/">{{t.openHomepage}} ↗</a></div></div>
     <div class="sanctuary-interface" :style="{opacity:treeExposure}" :inert="!!journey||place!=='tree'" :aria-hidden="place!=='tree'||!!journey">
-      <header class="wisdom-header"><button class="sanctuary-brand" :aria-label="t.backToTree" @click="goTree"><img :src="logo" alt=""><span><small>{{t.sanctuary}}</small><strong>{{t.tree}}</strong></span></button><div class="selection-tools"><label class="grimoire-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg><input v-model="search" :aria-label="onlyMine?t.searchGrimoires:t.search" :placeholder="onlyMine?t.searchGrimoires:t.search"><kbd>/</kbd></label><button class="my-grimoires" :aria-pressed="onlyMine" @click="toggleCollection"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3 8l9 4 9-4-9-4Zm-9 9 9 4 9-4M3 18l9 4 9-4"/></svg><span>{{onlyMine?t.allGrimoires:t.collection}}</span><small>{{collectionTotal.toString().padStart(2,'0')}}</small></button><label class="wisdom-language"><span aria-hidden="true">文</span><select :aria-label="t.language" :value="lang" @change="setLang(($event.target as HTMLSelectElement).value)"><option v-for="option in languageOptions" :key="option[0]" :value="option[0]">{{option[1]}}</option></select></label></div></header>
-      <div v-if="scene==='tree'"><component v-if="shown.length" :is="variants[variant]" :books="shown" :selected="chosenBook" :added="hasAdded" @select="select" @add="add" @enter="enter()" @preview="readerOpen=true"/><section v-else class="empty-grimoires"><span>⌕</span><h2>{{search.trim()?t.noMatches:t.libraryUnavailable}}</h2><p v-if="search.trim()">{{t.trySearch}}</p><button v-if="search.trim()" @click="search=''">{{t.clearSearch}}</button></section></div>
+      <header class="wisdom-header"><button class="sanctuary-brand" :aria-label="t.allGrimoires" @click="goTree"><img :src="logo" alt="Theumst"></button><div class="selection-tools"><label class="grimoire-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg><input v-model="search" :aria-label="onlyMine?t.searchGrimoires:t.search" :placeholder="onlyMine?t.searchGrimoires:t.search"><kbd>/</kbd></label><label class="wisdom-language"><span aria-hidden="true">文</span><select :aria-label="t.language" :value="lang" @change="setLang(($event.target as HTMLSelectElement).value)"><option v-for="option in languageOptions" :key="option[0]" :value="option[0]">{{option[1]}}</option></select></label></div></header>
+      <div v-if="scene==='tree'"><OrbitVariant v-if="shown.length" :books="shown" :selected="chosenBook" :added="hasAdded" @select="select" @add="add" @enter="enter()" @preview="readerOpen=true"/><section v-else class="empty-grimoires"><span>⌕</span><h2>{{search.trim()?t.noMatches:t.libraryUnavailable}}</h2><p v-if="search.trim()">{{t.trySearch}}</p><button v-if="search.trim()" @click="search=''">{{t.clearSearch}}</button></section></div>
       <GrimoireCollection v-else-if="onlyMine" :books="shown" :total="collectionTotal" :query="collectionSearch" @brief="openBrief" @enter="enter" @back="goTree" @clear="collectionSearch=''"/>
-      <section v-else-if="chosenBook" class="realm-handoff" :aria-label="t.realmsNext"><ProjectedBook :book="chosenBook" large/><small>{{chosenBook.subject}}</small><h1>{{chosenBook.title}}</h1><p>{{t.ready}}</p><button @click="goTree">← {{t.backToTree}}</button><button class="realm-collection" @click="toggleCollection">{{t.collection}}</button><span>{{t.realmsNext}}</span></section>
-      <footer class="scene-navigation"><button class="return-home" @click="travel('down')"><span>↓</span> {{t.descend}} <small>{{t.home}}</small></button><div class="entrance-tools"><button :aria-expanded="toolsOpen" @click="toolsOpen=!toolsOpen">{{t.tools}} ···</button><div v-if="toolsOpen" class="entrance-tools-menu"><button v-for="action in ['review','advice','expand','generate']" :key="action" @click="notifySoon">{{t[action]}}</button></div></div></footer>
-      <aside class="prototype-switcher" :aria-label="t.prototype"><div class="switcher-controls"><button :aria-label="t.previousVariant" @click="cycle(-1)">‹</button><button v-for="v in (['A','B','C'] as const)" :key="v" :aria-label="t.variant+' '+v+': '+names[v]" :aria-pressed="variant===v" @click="changeVariant(v)">{{v}}</button><span>{{names[variant]}}</span><button :aria-label="t.nextVariant" @click="cycle(1)">›</button></div><p>{{t.prototype}} · {{chosenBook?.short||'—'}} · {{collectionTotal}} {{t.added}}<span v-if="onlyMine"> · {{t.collection}}</span><span v-if="search"> · {{search}}</span><span v-if="params.get('scenario')"> · {{t.fixtures}}</span></p></aside>
+      <section v-else-if="chosenBook" class="realm-handoff" :aria-label="t.realmsNext"><ProjectedBook :book="chosenBook" large/><h1>{{chosenBook.title}}</h1><p>{{t.ready}}</p><button @click="goTree">← {{t.backToTree}}</button><span>{{t.realmsNext}}</span></section>
+      <footer class="scene-navigation"><button class="return-home" @click="travel('down')"><span>↓</span> {{t.descend}}</button></footer>
+      <AcrossGrimoireActions :placement="actionsPlacement" :count="collectionTotal" :collection-active="onlyMine" :preview="['D','E','F'].includes(variant)" @collection="toggleCollection" @action="notifySoon"/>
+      <PrototypeSwitcher v-if="!readerOpen" :value="variant" :brief="briefDesign" :actions="actionsPlacement" @change="changeVariant"/>
     </div>
     <div v-if="journey" class="journey-controls"><span>{{journey==='up'?'↑ '+t.ascending:'↓ '+t.descending}}</span><button @click="arrival?.finish()">{{journey==='up'?t.skipAscent:t.skipDescent}} {{journey==='up'?'↗':'↘'}}</button></div>
-    <GrimoireReader v-if="readerOpen&&chosenBook" :key="chosenBook.id" :book="chosenBook" :added="hasAdded" @close="readerOpen=false" @add="add" @enter="enter()"/>
+    <GrimoireReader v-if="readerOpen&&chosenBook" :key="chosenBook.id" :book="chosenBook" :added="hasAdded" :design="briefDesign" :variant="variant" :actions="actionsPlacement" @close="readerOpen=false" @add="add" @enter="enter()" @variant="changeVariant"/>
     <div v-if="toast" class="wisdom-toast" role="status">{{toast}}</div>
   </main>
 </template>
+<style>
+.brief-C-open .across-group{opacity:0;pointer-events:none}
+</style>
 <style>
 html,body,#app{margin:0;min-width:280px;width:100%;height:100%}body{background:#192638}*{box-sizing:border-box}button,input{font:inherit}button,a{-webkit-tap-highlight-color:transparent;touch-action:manipulation}button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid #d8b6ed;outline-offset:4px}button{cursor:pointer}.projection-content *,.orbit-details,.signal-layout{scrollbar-width:thin;scrollbar-color:#94bccd70 transparent;color-scheme:dark}.wisdom-prototype{position:relative;isolation:isolate;min-height:700px;height:100dvh;width:100%;overflow:hidden;background:#bfc6d4;color:#e3f0f6;font-family:'Bahnschrift','Segoe UI',sans-serif}.sanctuary-art{position:absolute;inset:0;overflow:hidden;z-index:-1;pointer-events:none}.sanctuary-art>img{width:100%;height:100%;object-fit:cover;object-position:35% 50%}.sanctuary-light{position:absolute;inset:0;background:linear-gradient(90deg,#14253a0a 16%,#18273b21 42%,#17233b91 100%),linear-gradient(0deg,#15283a69,transparent 25%,transparent 75%,#152c3b22)}.interface-B .sanctuary-light{background:linear-gradient(90deg,transparent 15%,#20274633 45%,#202940b3 100%),linear-gradient(0deg,#14284080,transparent 30%)}.interface-C .sanctuary-light{background:linear-gradient(90deg,transparent 40%,#15233775 100%),linear-gradient(0deg,#192d3e59,transparent 25%)}.sanctuary-mote{position:absolute;width:2px;height:2px;background:#f8e6cd;border-radius:50%;opacity:0;box-shadow:0 0 5px #e9cbdf;animation:sanctuary-drift 15s infinite ease-in-out}.sanctuary-interface{min-height:inherit;display:flow-root}.wisdom-header{position:absolute;top:0;left:0;right:0;z-index:5;padding:30px 4.5%;display:flex;justify-content:space-between;align-items:center;gap:24px}.sanctuary-brand{display:flex;align-items:center;gap:15px;background:transparent;border:0;padding:0;text-align:left;color:#344b53}.sanctuary-brand img{width:33px;height:40px;object-fit:contain}.sanctuary-brand small{display:block;font:8px 'Courier New',monospace;letter-spacing:.25em;margin:0 0 7px;color:#4d626c}.sanctuary-brand strong{font:25px/1 Georgia,serif;font-weight:400;letter-spacing:-.03em}.selection-tools{display:flex;align-items:center;gap:12px}.grimoire-search{display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid #adcad86b;border-radius:4px 14px 4px 4px;background:#193348c9;backdrop-filter:blur(14px);color:#b5d5e4;height:42px}.grimoire-search svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4}.grimoire-search input{width:150px;font:11px 'Bahnschrift','Segoe UI',sans-serif;background:transparent;border:0;padding:0;color:#edf4fa;outline-offset:5px}.grimoire-search input::placeholder{color:#c1d0dc}.grimoire-search kbd{font:10px 'Courier New',monospace;opacity:.6}.my-grimoires{display:flex;align-items:center;gap:10px;min-height:42px;padding:10px 13px;border:1px solid #b6bdd17a;border-radius:4px 14px 4px 4px;background:#202e45ba;backdrop-filter:blur(14px);color:#dae3ef;font:11px 'Bahnschrift','Segoe UI',sans-serif}.my-grimoires svg{width:16px;height:16px;fill:none;stroke:#cdbfe8;stroke-width:1.25}.my-grimoires small{font:9px 'Courier New',monospace;border-left:1px solid #bcb6d446;padding-left:10px;color:#bbdfe9}.my-grimoires[aria-pressed=true]{background:#2d4661ed;border-color:#bce2f2;box-shadow:inset 0 -2px 0 #c6b3eb}.scene-navigation{position:absolute;bottom:100px;left:4.5%;right:4.5%;display:flex;justify-content:space-between;align-items:center;z-index:5}.scene-navigation button{border:0;background:transparent;padding:10px 0;color:#ecedf5;font:10px 'Courier New',monospace;text-shadow:0 1px 10px #142338}.return-home{display:flex;gap:9px;align-items:center}.return-home>span{font-size:17px}.scene-coordinate{color:#d9d4e5;font-size:21px}.prototype-switcher{position:absolute;z-index:10;bottom:20px;left:50%;transform:translateX(-50%);padding:7px 12px 9px;border:1px solid #8499aa9c;background:#102336f2;color:#d8e6ef;min-width:355px;box-shadow:0 7px 20px #10203320}.switcher-controls{display:flex;align-items:center;gap:5px}.switcher-controls button{background:transparent;border:1px solid transparent;color:#a8bfce;min-width:27px;height:25px;font:11px 'Courier New',monospace}.switcher-controls button[aria-pressed=true]{color:#10273a;background:#c8dce7;border-color:#ebf4fc}.switcher-controls button:first-child,.switcher-controls button:last-child{font-size:21px}.switcher-controls>span{flex:1;text-align:center;font-size:12px;min-width:95px}.prototype-switcher>p{margin:6px 0 0;text-align:center;font:8px/1.5 'Courier New',monospace;color:#91afc0}.empty-grimoires,.realm-handoff{position:absolute;top:23%;right:6%;width:43%;padding:35px;background:#1d2f45e8;border:1px solid #aecdd15e;border-radius:4px 23px 4px 4px;backdrop-filter:blur(18px)}.empty-grimoires>span{font-size:35px;color:#c7b6e3}.empty-grimoires h2{font-size:27px;font-weight:400}.empty-grimoires p{font-size:13px;color:#becbda}.empty-grimoires button,.realm-handoff button{background:#ace5ee16;border:1px solid #a2d8e99a;color:#d9f2f7;padding:12px 16px;border-radius:4px;font-size:12px}.realm-handoff{top:18%;bottom:17%;display:flex;align-items:center;flex-direction:column;justify-content:center;text-align:center;padding:20px}.realm-handoff>small{font:9px 'Courier New',monospace;color:#b9c4df;text-transform:uppercase;margin-top:20px}.realm-handoff h1{font:30px/1.1 'Bahnschrift','Segoe UI',sans-serif;font-weight:400;max-width:20ch;margin:13px 0}.realm-handoff>p{font-size:13px;color:#b4c4d3;margin:0 0 20px}.realm-handoff>span{font:8px 'Courier New',monospace;color:#a9b6cb;margin-top:17px}@keyframes sanctuary-drift{0%,100%{opacity:0;transform:translateY(8px)}35%{opacity:.55}80%{opacity:.2;transform:translate(12px,-25px)}}@media(max-width:1000px){.wisdom-header{padding:25px 3%}.sanctuary-brand{gap:9px}.sanctuary-brand strong{font-size:21px}.grimoire-search input{width:115px}.selection-tools{gap:8px}.realm-handoff{width:57%;right:4%}}@media(max-width:700px){.wisdom-prototype{height:auto;min-height:100dvh;overflow:clip}.wisdom-header{padding:22px 20px;align-items:flex-start;flex-direction:column;gap:23px}.sanctuary-brand strong{font-size:24px}.sanctuary-brand img{width:28px;height:34px}.selection-tools{width:100%;gap:8px}.grimoire-search{flex:1;min-width:0;gap:7px;padding:10px}.grimoire-search input{min-width:0;width:100%}.grimoire-search kbd{display:none}.my-grimoires{font-size:10px;padding:10px;gap:7px}.my-grimoires small{font-size:8px;padding-left:7px}.my-grimoires svg{width:13px}.sanctuary-art>img{object-position:23% 50%}.sanctuary-light{background:linear-gradient(180deg,transparent,#1c2a4040 25%,#182b456e 80%,#182c4599)}.scene-navigation{left:22px;right:22px;bottom:92px}.scene-navigation button{font-size:9px}.prototype-switcher{width:calc(100% - 36px);min-width:0;max-width:405px;padding:7px 8px 8px;bottom:19px}.switcher-controls{gap:3px}.prototype-switcher>p{font-size:7px}.empty-grimoires,.realm-handoff{position:relative;right:auto;top:auto;bottom:auto;width:auto;margin:164px 18px 145px;padding:25px}.empty-grimoires{min-height:300px}.realm-handoff{min-height:470px}.showing-realms{min-height:790px}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
 </style>
@@ -115,4 +120,12 @@ html,body,#app{margin:0;min-width:280px;width:100%;height:100%}body{background:#
 @media(max-width:1000px){.grimoire-search input{width:100px}.wisdom-language{padding:0 7px}.wisdom-language select{max-width:65px}}
 @media(max-width:700px){.wisdom-language{padding:0 6px;gap:4px}.wisdom-language>span{display:none}.wisdom-language select{width:57px;max-width:57px;font-size:9px}.my-grimoires{gap:6px;font-size:9px;padding:9px 8px}.my-grimoires svg{display:none}.my-grimoires small{font-size:7px;padding-left:6px}.grimoire-search input{font-size:10px;width:100%}.selection-tools{gap:6px}.scene-navigation{gap:6px}.entrance-tools>button{padding:8px!important;min-height:38px}.scene-navigation .return-home{padding:7px 9px}.entrance-tools-menu{bottom:auto;top:calc(100% + 8px);left:auto;right:0}.sanctuary-brand strong{font-size:20px}.wisdom-header{padding-left:16px;padding-right:16px}.sanctuary-brand img{width:21px}.sanctuary-brand{gap:6px}.scene-navigation{right:16px}.wisdom-prototype.showing-collection{height:100dvh;min-height:650px}.showing-realms .realm-handoff{margin-top:145px;min-height:0;height:calc(100dvh - 242px)}.showing-realms .realm-handoff>.projected-book{transform:scale(.65);margin:-36px 0}.showing-realms .realm-handoff h1{font-size:24px}.showing-realms .realm-handoff>span{font-size:8px;line-height:1.5}}
 @media(max-width:340px){.sanctuary-brand strong{font-size:17px}.sanctuary-brand small{font-size:6px}.sanctuary-brand img{width:19px}.scene-navigation .return-home{font-size:9px;padding:7px}.entrance-tools>button{font-size:9px!important;padding:7px!important}.my-grimoires{font-size:8px}.my-grimoires small{display:none}.wisdom-language select{width:51px}.grimoire-search svg{width:12px}.grimoire-search{gap:5px;padding:9px 7px}.grimoire-search input{font-size:9px}}
+</style>
+<style>
+/* Round 5 compares Brief structure and navigation placement; the book chooser stays Orbit. */
+.wisdom-header{padding-top:25px}.sanctuary-brand img{width:38px;height:45px}.actions-D .selection-tools{margin-right:115px}.scene-navigation{right:auto;bottom:25px}.scene-navigation .return-home{padding:11px 15px}.orbit-detail-line{margin-bottom:18px;opacity:.55}.orbit-details .detail-heading h2{margin-top:0}.actions-F .orbit-layout{top:14%;bottom:225px}.actions-F .orbital-books{height:235px}.actions-F .personal-grimoires{bottom:235px}.actions-F .realm-handoff{height:calc(100dvh - 350px)}.wisdom-toast{bottom:100px;max-width:min(550px,calc(100vw - 30px));font-size:12px;line-height:1.6}.wisdom-language select{font-size:11px}.actions-F .scene-navigation{bottom:115px}
+@media(max-width:700px){.wisdom-header{padding:18px 16px;gap:19px}.sanctuary-brand{align-self:flex-start}.sanctuary-brand img{width:32px;height:39px}.selection-tools{width:100%;gap:10px}.actions-D .selection-tools{margin-right:0}.grimoire-search{flex:1}.grimoire-search input{width:100%;font-size:12px}.wisdom-language select{width:73px;font-size:11px}.scene-navigation,.actions-F .scene-navigation{position:fixed;top:18px;bottom:auto;left:70px;right:auto}.scene-navigation .return-home{min-height:39px;font-size:11px;padding:9px 12px}.orbit-layout{top:139px;bottom:106px}.actions-E .orbit-layout{top:235px}.actions-E .orbital-books{height:155px}.actions-F .orbit-layout{top:139px;bottom:215px}.actions-F .orbital-books{height:157px}.actions-F .orbit-details{margin-top:8px;padding-bottom:14px}.actions-E .orbit-details{margin-top:8px}.actions-F .orbit-details .grimoire-summary,.actions-E .orbit-details .grimoire-summary{font-size:12px;line-height:1.55;margin-bottom:13px}.actions-E .personal-grimoires{top:245px;bottom:105px}.actions-F .personal-grimoires{top:144px;bottom:225px}.orbit-detail-line{margin-bottom:16px}.actions-F .realm-handoff{height:calc(100dvh - 350px)}.wisdom-toast{top:75px;bottom:auto;z-index:25}}
+</style>
+<style>
+.brief-C-open .orbit-details{opacity:0;pointer-events:none}.brief-C-open .orbital-books{opacity:.5}.actions-F .wisdom-toast{bottom:224px}@media(max-width:700px){.actions-F .wisdom-toast{top:75px;bottom:auto}}
 </style>

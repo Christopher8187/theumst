@@ -5,8 +5,8 @@ defineProps<{book:SampleBook}>();
 const {t}=useWisdomI18n();
 </script>
 <template>
-  <span class="book-status" v-if="book.publisher||book.completed">
-    <span v-if="book.publisher" class="book-publisher">{{book.publisher}}</span>
+  <span class="book-status" v-if="book.completed">
+
     <span v-if="book.completed" class="book-completion">{{book.completed}} / {{book.count}} · {{t.completed}}<progress :aria-label="t.progressLabel+' · '+book.title" :max="book.count" :value="book.completed"></progress></span>
   </span>
 </template>

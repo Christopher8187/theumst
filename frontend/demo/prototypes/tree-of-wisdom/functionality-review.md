@@ -3,6 +3,10 @@
 Revision 4, 12 September 2026. Supports
 [Settle improvements to the Theumst Web Demo](https://github.com/Christopher8187/product/issues/70).
 
+This is the revision 4 record. Revision 5 deliberately removes some visible
+metadata and replaces Generate with Progress at Christopher's request.
+See [the current comparison and vocabulary mapping](round-five.md).
+
 Christopher identified missing expandable contents and missing chapter divisions
 in the short books. He requested the label Brief and GPT-5.6 Sol adversarial checks.
 Two independent, read-only Sol reviewers compared the entrance against the

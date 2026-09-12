@@ -12,7 +12,7 @@ defineEmits<{select:[id:string];add:[];enter:[];preview:[]}>();
 <template>
   <section class="orbit-layout" :aria-label="t.orbit">
     <div class="orbital-books"><div class="orbit-track" aria-hidden="true"></div><button v-for="(book,i) in books" :key="book.id" :class="{active:selected?.id===book.id}" :style="{'--slot':i}" :aria-pressed="selected?.id===book.id" @click="$emit('select',book.id)"><span class="orbital-mark">0{{i+1}}</span><ProjectedBook :book="book" large/><span class="orbital-title">{{book.title}}</span><span class="orbital-subject">{{book.subject}}</span><BookStatus :book="book"/></button></div>
-    <div class="orbit-details"><div class="orbit-detail-line"><i></i><span>{{t.selected}}</span><i></i></div><GrimoireDetail v-if="selected" :book="selected" :added="added" @add="$emit('add')" @enter="$emit('enter')" @preview="$emit('preview')"/></div>
+    <div class="orbit-details"><div class="orbit-detail-line"><i></i><i></i></div><GrimoireDetail v-if="selected" :book="selected" :added="added" @add="$emit('add')" @enter="$emit('enter')" @preview="$emit('preview')"/></div>
   </section>
 </template>
 
