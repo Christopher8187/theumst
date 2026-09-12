@@ -3,7 +3,7 @@ import type { SampleBook } from './books';
 import GrimoireDetail from './GrimoireDetail.vue';
 import { shallowRef } from 'vue';
 const props=defineProps<{books:SampleBook[];selected?:SampleBook;added:boolean}>();
-const emit=defineEmits<{select:[id:string];add:[];enter:[]}>();
+const emit=defineEmits<{select:[id:string];add:[];enter:[];preview:[]}>();
 const collapsed=shallowRef<string|null>(null);
 const isOpen=(id:string)=>props.selected?.id===id && collapsed.value!==id;
 function toggle(id:string){collapsed.value=isOpen(id)?id:null;emit('select',id)}
@@ -11,7 +11,7 @@ function toggle(id:string){collapsed.value=isOpen(id)?id:null;emit('select',id)}
 
 <template>
   <section class="signal-layout" aria-label="Signal interface"><p class="signal-heading">GRIMOIRES <span> / {{books.length.toString().padStart(2,'0')}}</span></p>
-    <div class="signal-list"><div v-for="book in books" :key="book.id" class="signal-entry" :class="{active:isOpen(book.id)}"><button :aria-expanded="isOpen(book.id)" @click="toggle(book.id)"><span class="signal-icon">{{book.symbol}}</span><span class="signal-book"><small>{{book.subject}}</small><strong>{{book.title}}</strong></span><span class="signal-arrow">{{isOpen(book.id)?'−':'＋'}}</span></button><div v-if="isOpen(book.id)" class="signal-detail"><GrimoireDetail :book="book" :added="added" @add="$emit('add')" @enter="$emit('enter')"/></div></div></div>
+    <div class="signal-list"><div v-for="book in books" :key="book.id" class="signal-entry" :class="{active:isOpen(book.id)}"><button :aria-expanded="isOpen(book.id)" @click="toggle(book.id)"><span class="signal-icon">{{book.symbol}}</span><span class="signal-book"><small>{{book.subject}}</small><strong>{{book.title}}</strong></span><span class="signal-arrow">{{isOpen(book.id)?'−':'＋'}}</span></button><div v-if="isOpen(book.id)" class="signal-detail"><GrimoireDetail :book="book" :added="added" @add="$emit('add')" @enter="$emit('enter')" @preview="$emit('preview')"/></div></div></div>
   </section>
 </template>
 

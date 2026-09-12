@@ -3,13 +3,13 @@ import type { SampleBook } from './books';
 import ProjectedBook from './ProjectedBook.vue';
 import GrimoireDetail from './GrimoireDetail.vue';
 defineProps<{books:SampleBook[];selected?:SampleBook;added:boolean}>();
-defineEmits<{select:[id:string];add:[];enter:[]}>();
+defineEmits<{select:[id:string];add:[];enter:[];preview:[]}>();
 </script>
 
 <template>
   <section class="projection-layout" aria-label="Projection interface">
     <div class="projection-topline"><span>GRIMOIRES</span><span class="projected-dot"></span><span>{{books.length}} available</span></div>
-    <div class="projection-content"><div class="volume-grid" aria-label="Available grimoires"><button v-for="book in books" :key="book.id" :class="{active:book.id===selected?.id}" :aria-pressed="book.id===selected?.id" @click="$emit('select',book.id)"><ProjectedBook :book="book"/><span class="volume-name">{{book.title}}</span><span class="volume-meta">{{book.subject}}</span><span class="selection-corner"></span></button></div><div class="projection-details"><div v-if="selected" class="detail-sigil" aria-hidden="true">{{selected.symbol}}<span></span></div><GrimoireDetail v-if="selected" :book="selected" :added="added" @add="$emit('add')" @enter="$emit('enter')"/></div></div>
+    <div class="projection-content"><div class="volume-grid" aria-label="Available grimoires"><button v-for="book in books" :key="book.id" :class="{active:book.id===selected?.id}" :aria-pressed="book.id===selected?.id" @click="$emit('select',book.id)"><ProjectedBook :book="book"/><span class="volume-name">{{book.title}}</span><span class="volume-meta">{{book.subject}}</span><span class="selection-corner"></span></button></div><div class="projection-details"><div v-if="selected" class="detail-sigil" aria-hidden="true">{{selected.symbol}}<span></span></div><GrimoireDetail v-if="selected" :book="selected" :added="added" @add="$emit('add')" @enter="$emit('enter')" @preview="$emit('preview')"/></div></div>
     <div class="projection-bottomline"><span>✦</span><i></i><span>THE SANCTUARY</span></div>
   </section>
 </template>

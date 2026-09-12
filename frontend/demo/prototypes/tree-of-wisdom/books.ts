@@ -35,7 +35,7 @@ export const books: SampleBook[] = [
     passages:[
       {title:'The speed of light',kind:'Definition',text:'Light travels in a vacuum at exactly 299,792,458 metres per second. For the estimates in this miniature, use 3.00 × 10⁸ metres per second.',math:'c=299\\,792\\,458\\;\\mathrm{m\\,s^{-1}}'},
       {title:'Distance and travel time',kind:'Equation',text:'For light traveling through a vacuum over distance d, the travel time t is the distance divided by the speed of light.',math:'d=ct,\\qquad t=\\frac{d}{c}'},
-      {title:'A one-second journey',kind:'Worked example',text:'Using our rounded value of c, light travels about 300,000 kilometres in one second. Keep the units together when making the calculation.',math:'d=(3.00\\times10^8\\;\\mathrm{m\\,s^{-1}})(1.00\\;\\mathrm{s})=3.00\\times10^8\\;\\mathrm{m}'},
+      {title:'A one-second journey',kind:'Worked example',text:'Using our rounded value of c, light travels about 300,000 kilometres in one second. Keep the units together when making the calculation.',math:'\\begin{aligned}d&=(3.00\\times10^8\\;\\mathrm{m\\,s^{-1}})\\\\&\\quad\\times(1.00\\;\\mathrm{s})\\\\&=3.00\\times10^8\\;\\mathrm{m}\\end{aligned}'},
       {title:'A distant signal',kind:'Exercise',text:'A light signal travels 6.00 × 10⁸ metres through a vacuum. Approximately how long does the journey take?',answer:'2.00 seconds, using t = d/c and c ≈ 3.00 × 10⁸ m/s.'},
     ],
   },
