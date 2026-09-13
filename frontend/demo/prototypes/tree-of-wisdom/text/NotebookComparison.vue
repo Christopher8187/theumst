@@ -8,10 +8,10 @@ const isPrototype = import.meta.env.DEV;
 const { lang } = useWisdomI18n();
 const keys = ['A', 'B', 'C'] as const;
 const copy = computed(() => lang.value === 'zh'
-  ? { label: '左页设计', previous: '上一个设计', next: '下一个设计', names: ['横线笔记本', '页边笔记', '研究手记'] }
+  ? { label: '左页设计', previous: '上一个设计', next: '下一个设计', names: ['学习单', '日常笔记', '留白手记'] }
   : lang.value === 'ja'
-    ? { label: '左ページの試作', previous: '前のデザイン', next: '次のデザイン', names: ['罫線ノート', '余白の注釈', '研究ノート'] }
-    : { label: 'Left page study', previous: 'Previous design', next: 'Next design', names: ['Ruled notebook', 'Margin notes', 'Field journal'] });
+    ? { label: '左ページの試作', previous: '前のデザイン', next: '次のデザイン', names: ['学習シート', '日々のノート', 'フレームノート'] }
+    : { label: 'Left page study', previous: 'Previous design', next: 'Next design', names: ['Study sheet', 'Daily notebook', 'Open frame'] });
 function cycle(direction: number) { model.value = keys[(keys.indexOf(model.value) + direction + keys.length) % keys.length]; }
 </script>
 

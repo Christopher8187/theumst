@@ -7,7 +7,7 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=12&arrival=0&book=symmetry`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=13&arrival=0&book=symmetry`.
 For the current Text prototypes, add `view=realms&place=tree&realm=text&notebook=A`.
 Use `notebook=B` or `notebook=C` to compare the other left-page designs.
 The local Vite server uses port 5175.
@@ -27,6 +27,8 @@ Revision 11 prototypes [Text inside the realm folio](round-eleven.md), reusing
 the existing reader, Atlas and side tools. Brief's progress follows its statistics.
 Revision 12 compares [three notebook designs for Text's left page](round-twelve.md).
 Its temporary comparison bar appears only within the study view.
+Those designs were rejected. Revision 13 rebuilds the left leaf using
+[Christopher's photographed notebooks](round-thirteen.md).
 The revision 6 checkpoint is commit `c304345`.
 
 The scene uses the [world-tree panorama](assets/sanctuary-world-tree-distance.png).
