@@ -38,6 +38,10 @@ The Orbit grimoire chooser and sacred pale tree remain. My grimoires, Review,
 Advice, Expand and Progress share the left rail. On phones the rail becomes a
 horizontal ribbon below search. Each mark has a centered square frame. The
 language control uses a vector translation symbol and remains visible on phones.
+Orbit's decorative 3D stage ignores pointer input so its recessed side books
+remain clickable. Its summary panel fits its contents rather than stretching
+below the actions. The tree framing is slightly lower, with enough image
+overscan to cover the top edge; the vertical offset eases away toward the altar.
 
 Brief opens a translucent two-page folio. Summary is on the left, with
 Contents on the right. On phones it becomes one sheet with a
