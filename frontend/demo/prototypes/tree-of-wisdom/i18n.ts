@@ -1,5 +1,6 @@
 import { computed, inject, provide, type InjectionKey } from 'vue';
 import { useDemoI18n, languageOptions } from '../../src/i18n';
+import { realmCopy } from './realms';
 export { languageOptions };
 const en = {
   brief:'Brief', overview:'Overview', extract:'Extract', sanctuary:'The Sanctuary', tree:'Tree of Wisdom',
@@ -66,7 +67,7 @@ const roundCopy:Record<string,Record<string,string>>={
 };
 function createI18n(){
   const base=useDemoI18n();
-  return {...base,t:computed<Record<string,string>>(()=>({...base.t.value,...(extra[base.lang.value]||en),...(roundCopy[base.lang.value]||roundCopy.en)}))};
+  return {...base,t:computed<Record<string,string>>(()=>({...base.t.value,...(extra[base.lang.value]||en),...(roundCopy[base.lang.value]||roundCopy.en),...(realmCopy[base.lang.value]||realmCopy.en)}))};
 }
 const key:InjectionKey<ReturnType<typeof createI18n>>=Symbol('wisdom-language');
 export function provideWisdomI18n(){const value=createI18n();provide(key,value);return value}

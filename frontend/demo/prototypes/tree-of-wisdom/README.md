@@ -7,18 +7,20 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=6&arrival=0&book=symmetry`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=7&arrival=0&book=symmetry`.
 The local Vite server uses port 5175.
 
 Christopher selected A's folio and E's navigation rail. Revision 6 combines
 and refines them into one prototype. The comparison bar and keyboard cycling
 are removed. Old variant parameters are removed when the page loads.
 The six-way comparison remains at commit `7050c98`.
-See [the chosen direction and current verification](round-six.md).
+See [the entrance decision](round-six.md). Revision 7 retains that entrance and
+adds [the altar, realm book, and collection removal](round-seven.md).
+The revision 6 checkpoint is commit `c304345`.
 
 The scene uses the [extended Sanctuary panorama](assets/sanctuary-panorama.png).
 Its revised tree has small scholarly and sacred details and touches of color.
-The added altar is outside the page's visible crop. Both sequential image edits
+The added altar is outside the entrance crop and appears when entering a grimoire. Both sequential image edits
 and their saved files are described in [the image prompts](scene-art-prompts.md).
 
 ## Interaction
@@ -43,7 +45,13 @@ opens that extract. Metadata is under the closed Book details disclosure.
 
 Search matches titles and subjects; slash focuses it. My grimoires has its own
 search, summaries, progress, Brief and Open actions. Add grimoire adds the
-selection for this visit. Enter reaches the next-scene placeholder.
+selection for this visit. Remove in My grimoires changes only collection
+membership; checked-off knowledge in the Mind Palace remains unchanged.
+Enter moves continuously across the same image to the altar, where a translucent,
+ruled book rises. Eight pen-and-ink drawings occupy uneven positions across its
+pages. One activation selects and illuminates a drawing; activating it again or
+using Enter opens its local arrival view. Return retraces the pan. See
+[the current round](round-seven.md) for the scope of the arrival samples.
 English, Chinese and Japanese use the existing persisted Demo preference.
 The four realm actions retain coming-soon behavior across grimoires.
 The [round 5 vocabulary mapping](round-five.md) records the corrected Progress name.
@@ -93,9 +101,10 @@ terms. The relationship to the existing Outer grimoire view, journey editing,
 and how growth appears still need discussion. The current personal collection
 does not implement that future planner.
 
-Design one scene at a time. Realms is likely next when Christopher is satisfied
-with this entrance. Do not treat this checkpoint as permission to implement
-the planner, redesign Realms, merge or deploy.
+Design one scene at a time. Christopher selected Realms for revision 7 and
+specified the altar journey and translucent book. The individual study views
+and planner remain later rounds. This prototype does not authorize a merge or
+deployment.
 
 ## Earlier verification and limits
 
