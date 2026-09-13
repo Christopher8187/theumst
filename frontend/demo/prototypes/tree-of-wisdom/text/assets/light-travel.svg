@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title description">
+  <title id="title">A light signal travelling through a vacuum</title>
+  <desc id="description">A source on the left sends light to a receiver on the right. A dimension line marks their separation. The waveform is illustrative and not to scale.</desc>
+  <rect width="640" height="400" rx="16" fill="#132436"/>
+  <g fill="none" stroke="#b5dee0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="125" cy="185" r="28"/>
+    <path d="M168 185H486m-18-13 18 13-18 13M510 135V235M125 270H510m-385-8v16m385-16v16"/>
+    <path d="M210 185q20-42 40 0t40 0t40 0t40 0t40 0" stroke="#e3bdd9"/>
+    <circle cx="125" cy="185" r="7" fill="#edceb0"/>
+  </g>
+</svg>

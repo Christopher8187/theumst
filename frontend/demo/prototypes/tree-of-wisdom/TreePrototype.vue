@@ -13,6 +13,7 @@ import GrimoireReader from './GrimoireReader.vue';
 import GrimoireCollection from './GrimoireCollection.vue';
 import LanguageControl from './LanguageControl.vue';
 import AcrossGrimoireActions from './AcrossGrimoireActions.vue';
+import { provideTextStudySession } from './text/useTextStudy';
 const {lang,t}=provideWisdomI18n();
 const params=new URLSearchParams(location.search);
 const selectedId=shallowRef(params.get('book')||'analysis');
@@ -26,6 +27,8 @@ const collectionSearch=shallowRef('');
 const onlyMine=computed(()=>scene.value==='collection'||scene.value==='realms'&&departureScene.value==='collection');
 const search=computed({get:()=>onlyMine.value?collectionSearch.value:librarySearch.value,set:value=>{if(onlyMine.value)collectionSearch.value=value;else {librarySearch.value=value;if(scene.value==='realms')goTree()}}});
 const sampleBooks=shallowRef(params.get('scenario')==='empty-library'?[]:books.map(book=>({...book,completed:params.get('scenario')==='progress'?(book.id==='analysis'?12:book.id==='symmetry'?2:0):0})));
+provideTextStudySession(sampleBooks.value);
+function updateCompletion(id:string,count:number){sampleBooks.value=sampleBooks.value.map(book=>book.id===id?{...book,completed:count}:book)}
 const added=shallowRef(params.get('scenario')==='empty-collection'?[]:['analysis']);
 const toast=shallowRef('');
 let toastTimer:ReturnType<typeof setTimeout>|undefined;
@@ -46,7 +49,7 @@ const collectionTotal=computed(()=>sampleBooks.value.filter(book=>added.value.in
 const hasAdded=computed(()=>!!chosenBook.value&&added.value.includes(chosenBook.value.id));
 function updateUrl(){
   const query=new URLSearchParams(location.search);
-  query.set('prototype','wisdom');query.set('revision','10');query.delete('variant');query.delete('brief');query.delete('actions');query.set('place',place.value);query.set('view',scene.value);
+  query.set('prototype','wisdom');query.set('revision','11');query.delete('variant');query.delete('brief');query.delete('actions');query.set('place',place.value);query.set('view',scene.value);
   scene.value==='realms'&&activeRealm.value?query.set('realm',activeRealm.value):query.delete('realm');
   scene.value==='realms'&&departureScene.value==='collection'?query.set('from','collection'):query.delete('from');
   readerOpen.value?query.set('panel','brief'):query.delete('panel');
@@ -84,9 +87,10 @@ function keydown(event:KeyboardEvent){
   if(event.key==='Escape')goTree();
 }
 watch(shown,list=>{if(scene.value==='tree'&&list.length&&!list.some(book=>book.id===selectedId.value)){selectedId.value=list[0].id;updateUrl()}},{immediate:true});
-watch(lang,()=>{document.title='Theumst · '+t.value.brief});
+function updateTitle(){document.title='Theumst · '+(readerOpen.value?t.value.brief:scene.value==='realms'?(activeRealm.value?t.value[activeRealm.value]:t.value.realmBook):t.value.tree)}
+watch([lang,scene,activeRealm,readerOpen],updateTitle);
 watch(readerOpen,updateUrl);
-onMounted(()=>{document.title='Theumst · '+t.value.brief;const icon=document.createElement('link');icon.id='wisdom-favicon';icon.rel='icon';icon.href=logo;document.head.append(icon);window.addEventListener('keydown',keydown);updateUrl()});
+onMounted(()=>{updateTitle();const icon=document.createElement('link');icon.id='wisdom-favicon';icon.rel='icon';icon.href=logo;document.head.append(icon);window.addEventListener('keydown',keydown);updateUrl()});
 onBeforeUnmount(()=>{clearTimeout(toastTimer);window.removeEventListener('keydown',keydown);document.getElementById('wisdom-favicon')?.remove()});
 </script>
 <template>
@@ -101,7 +105,7 @@ onBeforeUnmount(()=>{clearTimeout(toastTimer);window.removeEventListener('keydow
       <AcrossGrimoireActions :count="collectionTotal" :collection-active="onlyMine" @collection="toggleCollection" @action="notifySoon"/>
 
     </div>
-    <RealmBook v-if="scene==='realms'&&chosenBook" :key="chosenBook.id" :book="chosenBook" :initial-realm="activeRealm||undefined" :reveal="bookExposure" :ready="!altarMoving&&altarPosition===1" @back="goTree" @realm="changeRealm"/>
+    <RealmBook v-if="scene==='realms'&&chosenBook" :key="chosenBook.id" :book="chosenBook" :initial-realm="activeRealm||undefined" :reveal="bookExposure" :ready="!altarMoving&&altarPosition===1" @back="goTree" @realm="changeRealm" @completion="updateCompletion"/>
     <div v-if="altarMoving" class="altar-travel-controls"><button @click="altar.finish()">{{t.realmSkip}} ↗</button></div>
     <div v-if="journey" class="journey-controls"><span>{{journey==='up'?'↑ '+t.ascending:'↓ '+t.descending}}</span><button @click="arrival?.finish()">{{journey==='up'?t.skipAscent:t.skipDescent}} {{journey==='up'?'↗':'↘'}}</button></div>
     <GrimoireReader v-if="readerOpen&&chosenBook" :key="chosenBook.id" :book="chosenBook" :added="hasAdded" @close="readerOpen=false" @add="add" @enter="enter()"/>

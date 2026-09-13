@@ -1,0 +1,564 @@
+{
+  "hierarchy": {
+    "book": {
+      "name": "Real Analysis",
+      "parent": null
+    },
+    "foundations": {
+      "name": "1 · Foundations",
+      "parent": "book",
+      "color": "#afbadf"
+    },
+    "integration": {
+      "name": "2 · Integration",
+      "parent": "book",
+      "color": "#cbbb83"
+    },
+    "differentiation": {
+      "name": "3 · Differentiation",
+      "parent": "book",
+      "color": "#9cc9b7"
+    },
+    "functions": {
+      "name": "4 · Sequences of functions",
+      "parent": "book",
+      "color": "#c29eac"
+    },
+    "seq": {
+      "name": "1.1 · Sequences",
+      "parent": "foundations"
+    },
+    "continuity": {
+      "name": "1.2 · Continuity",
+      "parent": "foundations"
+    },
+    "partitions": {
+      "name": "2.1 · Partitions",
+      "parent": "integration"
+    },
+    "sums": {
+      "name": "2.2 · Sums and refinement",
+      "parent": "integration"
+    },
+    "integrability": {
+      "name": "2.3 · Integrability",
+      "parent": "integration"
+    },
+    "continuouscase": {
+      "name": "2.3.2 · Continuous case",
+      "parent": "integrability"
+    },
+    "exercises": {
+      "name": "2.4 · Exercises",
+      "parent": "integration"
+    },
+    "properties": {
+      "name": "2.5 · Further properties",
+      "parent": "integration"
+    },
+    "derivative": {
+      "name": "3.1 · Derivatives",
+      "parent": "differentiation"
+    },
+    "rules": {
+      "name": "3.2 · Rules",
+      "parent": "differentiation"
+    },
+    "chain": {
+      "name": "3.2.2 · Composition",
+      "parent": "rules"
+    },
+    "means": {
+      "name": "3.3 · Mean values",
+      "parent": "differentiation"
+    },
+    "pointwise": {
+      "name": "4.1 · Pointwise limits",
+      "parent": "functions"
+    },
+    "uniform": {
+      "name": "4.2 · Uniform limits",
+      "parent": "functions"
+    },
+    "exchange": {
+      "name": "4.2.2 · Exchanging limits",
+      "parent": "uniform"
+    },
+    "series": {
+      "name": "4.3 · Series",
+      "parent": "functions"
+    },
+    "criterion": {
+      "name": "2.3.1 · Criterion",
+      "parent": "integrability"
+    },
+    "product": {
+      "name": "3.2.1 · Product rule",
+      "parent": "rules"
+    },
+    "uniformbasics": {
+      "name": "4.2.1 · Uniform convergence",
+      "parent": "uniform"
+    }
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "title": "Bounded sequences",
+      "type": "context",
+      "section": "seq",
+      "text": "A bounded sequence stays inside a fixed finite interval.",
+      "math": "|a_n|\\le M"
+    },
+    {
+      "id": 2,
+      "title": "Subsequences",
+      "type": "definition",
+      "section": "seq",
+      "text": "A subsequence selects terms while preserving their original order.",
+      "math": "a_{n_1},a_{n_2},a_{n_3},\\ldots"
+    },
+    {
+      "id": 3,
+      "title": "Convergent examples",
+      "type": "example",
+      "section": "seq",
+      "text": "A sequence can have a convergent subsequence without converging itself.",
+      "math": "a_n=(-1)^n"
+    },
+    {
+      "id": 4,
+      "title": "Uniform continuity",
+      "type": "theorem",
+      "section": "continuity",
+      "text": "A continuous function on a closed bounded interval is uniformly continuous.",
+      "math": "|x-y|<\\delta\\implies |f(x)-f(y)|<\\varepsilon"
+    },
+    {
+      "id": 5,
+      "title": "Oscillation",
+      "type": "definition",
+      "section": "continuity",
+      "text": "Oscillation is the difference between the supremum and infimum on an interval.",
+      "math": "\\operatorname{osc}(f,I)=\\sup_I f-\\inf_I f"
+    },
+    {
+      "id": 6,
+      "title": "Continuity exercise",
+      "type": "exercise",
+      "section": "continuity",
+      "text": "Estimate the oscillation of a continuous function on a small interval.",
+      "math": "\\operatorname{osc}(f,I)<\\varepsilon"
+    },
+    {
+      "id": 7,
+      "title": "Partitions",
+      "type": "definition",
+      "section": "partitions",
+      "text": "A partition divides an interval into finitely many adjacent pieces.",
+      "math": "P=\\{a=x_0<x_1<\\cdots<x_n=b\\}"
+    },
+    {
+      "id": 8,
+      "title": "Step functions",
+      "type": "example",
+      "section": "partitions",
+      "text": "A step function is constant on each piece of a finite partition.",
+      "math": "\\int_a^b s(x)\\,dx=\\sum_{i=1}^n c_i\\Delta x_i"
+    },
+    {
+      "id": 9,
+      "title": "Upper and lower sums",
+      "type": "definition",
+      "section": "sums",
+      "text": "Use infima and suprema on each interval to form lower and upper sums.",
+      "math": "L(f,P)\\le U(f,P)"
+    },
+    {
+      "id": 10,
+      "title": "Refinement lemma",
+      "type": "theorem",
+      "section": "sums",
+      "text": "Refining a partition raises the lower sum and lowers the upper sum.",
+      "math": "L(f,P)\\le L(f,P')\\le U(f,P')\\le U(f,P)"
+    },
+    {
+      "id": 11,
+      "title": "Common refinement",
+      "type": "example",
+      "section": "sums",
+      "text": "Two partitions have a common refinement containing both sets of endpoints.",
+      "math": "P''=P\\cup P'"
+    },
+    {
+      "id": 12,
+      "title": "Integrability criterion",
+      "type": "theorem",
+      "section": "criterion",
+      "text": "A bounded function is integrable when its upper and lower sums can be made arbitrarily close.",
+      "math": "\\forall\\varepsilon>0,\\ \\exists P:\\ U(f,P)-L(f,P)<\\varepsilon"
+    },
+    {
+      "id": 13,
+      "title": "Continuous implies integrable",
+      "type": "theorem",
+      "section": "continuouscase",
+      "text": "Every continuous function on a closed bounded interval is Riemann integrable.",
+      "math": "U(f,P)-L(f,P)<\\varepsilon(b-a)"
+    },
+    {
+      "id": 14,
+      "title": "A smooth curve",
+      "type": "example",
+      "section": "continuouscase",
+      "text": "Refine rectangle approximations for a smooth curve on a closed interval.",
+      "math": "L_n\\longrightarrow\\int_a^b f\\longleftarrow U_n"
+    },
+    {
+      "id": 15,
+      "title": "Integrate a quadratic",
+      "type": "exercise",
+      "section": "exercises",
+      "text": "Use regular partitions to integrate a quadratic from zero to one.",
+      "math": "\\int_0^1 x^2\\,dx=\\frac13"
+    },
+    {
+      "id": 16,
+      "title": "An oscillating example",
+      "type": "exercise",
+      "section": "exercises",
+      "text": "Compare sums for the function equal to one on rational points and zero otherwise.",
+      "math": "U(f,P)-L(f,P)=b-a"
+    },
+    {
+      "id": 17,
+      "title": "Compare two sums",
+      "type": "exercise",
+      "section": "exercises",
+      "text": "Compare upper and lower approximations with four, eight, and sixteen intervals.",
+      "math": "U_n-L_n\\longrightarrow 0"
+    },
+    {
+      "id": 18,
+      "title": "Further integral properties",
+      "type": "theorem",
+      "section": "properties",
+      "text": "Pointwise comparison of continuous functions gives a comparison of integrals.",
+      "math": "f\\le g\\implies\\int_a^b f\\le\\int_a^b g"
+    },
+    {
+      "id": 19,
+      "title": "Difference quotients",
+      "type": "definition",
+      "section": "derivative",
+      "text": "Measure the change in a function relative to the change in its input.",
+      "math": "D_hf(x)=\\frac{f(x+h)-f(x)}h"
+    },
+    {
+      "id": 20,
+      "title": "The derivative",
+      "type": "definition",
+      "section": "derivative",
+      "text": "A derivative is the limit of difference quotients when that limit exists.",
+      "math": "f'(x)=\\lim_{h\\to0}D_hf(x)"
+    },
+    {
+      "id": 21,
+      "title": "Derivative of a square",
+      "type": "example",
+      "section": "derivative",
+      "text": "Expand the numerator and cancel before taking the limit.",
+      "math": "\\frac{d}{dx}x^2=2x"
+    },
+    {
+      "id": 22,
+      "title": "Product rule",
+      "type": "theorem",
+      "section": "product",
+      "text": "Differentiate a product by splitting the change into two contributions.",
+      "math": "(fg)'=f'g+fg'"
+    },
+    {
+      "id": 23,
+      "title": "Chain rule",
+      "type": "theorem",
+      "section": "chain",
+      "text": "Differentiate a composition by multiplying the two derivatives.",
+      "math": "(f\\circ g)'=(f'\\circ g)g'"
+    },
+    {
+      "id": 24,
+      "title": "Composition exercise",
+      "type": "exercise",
+      "section": "chain",
+      "text": "Apply the chain rule to a trigonometric composition.",
+      "math": "\\frac{d}{dx}\\sin(x^2)=2x\\cos(x^2)"
+    },
+    {
+      "id": 25,
+      "title": "Mean value theorem",
+      "type": "theorem",
+      "section": "means",
+      "text": "Some instantaneous slope equals the slope across a closed interval.",
+      "math": "f'(c)=\\frac{f(b)-f(a)}{b-a}"
+    },
+    {
+      "id": 26,
+      "title": "Monotonicity",
+      "type": "theorem",
+      "section": "means",
+      "text": "A nonnegative derivative on an interval makes the function nondecreasing.",
+      "math": "f'\\ge0\\implies f\\text{ is nondecreasing}"
+    },
+    {
+      "id": 27,
+      "title": "Pointwise convergence",
+      "type": "definition",
+      "section": "pointwise",
+      "text": "At each input, the sequence of values converges separately.",
+      "math": "f_n(x)\\longrightarrow f(x)"
+    },
+    {
+      "id": 28,
+      "title": "A moving peak",
+      "type": "example",
+      "section": "pointwise",
+      "text": "A narrow moving peak distinguishes pointwise behavior from uniform behavior.",
+      "math": "f_n(x)=\\max(0,1-|nx-1|)"
+    },
+    {
+      "id": 29,
+      "title": "Uniform convergence",
+      "type": "definition",
+      "section": "uniformbasics",
+      "text": "One bound on the error works over the entire domain.",
+      "math": "\\sup_x|f_n(x)-f(x)|\\longrightarrow0"
+    },
+    {
+      "id": 30,
+      "title": "Uniform Cauchy criterion",
+      "type": "theorem",
+      "section": "uniformbasics",
+      "text": "Uniform Cauchy control describes convergence without first knowing the limit.",
+      "math": "\\sup_x|f_n(x)-f_m(x)|<\\varepsilon"
+    },
+    {
+      "id": 31,
+      "title": "Continuity of a limit",
+      "type": "theorem",
+      "section": "exchange",
+      "text": "A uniform limit of continuous functions is continuous.",
+      "math": "|f(x)-f(y)|\\le2\\|f-f_n\\|_\\infty+|f_n(x)-f_n(y)|"
+    },
+    {
+      "id": 32,
+      "title": "Integrating a limit",
+      "type": "theorem",
+      "section": "exchange",
+      "text": "Uniform convergence on a compact interval permits exchanging limit and integral.",
+      "math": "\\lim_n\\int_a^b f_n=\\int_a^b f"
+    },
+    {
+      "id": 33,
+      "title": "A uniform approximation",
+      "type": "exercise",
+      "section": "exchange",
+      "text": "Estimate the integral error using the largest pointwise error.",
+      "math": "\\left|\\int_a^b(f_n-f)\\right|\\le(b-a)\\|f_n-f\\|_\\infty"
+    },
+    {
+      "id": 34,
+      "title": "Function series",
+      "type": "definition",
+      "section": "series",
+      "text": "Study a series of functions through its partial sums.",
+      "math": "S_N(x)=\\sum_{n=1}^N u_n(x)"
+    },
+    {
+      "id": 35,
+      "title": "Uniform comparison",
+      "type": "theorem",
+      "section": "series",
+      "text": "A summable sequence of uniform bounds controls the tails of a function series.",
+      "math": "|u_n(x)|\\le M_n,\\quad\\sum_n M_n<\\infty"
+    },
+    {
+      "id": 36,
+      "title": "A geometric series",
+      "type": "example",
+      "section": "series",
+      "text": "A geometric series converges uniformly on any closed interval strictly inside its radius.",
+      "math": "\\sum_{n=0}^\\infty x^n=\\frac1{1-x},\\quad |x|\\le r<1"
+    }
+  ],
+  "deps": [
+    [
+      1,
+      4
+    ],
+    [
+      2,
+      3
+    ],
+    [
+      4,
+      5
+    ],
+    [
+      4,
+      13
+    ],
+    [
+      5,
+      6
+    ],
+    [
+      7,
+      8
+    ],
+    [
+      7,
+      9
+    ],
+    [
+      9,
+      10
+    ],
+    [
+      10,
+      11
+    ],
+    [
+      10,
+      12
+    ],
+    [
+      11,
+      12
+    ],
+    [
+      12,
+      13
+    ],
+    [
+      13,
+      14
+    ],
+    [
+      8,
+      15
+    ],
+    [
+      13,
+      15
+    ],
+    [
+      9,
+      16
+    ],
+    [
+      14,
+      17
+    ],
+    [
+      13,
+      18
+    ],
+    [
+      4,
+      19
+    ],
+    [
+      19,
+      20
+    ],
+    [
+      20,
+      21
+    ],
+    [
+      20,
+      22
+    ],
+    [
+      20,
+      23
+    ],
+    [
+      23,
+      24
+    ],
+    [
+      4,
+      25
+    ],
+    [
+      20,
+      25
+    ],
+    [
+      25,
+      26
+    ],
+    [
+      1,
+      27
+    ],
+    [
+      2,
+      27
+    ],
+    [
+      27,
+      28
+    ],
+    [
+      27,
+      29
+    ],
+    [
+      29,
+      30
+    ],
+    [
+      4,
+      31
+    ],
+    [
+      29,
+      31
+    ],
+    [
+      13,
+      32
+    ],
+    [
+      29,
+      32
+    ],
+    [
+      18,
+      33
+    ],
+    [
+      32,
+      33
+    ],
+    [
+      27,
+      34
+    ],
+    [
+      30,
+      35
+    ],
+    [
+      34,
+      35
+    ],
+    [
+      35,
+      36
+    ]
+  ]
+}

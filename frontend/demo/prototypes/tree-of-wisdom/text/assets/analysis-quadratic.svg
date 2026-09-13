@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title description">
+  <title id="title">Rectangle approximations for a quadratic</title>
+  <desc id="description">A quadratic curve rises above left-endpoint rectangles on the interval from zero to one. The axes are schematic.</desc>
+  <rect width="640" height="400" rx="16" fill="#132436"/>
+  <g fill="none" stroke="#b5dee0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M120 310H550M120 310V65" opacity=".55"/>
+    <path d="M120 310h80v-10h80v-32h80v-53h80v-75h80" stroke="#dfc295" opacity=".65"/>
+    <path d="M200 310V300m80 10v-42m80 42v-95m80 95V140m80 170V45" stroke="#dfc295" opacity=".35"/>
+    <path d="M120 310Q320 310 520 45"/>
+  </g>
+</svg>

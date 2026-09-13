@@ -9,15 +9,17 @@ import RealmContinuity from './RealmContinuity.vue';
 import RealmDestination from './RealmDestination.vue';
 import LanguageControl from './LanguageControl.vue';
 import GrimoireCompletion from './GrimoireCompletion.vue';
+import TextRealm from './text/TextRealm.vue';
 
 const props = defineProps<{ book: SampleBook; reveal: number; ready: boolean; initialRealm?: RealmId }>();
-const emit = defineEmits<{ back: []; realm: [value: RealmId | null] }>();
+const emit = defineEmits<{ back: []; realm: [value: RealmId | null]; completion: [bookId:string,count:number] }>();
 const { t } = useWisdomI18n();
 const lastRealm = shallowRef<RealmId | null>(props.initialRealm ?? null);
 const hoveredRealm = shallowRef<RealmId | null>(null);
 const focusedRealm = shallowRef<RealmId | null>(null);
 const enteringRealm = shallowRef<RealmId | null>(null);
 const destination = shallowRef<RealmId | null>(props.initialRealm ?? null);
+const inStudy = computed(() => destination.value === 'text' || destination.value === 'questions');
 const returning = shallowRef(false);
 const reforming = shallowRef(false);
 const textPage = shallowRef(0);
@@ -65,7 +67,7 @@ async function returnToBook() {
   }, reduced ? 0 : 240);
 }
 function leave() { if (!busy.value) emit('back'); }
-function escape() { if (destination.value) returnToBook(); else leave(); }
+function escape() { if(inStudy.value)return; if (destination.value) returnToBook(); else leave(); }
 watch(() => props.ready, async ready => {
   if (ready && !destination.value) { await nextTick(); spread.value?.focus({ preventScroll: true }); }
 }, { immediate: true });
@@ -74,7 +76,7 @@ onBeforeUnmount(() => clearTimeout(timer));
 
 <template>
   <section class="altar-interface" :class="{'realm-entering':enteringRealm,'in-realm':destination,'returning-from-realm':returning,'book-reforming':reforming}" :style="{'--realm-accent':accent}" :inert="!ready" :aria-hidden="!ready" @keydown.esc.stop="escape">
-    <div class="altar-nav" :inert="busy" :style="{opacity:reveal}"><button class="altar-return" :disabled="busy" @click="leave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h17"/></svg>{{t.backToTree}}</button><LanguageControl/></div>
+    <div v-if="!inStudy" class="altar-nav" :inert="busy" :style="{opacity:reveal}"><button class="altar-return" :disabled="busy" @click="leave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h17"/></svg>{{t.backToTree}}</button><LanguageControl/></div>
     <div v-show="!destination" class="book-projection" :style="motionStyle">
       <div class="projection-plinth" aria-hidden="true"><i></i><i></i></div>
       <div ref="spread" class="realm-spread" tabindex="-1" :aria-label="`${book.title} · ${t.realmBook}`">
@@ -93,7 +95,8 @@ onBeforeUnmount(() => clearTimeout(timer));
         <div class="spine-bookmark" aria-hidden="true"></div>
       </div>
     </div>
-    <RealmDestination v-if="destination" :book="book" :realm="destination" :note="note" :page="destination==='questions'?questionPage:textPage" @back="returnToBook" @note="note=$event" @page="destination==='questions'?questionPage=$event:textPage=$event"/>
+    <TextRealm v-if="inStudy" :book="book" :initial-mode="destination==='questions'?'questions':'text'" @back="returnToBook" @completion="(id,count)=>emit('completion',id,count)"/>
+    <RealmDestination v-else-if="destination" :book="book" :realm="destination" :note="note" :page="destination==='questions'?questionPage:textPage" @back="returnToBook" @note="note=$event" @page="destination==='questions'?questionPage=$event:textPage=$event"/>
   </section>
 </template>
 

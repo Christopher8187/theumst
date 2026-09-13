@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title description">
+  <title id="title">A regular hexagon</title>
+  <desc id="description">A regular hexagon with three opposite-vertex reflection axes and an arc showing a sixty-degree rotation.</desc>
+  <rect width="640" height="400" rx="16" fill="#132436"/>
+  <g fill="none" stroke="#b5dee0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="320" cy="200" r="142" stroke-dasharray="3 10" opacity=".3"/>
+    <path d="M462 200 391 77 249 77 178 200 249 323 391 323Z"/>
+    <path d="M178 200H462M249 77 391 323M391 77 249 323" stroke-dasharray="8 9" opacity=".38"/>
+    <path d="M375 200A55 55 0 0 0 347.5 152.4M347.5 152.4l15 3-4-14" stroke="#e3bdd9"/>
+    <circle cx="320" cy="200" r="4" fill="#e3bdd9"/>
+  </g>
+</svg>

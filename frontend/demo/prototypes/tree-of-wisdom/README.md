@@ -7,7 +7,8 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=10&arrival=0&book=symmetry`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=11&arrival=0&book=symmetry`.
+For the current Text prototype, add `view=realms&place=tree&realm=text`.
 The local Vite server uses port 5175.
 
 Christopher selected A's folio and E's navigation rail. Revision 6 combines
@@ -21,6 +22,8 @@ each realm open with one activation. See [the connected spread](round-eight.md).
 Revision 9 develops [Orbit, Brief, progress and the world tree](round-nine.md).
 Revision 10 moves the tree slightly farther away and reveals more upper branches.
 See [the tree framing adjustment](round-ten.md).
+Revision 11 prototypes [Text inside the realm folio](round-eleven.md), reusing
+the existing reader, Atlas and side tools. Brief's progress follows its statistics.
 The revision 6 checkpoint is commit `c304345`.
 
 The scene uses the [world-tree panorama](assets/sanctuary-world-tree-distance.png).
@@ -47,8 +50,8 @@ four chapters and twenty section rows. Both short books have two chapters with
 two sections each, matching their four extracts. The first chapter opens
 initially. Selecting a section highlights it within Contents. Extract has been
 removed from Brief; the Text and Questions arrival samples retain their reader.
-Book details opens by default and shows Edition, ISBN, Progress, Objects and
-Chapters. The completion bar also appears in the realm book's upper page margin
+Book details opens by default and shows Edition, ISBN, Objects and Chapters,
+with progress beneath all four statistics. The completion bar also appears in the realm book's upper page margin
 and beside the grimoire title inside a realm.
 
 Search matches titles and subjects; slash focuses it. My grimoires has its own
@@ -60,7 +63,7 @@ ruled book rises. Eight pen-and-ink drawings occupy uneven positions across its
 pages. Hover and keyboard focus illuminate the drawing and nearby scenery.
 One click, Enter, or Space opens its local arrival view. Escape returns to the
 book and restores focus. Return to grimoires retraces the pan. See
-[the current round](round-nine.md) for the scope of the arrival samples.
+[the current round](round-eleven.md) for the Text prototype and remaining arrival samples.
 English, Chinese and Japanese use the existing persisted Demo preference.
 The four realm actions retain coming-soon behavior across grimoires.
 The [round 5 vocabulary mapping](round-five.md) records the corrected Progress name.
