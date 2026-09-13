@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// One Text prototype: the existing reader and Atlas inside the chosen realm folio.
-import { computed, nextTick, onMounted, toRef, useTemplateRef } from 'vue';
+// Three left-page notebook layouts inside the existing Text realm, via ?notebook=A|B|C.
+import { computed, nextTick, onMounted, shallowRef, toRef, useTemplateRef, watch } from 'vue';
 import StudyView from '../../../src/components/StudyView.vue';
 import NotesDesk from '../../../src/components/NotesDesk.vue';
 import NoteDecision from '../../../src/components/NoteDecision.vue';
@@ -9,10 +9,20 @@ import GrimoireCompletion from '../GrimoireCompletion.vue';
 import { useWisdomI18n } from '../i18n';
 import type { SampleBook } from '../books';
 import { useTextStudy } from './useTextStudy';
+import NotebookComparison from './NotebookComparison.vue';
+import './notebook-variants.css';
 
 const props = defineProps<{ book: SampleBook; initialMode?: 'text' | 'questions' }>();
 const emit = defineEmits<{ back: []; completion: [bookId: string, count: number] }>();
 const { t, lang } = useWisdomI18n();
+const requestedNotebook = new URLSearchParams(location.search).get('notebook');
+const notebook = shallowRef<'A'|'B'|'C'>(requestedNotebook === 'B' || requestedNotebook === 'C' ? requestedNotebook : 'A');
+function updateNotebookUrl() {
+  const query = new URLSearchParams(location.search);
+  query.set('notebook', notebook.value);
+  history.replaceState(null, '', location.pathname + '?' + query);
+}
+watch(notebook, updateNotebookUrl);
 const bookId = computed(() => props.book.id);
 const copy = computed(() => ({ ...t.value,
   similarityMethod: lang.value === 'zh' ? '此原型使用关联知识示例，分数为示例值。' : lang.value === 'ja' ? 'この試作の関連知識とスコアは例示用です。' : 'Illustrative matches for this prototype. Scores are sample values.',
@@ -30,11 +40,11 @@ function escape(event: KeyboardEvent) {
   if (guard.pending.value) return;
   if (showingAllNotes.value || sideMode.value === 'graph') { event.stopPropagation(); event.preventDefault(); back(); }
 }
-onMounted(async () => { await nextTick(); title.value?.focus({ preventScroll: true }); });
+onMounted(async () => { updateNotebookUrl(); await nextTick(); title.value?.focus({ preventScroll: true }); });
 </script>
 
 <template>
-  <section class="text-realm" :class="{'all-notes-open':showingAllNotes}" @keydown.esc.capture="escape" :aria-label="showingAllNotes?t.notes:mode==='questions'?t.questions:t.text">
+  <section class="text-realm notebook-study" :class="['notebook-'+notebook,{'all-notes-open':showingAllNotes}]" @keydown.esc.capture="escape" :aria-label="showingAllNotes?t.notes:mode==='questions'?t.questions:t.text">
     <nav class="text-topnav" :inert="actionBusy || !!guard.pending.value">
       <button class="text-return" type="button" @click="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h17"/></svg>{{!showingAllNotes && originBookId && book.grimoire_id!==originBookId?t.returnOrigin:t.realmReturn}}</button>
       <span ref="title" tabindex="-1" class="text-realm-mark"><span aria-hidden="true">{{showingAllNotes?'寫':mode==='questions'?'問':'書'}}</span>{{showingAllNotes?t.notes:mode==='questions'?t.questions:t.text}}</span>
@@ -57,6 +67,7 @@ onMounted(async () => { await nextTick(); title.value?.focus({ preventScroll: tr
         @soon="state.comingSoon($event)"/>
       <NotesDesk v-else :t="copy" :notes="allNotes" :grimoire-id="book.grimoire_id"/>
     </div>
+    <NotebookComparison v-if="!showingAllNotes" v-model="notebook" :inert="actionBusy || !!guard.pending.value"/>
     <p v-if="toast" class="text-notice" role="status">{{toast}}</p>
     <NoteDecision :t="copy" :guard="guard"/>
   </section>

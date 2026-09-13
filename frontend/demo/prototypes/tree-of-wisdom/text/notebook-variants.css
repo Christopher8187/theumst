@@ -1,0 +1,145 @@
+/* Three notebook compositions on the same reader. Only the left page changes.
+   Shared behavior stays in StudyView and KnowledgeViewer; no duplicated actions. */
+.altar-interface .text-realm.notebook-study{bottom:76px}
+.text-realm.notebook-study .text-folio::before{left:calc(52.5% + 18px)}
+.text-realm.notebook-study .knowledge-side{position:relative;padding:0 24px 17px 28px}
+.text-realm.notebook-study .text-folio .knowledge-viewer{
+  display:block;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;
+  scrollbar-gutter:stable;padding:0 14px 40px 39px;position:relative;
+}
+.text-realm.notebook-study .text-folio .knowledge-meta{
+  min-height:61px;height:auto;flex-wrap:wrap;gap:8px;padding:14px 0 13px;border:0;
+  font:10px 'Courier New',monospace;line-height:1.4;
+}
+.text-realm.notebook-study .text-folio .knowledge-meta>span:nth-child(3){
+  flex-basis:100%;order:4;white-space:normal;overflow:visible;text-overflow:clip;
+  font:italic 23px/1.35 Georgia,'Times New Roman',serif;color:#e6eeeb;margin-top:5px;
+}
+.text-realm.notebook-study .text-folio .knowledge-meta strong{margin-left:auto;font-size:14px;opacity:.6}
+.text-realm.notebook-study .text-folio .type-chip{border:0;padding:0;text-transform:uppercase;font-size:9px;letter-spacing:.1em}
+.text-realm.notebook-study .text-folio .knowledge-section{
+  overflow:visible;min-height:0;height:auto;padding:20px 0 0;background:none;
+  border:0;scrollbar-gutter:auto;
+}
+.text-realm.notebook-study .text-folio .knowledge-section-head{margin:0 0 10px;gap:8px;min-height:28px}
+.text-realm.notebook-study .text-folio .knowledge-section h2{font:italic 15px Georgia,serif}
+.text-realm.notebook-study .text-folio .knowledge-section-head button,
+.text-realm.notebook-study .text-folio .sound-corner{font-size:10px;padding:3px 5px;min-height:28px}
+.text-realm.notebook-study .text-folio .math-content{font:17px/32px Georgia,'Times New Roman',serif;color:#e8eeeb}
+.text-realm.notebook-study .text-folio .math-content p{margin:0 0 16px}
+.text-realm.notebook-study .text-folio .workings-section{margin-top:11px}
+.text-realm.notebook-study .text-folio .knowledge-images{margin-top:18px}
+.text-realm.notebook-study .text-folio .study-actions{flex-shrink:0;margin-top:0;padding-top:12px;position:relative}
+
+/* A: a continuous ruled leaf, with a pink margin and headings in the writing. */
+.text-realm.notebook-A .text-folio .knowledge-viewer{
+  background:linear-gradient(90deg,transparent 22px,#d2a0b34d 22px 23px,transparent 23px),
+    repeating-linear-gradient(transparent 0 31px,#b9d5df1a 31px 32px);
+  background-attachment:local;
+}
+.text-realm.notebook-A .text-folio .knowledge-meta{background:linear-gradient(#1b3947ee,#1b3947e3)}
+.text-realm.notebook-A .text-folio .knowledge-section-head h2{color:#d1c5d7;transform:rotate(-1deg)}
+.text-realm.notebook-A .text-folio .workings-section::before{
+  content:'';display:block;width:39px;height:8px;border-top:1px solid #dac7d765;
+  border-radius:50%;transform:rotate(-5deg);margin:6px 0 0;
+}
+.text-realm.notebook-A .text-folio .knowledge-section-head button{color:#a9c9cd}
+
+/* B: an annotation margin alongside one uninterrupted text column. */
+.text-realm.notebook-B .knowledge-side{padding-left:20px}
+.text-realm.notebook-B .text-folio .knowledge-viewer{
+  padding:0 12px 40px 0;background:linear-gradient(90deg,transparent 108px,#b8d3c82b 108px 109px,transparent 109px),
+    radial-gradient(circle,#c1d6d620 .7px,transparent .9px);background-size:auto,18px 18px;background-attachment:local;
+}
+.text-realm.notebook-B .text-folio .knowledge-meta{padding-left:130px;padding-bottom:22px}
+.text-realm.notebook-B .text-folio .knowledge-meta>span:nth-child(3){font-style:normal;font-size:25px;line-height:1.28;margin-top:8px}
+.text-realm.notebook-B .text-folio .knowledge-section{
+  display:grid;grid-template-columns:109px minmax(0,1fr);column-gap:21px;padding-top:21px;
+}
+.text-realm.notebook-B .text-folio .knowledge-section-head{
+  grid-column:1;grid-row:1;display:flex;flex-direction:column;align-items:flex-start;
+  justify-content:flex-start;gap:10px;margin:2px 10px 0 0;padding:0 0 0 4px;
+}
+.text-realm.notebook-B .text-folio .knowledge-section h2{font:italic 14px/1.5 Georgia,serif;color:#bcc8d7}
+.text-realm.notebook-B .text-folio .knowledge-section-head h2::before{content:'↳';display:block;color:#cbb9d1;font:22px Georgia,serif;margin-bottom:3px;transform:rotate(-8deg)}
+.text-realm.notebook-B .text-folio .math-content{grid-column:2;font-size:16px;line-height:1.95;color:#e2e9e5}
+.text-realm.notebook-B .text-folio .workings-section{margin-top:8px}
+.text-realm.notebook-B .text-folio .knowledge-images{grid-column:2}
+.text-realm.notebook-B .text-folio .sound-corner{grid-column:1;grid-row:2;margin:12px 0 0;justify-self:start;align-self:start}
+.text-realm.notebook-B .text-folio .knowledge-section-head button{padding-left:0;font-size:10px}
+
+/* C: a pale squared field journal with numbered passages and a punched margin. */
+.text-realm.notebook-C .text-folio .knowledge-side{
+  color:#304854;background:linear-gradient(115deg,#eeeaddf5,#d8e2d9f5);padding-left:27px;
+  box-shadow:inset 5px 0 16px #728b8229,inset -10px 0 24px #7a95832e;
+}
+.text-realm.notebook-C .text-folio .knowledge-viewer{
+  padding:0 17px 44px 34px;counter-reset:passage;
+  background:linear-gradient(90deg,transparent 17px,#b982953f 17px 18px,transparent 18px),
+    repeating-linear-gradient(transparent 0 23px,#6b92941c 23px 24px),
+    repeating-linear-gradient(90deg,transparent 0 23px,#6b929412 23px 24px);
+  background-attachment:local;
+}
+.text-realm.notebook-C .text-folio .knowledge-viewer::before{
+  content:'';position:absolute;left:0;top:63px;width:6px;height:6px;border:1px solid #6b878478;
+  border-radius:50%;background:#819b8b6b;box-shadow:inset 1px 1px 2px #48676340,0 144px 0 #819b8b6b,0 288px 0 #819b8b6b;
+}
+.text-realm.notebook-C .text-folio .knowledge-meta{color:#657979;border-bottom:1px solid #75969166;padding-top:18px;padding-bottom:20px}
+.text-realm.notebook-C .text-folio .knowledge-meta>span:nth-child(3){color:#304953;font-size:27px;line-height:1.2;margin:10px 0 0;font-style:normal}
+.text-realm.notebook-C .text-folio .knowledge-meta strong{color:#647d78}
+.text-realm.notebook-C .text-folio .type-chip{color:#617b77}
+.text-realm.notebook-C .text-folio .type-chip.theorem{color:#75647b}
+.text-realm.notebook-C .text-folio .type-chip.exercise{color:#8a7049}
+.text-realm.notebook-C .text-folio .knowledge-section{counter-increment:passage;padding-top:25px}
+.text-realm.notebook-C .text-folio .knowledge-section-head{justify-content:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:13px}
+.text-realm.notebook-C .text-folio .knowledge-section-head::before{
+  content:'0' counter(passage);font:11px 'Courier New',monospace;color:#8a6c7b;border-bottom:1px solid #a17b8c6b;padding-bottom:3px;
+}
+.text-realm.notebook-C .text-folio .knowledge-section h2{color:#426160;font:italic 16px Georgia,serif}
+.text-realm.notebook-C .text-folio .knowledge-section-head button{margin-left:auto;color:#627975}
+.text-realm.notebook-C .text-folio .math-content{color:#2f4853;font-size:17px;line-height:1.85}
+.text-realm.notebook-C .text-folio .sound-corner{color:#637c76}
+.text-realm.notebook-C .text-folio .knowledge-images button{color:#4e6664;border-color:#678e8370;background:#f4f0de52}
+.text-realm.notebook-C .text-folio .study-actions{border-color:#75958a70}
+.text-realm.notebook-C .text-folio .study-actions button{color:#48615f;border-color:#76958a60;background:#f0efe332}
+.text-realm.notebook-C .text-folio .study-actions button:nth-child(2){color:#f2f0e5;background:#466c70;border-color:#385b66}
+.text-realm.notebook-C .text-folio .study-actions button.active{color:#3b5b62;background:#71958624;border-color:#648575}
+.text-realm.notebook-C .text-folio .exercise-nav button{color:#4e6b67}.text-realm.notebook-C .text-folio .exercise-nav>span{color:#6a7c74}
+.text-realm.notebook-C .text-folio .knowledge-side button:hover:not(:disabled){color:#304f56;background:#75999126;border-color:#617e78}
+.text-realm.notebook-C .text-folio .knowledge-side button:focus-visible{outline-color:#92708e}
+.text-realm.notebook-C .text-folio .knowledge-side *{scrollbar-color:#6c8c8180 transparent}
+
+@media(min-width:1450px){
+  .text-realm.notebook-study .knowledge-side{padding-left:34px;padding-right:28px}
+  .text-realm.notebook-study .text-folio .math-content{font-size:18px}
+}
+@media(max-width:1100px){
+  .text-realm.notebook-study .knowledge-side{padding-inline:16px}
+  .text-realm.notebook-study .text-folio .knowledge-viewer{padding-left:29px;padding-right:8px}
+  .text-realm.notebook-A .text-folio .knowledge-viewer{background-image:linear-gradient(90deg,transparent 14px,#d2a0b34d 14px 15px,transparent 15px),repeating-linear-gradient(transparent 0 31px,#b9d5df1a 31px 32px)}
+  .text-realm.notebook-study .text-folio .math-content{font-size:16px}
+  .text-realm.notebook-B .text-folio .knowledge-viewer{padding-left:0;background-image:linear-gradient(90deg,transparent 86px,#b8d3c82b 86px 87px,transparent 87px),radial-gradient(circle,#c1d6d620 .7px,transparent .9px)}
+  .text-realm.notebook-B .text-folio .knowledge-meta{padding-left:103px}
+  .text-realm.notebook-B .text-folio .knowledge-section{grid-template-columns:87px minmax(0,1fr);column-gap:16px}
+  .text-realm.notebook-B .text-folio .knowledge-section-head{margin-right:6px;padding-left:1px}
+}
+@media(max-width:900px){
+  .altar-interface .text-realm.notebook-study{bottom:auto;padding-bottom:65px}
+  .text-realm.notebook-study .knowledge-side{height:730px}
+  .text-realm.notebook-study .text-folio .knowledge-viewer{padding-top:7px}
+  .text-realm.notebook-study .text-folio .knowledge-section-head button{min-height:34px}
+}
+@media(max-width:540px){
+  .text-realm.notebook-study .text-folio .knowledge-meta>span:nth-child(3){font-size:22px}
+  .text-realm.notebook-study .text-folio .knowledge-side{padding-inline:14px;height:760px}
+  .text-realm.notebook-study .text-folio .knowledge-viewer{padding-bottom:30px}
+  .text-realm.notebook-study .text-folio .math-content{font-size:15px;line-height:1.9}
+  .text-realm.notebook-study .text-folio .knowledge-section h2{font-size:14px}
+  .text-realm.notebook-B .text-folio .knowledge-meta{padding-left:87px}
+  .text-realm.notebook-B .text-folio .knowledge-viewer{background-image:linear-gradient(90deg,transparent 72px,#b8d3c82b 72px 73px,transparent 73px),radial-gradient(circle,#c1d6d620 .7px,transparent .9px)}
+  .text-realm.notebook-B .text-folio .knowledge-section{grid-template-columns:73px minmax(0,1fr);column-gap:14px}
+  .text-realm.notebook-B .text-folio .knowledge-section h2{font-size:12px}
+  .text-realm.notebook-B .text-folio .math-content{font-size:14px;line-height:1.95}
+  .text-realm.notebook-B .text-folio .knowledge-section-head button{font-size:9px;padding-inline:0}
+  .text-realm.notebook-C .text-folio .knowledge-meta>span:nth-child(3){font-size:24px}
+}
