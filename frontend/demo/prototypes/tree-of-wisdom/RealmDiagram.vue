@@ -24,6 +24,7 @@ const rail=stairs.map((_,i)=>`${i?'L':'M'}${line(stairPoint(i,58,.12,-14))}`).jo
 <template>
   <svg class="realm-diagram" viewBox="0 0 220 165" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
     <g v-if="kind==='text'">
+      <path class="setting-soft" d="M12 50q22-10 43-5 18-13 42-5 28-18 55-9 20-10 49-6M16 55q29 0 50 8m111-25q16 0 28 7"/>
       <path class="construction" d="M18 137q83 25 184-12M108 30v115m-70-5 7 9m138-10 7 7"/>
       <path class="contour" d="M32 62q39-14 74 15 34-29 81-31l-10 72q-41 0-70 26-39-26-76-8l1-74Z"/>
       <path class="contour" d="M33 58q39-19 73 16 24-32 58-43l13 17M106 74q-3 32 1 66M35 56q38-27 62-28l8 42"/>
@@ -33,6 +34,7 @@ const rail=stairs.map((_,i)=>`${i?'L':'M'}${line(stairPoint(i,58,.12,-14))}`).jo
       <path class="detail" d="M150 36q8-15 20-20l-9 25M70 42q-8-10-5-21" opacity=".55"/>
     </g>
     <g v-else-if="kind==='questions'">
+      <path class="setting-soft" d="M18 141C28 58 68 13 112 12c45-1 84 46 92 124M30 140C42 73 73 34 111 30"/>
       <ellipse class="construction" cx="112" cy="88" rx="76" ry="55" transform="rotate(-22 112 88)" stroke-dasharray="28 5 2 5"/>
       <path class="construction" d="m42 111 143-54M113 18l-3 128M41 135l136-8m-129 9 1-7m124 1-1-7"/>
       <path class="contour" d="m107 30 49 22 17 48-40 34-60-13-21-48 55-43Z"/>
@@ -41,9 +43,11 @@ const rail=stairs.map((_,i)=>`${i?'L':'M'}${line(stairPoint(i,58,.12,-14))}`).jo
       <path class="shade" d="m52 73 56 3-35 45Z"/>
       <path class="hatching" d="m56 78 9 15m-5-15 12 21m-8-20 11 21m-6-20 12 20m-7-19 11 18m-6-17 10 14m-5-13 8 10m-3-9 7 8m-39-3 14 25m-7-24 12 20m-7-18 10 15m-5-13 7 9M140 102l17 5m-20 1 15 5m-20 0 14 5m-15 0 9 4"/>
       <path class="detail" d="M30 86q0-39 38-53m-8-1 8 1-4 7" opacity=".55"/>
+      <path class="setting" d="M43 140q51 17 120 6 18-3 31-11M57 146q47 9 101 1"/>
       <circle class="detail" cx="108" cy="76" r="2.3"/>
     </g>
     <g v-else-if="kind==='notes'">
+      <path class="setting-soft" d="m15 116 110-17 75 27-109 34-76-44Zm76 44 2-9 18 4"/>
       <path class="construction" d="M24 148q91-6 167-29M60 145l113-126"/>
       <path class="contour" d="M53 147C89 104 130 51 183 17c-2 30-14 55-30 68-22 18-54 22-70 42M179 20C144 20 117 43 104 65l3 2-7 5c-10 17-13 30-27 51"/>
       <path class="detail" d="M58 141C98 98 138 49 179 22M77 121q-1-17 12-34M86 111q-1-17 12-33M94 101q0-18 16-35M105 86q3-10 11-22M113 80q2-18 17-32M122 69q4-17 18-30M132 58q6-16 18-23M143 46q9-14 18-17M78 124q35-6 54-21M87 113q39-7 55-22M96 103q40-8 55-26M105 92q39-7 54-28M114 81q37-9 48-25M124 70q25-7 34-20M134 58q28-8 36-22M145 46q22-7 27-17"/>
@@ -53,6 +57,7 @@ const rail=stairs.map((_,i)=>`${i?'L':'M'}${line(stairPoint(i,58,.12,-14))}`).jo
       <path class="construction" d="m126 144 37-8m-126-24 23 2m-30 5 25 1"/>
     </g>
     <g v-else-if="kind==='review'">
+      <path class="setting-soft" d="M10 139q28-14 56-2 22 10 50 1 30-11 91 1M16 149q25-9 47-1m73-2q29-8 58 1"/>
       <path class="contour" :d="spiral"/>
       <path v-for="(chamber,i) in chambers" :key="i" :d="chamber" class="detail" :opacity=".5+(i%3)*.13"/>
       <path class="construction" d="M33 124q-13-65 38-96m-38 96 8 11m16-4q64 32 123-11M104 8v12m-59 59H31m73 70v9"/>
@@ -60,6 +65,10 @@ const rail=stairs.map((_,i)=>`${i?'L':'M'}${line(stairPoint(i,58,.12,-14))}`).jo
       <path class="detail" d="M171 60q16 27 1 47" opacity=".45"/>
     </g>
     <g v-else-if="kind==='preview'">
+      <g class="setting">
+        <circle cx="30" cy="38" r="9"/><path d="M26 30q10 8 1 16"/>
+        <ellipse cx="190" cy="124" rx="11" ry="5" transform="rotate(-18 190 124)"/><path d="M179 128q13 9 26-1"/>
+      </g>
       <ellipse class="construction" cx="111" cy="83" rx="93" ry="30" transform="rotate(-24 111 83)"/>
       <ellipse class="detail" cx="111" cy="83" rx="65" ry="52" transform="rotate(-24 111 83)"/>
       <ellipse class="contour" cx="111" cy="83" rx="43" ry="53" transform="rotate(-24 111 83)"/>
@@ -72,6 +81,7 @@ const rail=stairs.map((_,i)=>`${i?'L':'M'}${line(stairPoint(i,58,.12,-14))}`).jo
       <path class="hatching" d="m79 72 5 1m-6 5 5 1m-4 5 5 1m-3 5 5 1m-3 4 5 1m-1 4 5 1m0 3 5 1"/>
     </g>
     <g v-else-if="kind==='advice'">
+      <path class="setting-soft" d="M28 112V41q0-17 17-17h105q18 0 18 17v71M12 129l175-24 26 18-171 37-30-31Z"/>
       <path class="construction" d="m70 72-43 59m72-45 41 59"/>
       <ellipse class="detail" cx="79" cy="137" rx="56" ry="10" transform="rotate(-5 79 137)"/>
       <path class="construction" d="M34 140q46 16 94-7m-87 12q46 11 79-6"/>
@@ -85,6 +95,7 @@ const rail=stairs.map((_,i)=>`${i?'L':'M'}${line(stairPoint(i,58,.12,-14))}`).jo
       <path class="hatching" d="m125 142 2 5m5-4 2 6m5-6 1 6m6-6v6m6-7-1 6m7-8-1 6m6-7-1 5"/>
     </g>
     <g v-else-if="kind==='expand'">
+      <path class="setting" d="M12 145q31-17 63 1 30 15 66-2 31-14 68 0M73 147q-18 2-31 14m34-13q10 6 20 15m-23-13q-2 8-10 14"/>
       <path class="contour" d="M69 152c29-42 39-91 63-133M75 149c24-40 35-87 55-125"/>
       <path class="contour" d="M93 106C62 103 44 82 43 57c34 5 56 24 50 49Zm16-35c-27-5-40-24-36-43 24 3 40 19 36 43Zm12-26c-5-30 8-40 22-41 4 24-5 36-22 41ZM101 89c7-27 26-42 51-37-6 28-25 35-51 37Zm-16 37c19-33 41-36 66-23-18 20-35 28-66 23Z"/>
       <path class="detail" d="m44 59 49 47m-12-13-20-6m15 0-8-20m14 29-23-3m8-14-13-4m34 23-5-22M74 30l35 41m-10-14-15-6m11 1-4-17m11 29-17-4M122 44l19-38m-13 25 10-5m-5-5-4-9M102 88l48-34m-35 25 9-19m0 13 15-3m-9-1 7-14M87 125l61-20m-42 14 16-14m-6 12 15 3m-1-8 10-5"/>
@@ -92,6 +103,8 @@ const rail=stairs.map((_,i)=>`${i?'L':'M'}${line(stairPoint(i,58,.12,-14))}`).jo
       <path class="construction" d="M55 156q42-7 66-2m-60-29-17 7m111-47 22-6"/>
     </g>
     <g v-else>
+      <path class="setting-soft" d="M106 41 21 147m99-111 83 100M21 147l45 13m137-24-44 25"/>
+      <path class="setting" d="M94 46V18l40-4 16 14v31M94 18l19 11 37-1m-51 15 22-7 18 6-24 8-16-7Z"/>
       <path class="construction" d="M112 18v140M34 153q80 19 151-9m-83-128 22-4"/>
       <g v-for="(step,i) in stairs" :key="i"><path :d="step.top" class="detail"/><path :d="step.edge" class="contour"/><path v-if="i%3===0" :d="step.rail" class="detail"/></g>
       <path :d="rail" class="contour"/>
@@ -103,7 +116,7 @@ const rail=stairs.map((_,i)=>`${i?'L':'M'}${line(stairPoint(i,58,.12,-14))}`).jo
 </template>
 
 <style scoped>
-.realm-diagram{display:block;width:100%;height:100%;overflow:visible;transition:filter .25s,transform .35s}.contour{stroke-width:1.25}.detail{stroke-width:.78;opacity:.83}.construction{stroke-width:.55;opacity:.36}.hatching{stroke-width:.48;opacity:.55}.shade{fill:currentColor;fill-opacity:.045;stroke:none}
+.realm-diagram{display:block;width:100%;height:100%;overflow:visible;transition:filter .25s,transform .35s}.contour{stroke-width:1.25}.detail{stroke-width:.78;opacity:.83}.construction{stroke-width:.55;opacity:.36}.setting{stroke-width:.62;opacity:.42}.setting-soft{stroke-width:.46;opacity:.25}.hatching{stroke-width:.48;opacity:.55}.shade{fill:currentColor;fill-opacity:.045;stroke:none}
 </style>
 
 

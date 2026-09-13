@@ -7,7 +7,7 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=7&arrival=0&book=symmetry`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=8&arrival=0&book=symmetry`.
 The local Vite server uses port 5175.
 
 Christopher selected A's folio and E's navigation rail. Revision 6 combines
@@ -16,6 +16,8 @@ are removed. Old variant parameters are removed when the page loads.
 The six-way comparison remains at commit `7050c98`.
 See [the entrance decision](round-six.md). Revision 7 retains that entrance and
 adds [the altar, realm book, and collection removal](round-seven.md).
+Revision 8 enlarges the realm book, connects its illustrated scenes, and makes
+each realm open with one activation. See [the connected spread](round-eight.md).
 The revision 6 checkpoint is commit `c304345`.
 
 The scene uses the [extended Sanctuary panorama](assets/sanctuary-panorama.png).
@@ -49,9 +51,10 @@ selection for this visit. Remove in My grimoires changes only collection
 membership; checked-off knowledge in the Mind Palace remains unchanged.
 Enter moves continuously across the same image to the altar, where a translucent,
 ruled book rises. Eight pen-and-ink drawings occupy uneven positions across its
-pages. One activation selects and illuminates a drawing; activating it again or
-using Enter opens its local arrival view. Return retraces the pan. See
-[the current round](round-seven.md) for the scope of the arrival samples.
+pages. Hover and keyboard focus illuminate the drawing and nearby scenery.
+One click, Enter, or Space opens its local arrival view. Escape returns to the
+book and restores focus. Return to grimoires retraces the pan. See
+[the current round](round-eight.md) for the scope of the arrival samples.
 English, Chinese and Japanese use the existing persisted Demo preference.
 The four realm actions retain coming-soon behavior across grimoires.
 The [round 5 vocabulary mapping](round-five.md) records the corrected Progress name.
