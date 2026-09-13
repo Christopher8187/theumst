@@ -1,22 +1,18 @@
 <script setup lang="ts">
 import { shallowRef, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import logo from '../../../shared/assets/logo-clear.svg';
-import dawn from './assets/sacred-tree-dawn.png';
+import { sanctuaryArt } from './sceneArt';
 import { books } from './books';
-import { provideWisdomI18n, languageOptions } from './i18n';
-import { variants, type Variant, type BriefDesign, type ActionPlacement } from './designOptions';
+import { provideWisdomI18n } from './i18n';
 import OrbitVariant from './OrbitVariant.vue';
 import ArrivalTransition from './ArrivalTransition.vue';
 import ProjectedBook from './ProjectedBook.vue';
 import GrimoireReader from './GrimoireReader.vue';
 import GrimoireCollection from './GrimoireCollection.vue';
-import PrototypeSwitcher from './PrototypeSwitcher.vue';
+import LanguageControl from './LanguageControl.vue';
 import AcrossGrimoireActions from './AcrossGrimoireActions.vue';
-const {lang,t,setLang}=provideWisdomI18n();
+const {lang,t}=provideWisdomI18n();
 const params=new URLSearchParams(location.search);
-const variant=shallowRef<Variant>(variants.includes(params.get('variant') as Variant)?params.get('variant') as Variant:'A');
-const briefDesign=shallowRef<BriefDesign>((['A','B','C'].includes(params.get('brief')||'')?params.get('brief'):['A','B','C'].includes(variant.value)?variant.value:'A') as BriefDesign);
-const actionsPlacement=shallowRef<ActionPlacement>((['D','E','F'].includes(params.get('actions')||'')?params.get('actions'):['D','E','F'].includes(variant.value)?variant.value:'D') as ActionPlacement);
 const selectedId=shallowRef(params.get('book')||'analysis');
 const scene=shallowRef<'tree'|'collection'|'realms'>(params.get('view')==='collection'?'collection':'tree');
 const librarySearch=shallowRef('');
@@ -31,7 +27,7 @@ const place=shallowRef<'home'|'tree'>(params.get('place')==='home'?'home':'tree'
 const arrival=shallowRef<InstanceType<typeof ArrivalTransition>|null>(null);
 const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const journey=shallowRef<'up'|'down'|null>(place.value==='tree'&&params.get('arrival')!=='0'&&!reducedMotion?'up':null);
-const readerOpen=shallowRef(!journey.value&&place.value==='tree'&&scene.value==='tree'&&['A','B','C'].includes(variant.value));
+const readerOpen=shallowRef(!journey.value&&place.value==='tree'&&params.get('panel')==='brief');
 const journeyPosition=shallowRef(journey.value==='up'||place.value==='home'?0:1);
 const treeExposure=computed(()=>Math.max(0,Math.min(1,(journeyPosition.value-.88)/.12)));
 const homeExposure=computed(()=>Math.max(0,Math.min(1,(.12-journeyPosition.value)/.12)));
@@ -44,7 +40,8 @@ const collectionTotal=computed(()=>sampleBooks.value.filter(book=>added.value.in
 const hasAdded=computed(()=>!!chosenBook.value&&added.value.includes(chosenBook.value.id));
 function updateUrl(){
   const query=new URLSearchParams(location.search);
-  query.set('prototype','wisdom');query.set('revision','5');query.set('variant',variant.value);query.set('brief',briefDesign.value);query.set('actions',actionsPlacement.value);query.set('place',place.value);query.set('view',onlyMine.value?'collection':'tree');
+  query.set('prototype','wisdom');query.set('revision','6');query.delete('variant');query.delete('brief');query.delete('actions');query.set('place',place.value);query.set('view',onlyMine.value?'collection':'tree');
+  readerOpen.value?query.set('panel','brief'):query.delete('panel');
   chosenBook.value?query.set('book',chosenBook.value.id):query.delete('book');
   history.replaceState(null,'',location.pathname+'?'+query);
 }
@@ -52,45 +49,37 @@ function select(id:string){selectedId.value=id;updateUrl()}
 function goTree(){scene.value='tree';updateUrl()}
 function toggleCollection(){readerOpen.value=false;scene.value=onlyMine.value?'tree':'collection';updateUrl()}
 function openBrief(id:string){select(id);readerOpen.value=true}
-function changeVariant(value:Variant){
-  variant.value=value;
-  if(['A','B','C'].includes(value)){briefDesign.value=value as BriefDesign;readerOpen.value=!!chosenBook.value}
-  else {actionsPlacement.value=value as ActionPlacement;readerOpen.value=false}
-  updateUrl();
-}
-function cycle(step:number){changeVariant(variants[(variants.indexOf(variant.value)+step+variants.length)%variants.length])}
 function add(){if(chosenBook.value&&!hasAdded.value)added.value=[chosenBook.value.id,...added.value]}
 function enter(id=chosenBook.value?.id){if(!id)return;select(id);added.value=[id,...added.value.filter(value=>value!==id)];readerOpen.value=false;scene.value='realms';updateUrl()}
 function notifySoon(id:string){toast.value=t.value[id]+' · '+t.value.acrossGrimoires+' · '+t.value.comingSoon;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.value='',3200)}
-function journeyDone(){place.value=journey.value==='down'?'home':'tree';journey.value=null;if(place.value==='tree'&&['A','B','C'].includes(variant.value))readerOpen.value=true;updateUrl()}
+function journeyDone(){place.value=journey.value==='down'?'home':'tree';journey.value=null;updateUrl()}
 function travel(direction:'up'|'down'){readerOpen.value=false;scene.value='tree';journey.value=direction;window.scrollTo({top:0,behavior:'instant'})}
 function keydown(event:KeyboardEvent){
   if(journey.value||readerOpen.value||place.value==='home'||(event.target as Element)?.closest('input,textarea,select,[contenteditable=true],.across-group'))return;
   if(event.key==='/'){event.preventDefault();document.querySelector<HTMLInputElement>('.grimoire-search input')?.focus()}
   if(event.key==='Escape')goTree();
-  if(event.key==='ArrowLeft'){event.preventDefault();cycle(-1)}
-  if(event.key==='ArrowRight'){event.preventDefault();cycle(1)}
 }
 watch(shown,list=>{if(scene.value==='tree'&&list.length&&!list.some(book=>book.id===selectedId.value)){selectedId.value=list[0].id;updateUrl()}},{immediate:true});
 watch(lang,()=>{document.title='Theumst · '+t.value.brief});
+watch(readerOpen,updateUrl);
 onMounted(()=>{document.title='Theumst · '+t.value.brief;const icon=document.createElement('link');icon.id='wisdom-favicon';icon.rel='icon';icon.href=logo;document.head.append(icon);window.addEventListener('keydown',keydown);updateUrl()});
 onBeforeUnmount(()=>{clearTimeout(toastTimer);window.removeEventListener('keydown',keydown);document.getElementById('wisdom-favicon')?.remove()});
 </script>
 <template>
-  <main class="wisdom-prototype interface-B" :class="['actions-'+actionsPlacement,{'brief-C-open':readerOpen&&briefDesign==='C','showing-realms':scene==='realms','showing-collection':onlyMine,'at-home':place==='home','travelling':!!journey}]">
-    <ArrivalTransition ref="arrival" :destination="dawn" :direction="journey" :at="place" @done="journeyDone" @progress="journeyPosition=$event"/>
+  <main class="wisdom-prototype interface-B actions-E chosen-folio" :class="{'brief-open':readerOpen,'showing-realms':scene==='realms','showing-collection':onlyMine,'at-home':place==='home','travelling':!!journey}">
+    <ArrivalTransition ref="arrival" :destination="sanctuaryArt.source" :frame-aspect="sanctuaryArt.frameAspect" :image-aspect="sanctuaryArt.imageAspect" :direction="journey" :at="place" @done="journeyDone" @progress="journeyPosition=$event"/>
     <div class="home-landing" :style="{opacity:homeExposure}" :inert="!!journey||place!=='home'" :aria-hidden="place!=='home'||!!journey"><img class="landing-logo" :src="logo" alt="Theumst"><div class="home-threshold"><button @click="travel('up')">{{t.ascend}} <span>↑</span></button><a href="https://theumst.com/">{{t.openHomepage}} ↗</a></div></div>
     <div class="sanctuary-interface" :style="{opacity:treeExposure}" :inert="!!journey||place!=='tree'" :aria-hidden="place!=='tree'||!!journey">
-      <header class="wisdom-header"><button class="sanctuary-brand" :aria-label="t.allGrimoires" @click="goTree"><img :src="logo" alt="Theumst"></button><div class="selection-tools"><label class="grimoire-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg><input v-model="search" :aria-label="onlyMine?t.searchGrimoires:t.search" :placeholder="onlyMine?t.searchGrimoires:t.search"><kbd>/</kbd></label><label class="wisdom-language"><span aria-hidden="true">文</span><select :aria-label="t.language" :value="lang" @change="setLang(($event.target as HTMLSelectElement).value)"><option v-for="option in languageOptions" :key="option[0]" :value="option[0]">{{option[1]}}</option></select></label></div></header>
+      <header class="wisdom-header"><button class="sanctuary-brand" :aria-label="t.allGrimoires" @click="goTree"><img :src="logo" alt="Theumst"></button><div class="selection-tools"><label class="grimoire-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg><input v-model="search" :aria-label="onlyMine?t.searchGrimoires:t.search" :placeholder="onlyMine?t.searchGrimoires:t.search"><kbd>/</kbd></label><LanguageControl/></div></header>
       <div v-if="scene==='tree'"><OrbitVariant v-if="shown.length" :books="shown" :selected="chosenBook" :added="hasAdded" @select="select" @add="add" @enter="enter()" @preview="readerOpen=true"/><section v-else class="empty-grimoires"><span>⌕</span><h2>{{search.trim()?t.noMatches:t.libraryUnavailable}}</h2><p v-if="search.trim()">{{t.trySearch}}</p><button v-if="search.trim()" @click="search=''">{{t.clearSearch}}</button></section></div>
       <GrimoireCollection v-else-if="onlyMine" :books="shown" :total="collectionTotal" :query="collectionSearch" @brief="openBrief" @enter="enter" @back="goTree" @clear="collectionSearch=''"/>
       <section v-else-if="chosenBook" class="realm-handoff" :aria-label="t.realmsNext"><ProjectedBook :book="chosenBook" large/><h1>{{chosenBook.title}}</h1><p>{{t.ready}}</p><button @click="goTree">← {{t.backToTree}}</button><span>{{t.realmsNext}}</span></section>
-      <footer class="scene-navigation"><button class="return-home" @click="travel('down')"><span>↓</span> {{t.descend}}</button></footer>
-      <AcrossGrimoireActions :placement="actionsPlacement" :count="collectionTotal" :collection-active="onlyMine" :preview="['D','E','F'].includes(variant)" @collection="toggleCollection" @action="notifySoon"/>
-      <PrototypeSwitcher v-if="!readerOpen" :value="variant" :brief="briefDesign" :actions="actionsPlacement" @change="changeVariant"/>
+      <footer class="scene-navigation"><button class="return-home" @click="travel('down')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg>{{t.descend}}</button></footer>
+      <AcrossGrimoireActions :count="collectionTotal" :collection-active="onlyMine" @collection="toggleCollection" @action="notifySoon"/>
+
     </div>
     <div v-if="journey" class="journey-controls"><span>{{journey==='up'?'↑ '+t.ascending:'↓ '+t.descending}}</span><button @click="arrival?.finish()">{{journey==='up'?t.skipAscent:t.skipDescent}} {{journey==='up'?'↗':'↘'}}</button></div>
-    <GrimoireReader v-if="readerOpen&&chosenBook" :key="chosenBook.id" :book="chosenBook" :added="hasAdded" :design="briefDesign" :variant="variant" :actions="actionsPlacement" @close="readerOpen=false" @add="add" @enter="enter()" @variant="changeVariant"/>
+    <GrimoireReader v-if="readerOpen&&chosenBook" :key="chosenBook.id" :book="chosenBook" :added="hasAdded" @close="readerOpen=false" @add="add" @enter="enter()"/>
     <div v-if="toast" class="wisdom-toast" role="status">{{toast}}</div>
   </main>
 </template>
@@ -128,4 +117,10 @@ html,body,#app{margin:0;min-width:280px;width:100%;height:100%}body{background:#
 </style>
 <style>
 .brief-C-open .orbit-details{opacity:0;pointer-events:none}.brief-C-open .orbital-books{opacity:.5}.actions-F .wisdom-toast{bottom:224px}@media(max-width:700px){.actions-F .wisdom-toast{top:75px;bottom:auto}}
+</style>
+
+<style>
+/* One selected folio and rail, with no comparison controls. */
+.chosen-folio .wisdom-header{gap:20px}.chosen-folio .grimoire-search{height:44px}.chosen-folio .selection-tools{margin-right:0;gap:12px}.chosen-folio .return-home svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}.chosen-folio .orbit-layout{bottom:10%}.chosen-folio .personal-grimoires{bottom:70px}.chosen-folio .wisdom-toast{bottom:28px}.brief-open .across-group,.brief-open .wisdom-header,.brief-open .scene-navigation,.brief-open .orbit-details{opacity:0;pointer-events:none}.brief-open .orbital-books{opacity:.25}
+@media(max-width:700px){.chosen-folio .wisdom-header{padding-top:calc(18px + env(safe-area-inset-top))}.chosen-folio .selection-tools{gap:9px}.chosen-folio .grimoire-search{min-width:0;padding-inline:10px;gap:8px}.chosen-folio .grimoire-search input{min-width:0;font-size:12px}.chosen-folio .grimoire-search svg{width:15px;height:15px;flex-shrink:0}.chosen-folio .grimoire-search kbd{display:none}.chosen-folio .scene-navigation{top:calc(18px + env(safe-area-inset-top))}.chosen-folio .orbit-layout{top:calc(236px + env(safe-area-inset-top));bottom:max(26px,calc(16px + env(safe-area-inset-bottom)))}.chosen-folio .orbital-books{height:clamp(150px,22dvh,182px)}.chosen-folio .personal-grimoires{top:calc(238px + env(safe-area-inset-top));bottom:max(25px,env(safe-area-inset-bottom))}.chosen-folio .wisdom-toast{top:auto;bottom:max(22px,env(safe-area-inset-bottom))}.chosen-folio .realm-handoff{height:calc(100dvh - 290px);margin-top:250px}}
 </style>

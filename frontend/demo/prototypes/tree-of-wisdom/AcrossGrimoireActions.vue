@@ -1,37 +1,49 @@
 <script setup lang="ts">
-import { shallowRef, watch, onMounted, onBeforeUnmount } from 'vue';
-import { acrossActions, type ActionPlacement } from './designOptions';
+import { acrossActions } from './designOptions';
 import { useWisdomI18n } from './i18n';
-const props=defineProps<{placement:ActionPlacement;count:number;collectionActive:boolean;preview:boolean}>();
-const emit=defineEmits<{collection:[];action:[id:string]}>();
+defineProps<{count:number;collectionActive:boolean}>();
+defineEmits<{collection:[];action:[id:string]}>();
 const {t}=useWisdomI18n();
-const opened=shallowRef(props.preview);
-const toggle=shallowRef<HTMLButtonElement|null>(null);
-const group=shallowRef<HTMLElement|null>(null);
-watch(()=>[props.placement,props.preview],()=>opened.value=props.preview);
-function outside(event:PointerEvent){if(props.placement==='D'&&!group.value?.contains(event.target as Node))opened.value=false}
-function select(id:string){if(id==='collection')emit('collection');else emit('action',id);if(props.placement==='D')opened.value=false}
-onMounted(()=>document.addEventListener('pointerdown',outside));
-onBeforeUnmount(()=>document.removeEventListener('pointerdown',outside));
 </script>
+
 <template>
-  <nav ref="group" class="across-group" :class="'placement-'+placement" :aria-label="t.acrossGrimoires" @keydown.esc.stop="opened=false;toggle?.focus()">
-    <button v-if="placement==='D'" ref="toggle" class="across-toggle" :aria-expanded="opened" :aria-label="t.tools+' · '+t.acrossGrimoires" @click="opened=!opened"><span>{{t.tools}}</span><b>···</b></button>
-    <div v-if="opened||placement!=='D'" class="across-options">
-      <span class="scope-label">{{t.acrossGrimoires}}</span>
-      <button class="collection-action" :aria-pressed="collectionActive" @click="select('collection')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 9-4 9 4-9 4-9-4Zm0 5 9 4 9-4M3 17l9 4 9-4"/></svg><span><strong>{{t.collection}}</strong><small>{{String(count).padStart(2,'0')}}</small></span></button>
-      <button v-for="action in acrossActions" :key="action.id" :aria-label="t[action.id]+' · '+t.acrossGrimoires" :title="t[action.description]" @click="select(action.id)"><i aria-hidden="true">{{action.symbol}}</i><span><strong>{{t[action.id]}}</strong><small>{{t[action.description]}}</small></span></button>
+  <nav class="across-group" :aria-label="t.acrossGrimoires">
+    <span class="scope-label">{{t.acrossGrimoires}}</span>
+    <div class="across-options">
+      <button class="collection-action" :aria-pressed="collectionActive" @click="$emit('collection')">
+        <span class="action-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 7 9-4 9 4-9 4-9-4Zm0 5 9 4 9-4M3 17l9 4 9-4"/></svg></span>
+        <strong>{{t.collection}}</strong><small class="collection-count">{{String(count).padStart(2,'0')}}</small>
+      </button>
+      <button v-for="action in acrossActions" :key="action.id" :aria-label="t[action.id]+' · '+t.acrossGrimoires" :title="t[action.description]" @click="$emit('action',action.id)">
+        <span class="action-mark" aria-hidden="true"><i>{{action.symbol}}</i></span><strong>{{t[action.id]}}</strong>
+      </button>
     </div>
   </nav>
 </template>
+
 <style scoped>
-.across-group{position:fixed;z-index:12;color:#d3e4eb;font-family:'Bahnschrift','Segoe UI',sans-serif}.across-toggle{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:42px;padding:10px 14px;border:1px solid #aac6d66b;border-radius:4px 14px 4px 4px;background:#193248e8;color:#e0e9f0;font-size:11px;backdrop-filter:blur(18px)}.across-toggle b{font:16px 'Courier New',monospace;color:#c8b5e0}.across-options{background:linear-gradient(120deg,#163447f5,#242c42f5);border:1px solid #afd1df70;backdrop-filter:blur(24px);box-shadow:0 15px 40px #0c203346;border-radius:4px 18px 4px 4px;padding:9px}.across-options>button{display:flex;align-items:center;text-align:left;gap:13px;width:100%;min-height:55px;padding:10px 12px;background:none;border:1px solid transparent;color:#dce9ef;border-radius:4px}.across-options>button:hover,.across-options>button[aria-pressed=true]{background:#b1dce317;border-color:#c0d8e849}.across-options>button>span{display:flex;flex-direction:column;gap:5px;min-width:0}.across-options strong{font-weight:400;font-size:12px}.across-options small{font:9px/1.5 'Segoe UI',sans-serif;color:#acbacc}.across-options i{font:25px Georgia,serif;font-style:normal;width:30px;text-align:center;color:#c6b6dd;flex-shrink:0}.across-options svg{width:29px;height:29px;stroke:#c4e1e8;fill:none;stroke-width:1.1;flex-shrink:0}.scope-label{display:block;color:#9bbdce;font:8px 'Courier New',monospace;letter-spacing:.08em;margin:8px 12px 12px}.collection-action{margin-bottom:5px!important;border-bottom:1px solid #b2c4de26!important;border-radius:0!important}.placement-D{top:30px;right:4.5%}.placement-D .across-options{position:absolute;top:51px;right:0;width:285px}.placement-E{top:50%;left:4.5%;transform:translateY(-50%);width:165px}.placement-E .across-toggle{width:100%;margin-bottom:8px}.placement-E .across-options{padding:7px}.placement-E .scope-label{font-size:7px;margin:9px 7px 12px}.placement-E .across-options>button{padding:11px 8px;gap:10px;min-height:61px}.placement-E .across-options small{display:none}.placement-E .collection-action small{display:block}.placement-F{bottom:108px;left:50%;transform:translateX(-50%)}.placement-F .across-toggle{margin:0 auto 7px;min-height:32px;padding:6px 15px}.placement-F .across-options{display:flex;gap:5px;padding:8px;border-radius:5px 20px 5px 5px}.placement-F .scope-label{display:none}.placement-F .across-options>button{width:107px;min-height:71px;flex-direction:column;justify-content:center;gap:6px;text-align:center;padding:8px}.placement-F .across-options small{display:none}.placement-F .collection-action{margin:0 5px 0 0!important;border-bottom:0!important;border-right:1px solid #b2c4de30!important}.placement-F .across-options i{font-size:25px}.placement-F .across-options svg{height:26px}.placement-F .across-options strong{font-size:10px}
-@media(max-width:700px){.placement-D{top:19px;right:16px}.placement-D .across-options{width:min(285px,calc(100vw - 32px));top:49px}.placement-E{left:12px;top:139px;transform:none;width:58px}.placement-E .across-toggle{justify-content:center;padding:8px;gap:0}.placement-E .across-toggle span,.placement-E .scope-label{display:none}.placement-E .across-options{padding:4px}.placement-E .across-options>button{min-height:68px;padding:7px 2px;gap:6px;flex-direction:column;justify-content:center;text-align:center}.placement-E .across-options strong{font-size:7px}.placement-E .collection-action small{display:none}.placement-E .across-options svg{width:24px;height:24px}.placement-E .across-options i{font-size:22px}.placement-F{bottom:95px;width:calc(100vw - 24px)}.placement-F .across-options{gap:2px;padding:5px}.placement-F .across-options>button{width:auto;flex:1;min-width:0;min-height:60px;padding:6px 2px}.placement-F .across-options strong{font-size:8px;line-height:1.4}.placement-F .across-options i{font-size:21px}.placement-F .across-toggle{font-size:10px;min-height:30px}.across-toggle{min-height:39px}}
-</style>
-<style scoped>
-.across-options small{font-size:11px}.across-options strong{font-size:13px}.across-options>button>i,.across-options>button>svg{width:30px;height:30px;padding:2px;border:1px solid #9bbad92b;border-radius:3px}.placement-D{top:25px}.placement-D .across-toggle{width:101px}.placement-E .across-options strong{font-size:12px}.placement-E .across-options>button{min-height:58px}.placement-E .scope-label{font-size:10px;letter-spacing:0;margin:10px 8px 12px}.placement-F .across-options{position:relative}.placement-F .scope-label{display:block;position:absolute;left:0;top:-28px;margin:0;color:#d0dce7;font-size:10px;letter-spacing:.02em;text-shadow:0 1px 8px #102135}.placement-F .across-options>button{width:105px;min-height:75px}.placement-F .across-options strong{font-size:12px}.placement-F{bottom:111px}.collection-action[aria-pressed=true]{box-shadow:inset 2px 0 0 #b2e0e1}
-@media(max-width:700px){.placement-D{top:18px}.placement-D .across-toggle{width:auto;min-width:93px}.placement-D .across-options{max-height:calc(100dvh - 170px);overflow:auto}.placement-D .across-options>button{min-height:55px}.placement-E{left:13px;right:13px;top:157px;transform:none;width:auto}.placement-E .across-options{display:flex;gap:2px;padding:5px}.placement-E .scope-label{position:absolute;left:1px;top:-26px;font-size:10px;color:#d6e3ec;text-shadow:0 1px 8px #182739;margin:0}.placement-E .across-options>button{flex:1;width:auto;min-width:0;min-height:63px;padding:5px 2px;gap:4px}.placement-E .across-options strong,.placement-F .across-options strong{font-size:10px;font-weight:400;line-height:1.25}.placement-E .collection-action{margin:0 3px 0 0!important;border-bottom:0!important;border-right:1px solid #b2c4de30!important}.placement-E .across-options>button>i,.placement-E .across-options>button>svg,.placement-F .across-options>button>i,.placement-F .across-options>button>svg{width:24px;height:24px;font-size:19px}.placement-F{bottom:108px}.placement-F .across-options>button{width:auto;min-height:64px}.placement-F .scope-label{top:-22px}.across-options>button:focus-visible{outline:2px solid #ccb2e4;outline-offset:1px}}
-</style>
-<style scoped>
-.placement-E{width:153px}.placement-E .across-options{background:linear-gradient(120deg,#163447df,#242c42df)}.placement-E .across-options>button{min-height:54px}.placement-D .across-options{width:270px}.placement-F .scope-label{top:-11px;left:14px;background:#1c3347;border:1px solid #aac4dc48;border-radius:3px;padding:4px 9px;font-size:9px;letter-spacing:.03em;line-height:1}.placement-F .across-options{padding-top:14px}.placement-F{bottom:calc(111px + env(safe-area-inset-bottom))}@media(max-width:700px){.placement-E{width:auto}.placement-F{bottom:calc(108px + env(safe-area-inset-bottom))}.placement-F .scope-label{top:-9px;left:10px;font-size:9px;padding:4px 7px}.placement-F .across-options{padding-top:12px}}
+.across-group{position:fixed;z-index:12;top:50%;left:4.5%;transform:translateY(-50%);width:180px;color:#d8e6ed;font-family:'Bahnschrift','Segoe UI',sans-serif;transition:opacity .2s}
+.scope-label{display:block;margin:0 0 12px 13px;font:10px/1.4 'Courier New',monospace;color:#e1e9ee;text-shadow:0 1px 7px #10273b}
+.across-options{position:relative;padding:7px;background:linear-gradient(140deg,#18384adf,#242e43e8);border:1px solid #b6d7e466;border-radius:4px 20px 4px 4px;backdrop-filter:blur(18px);box-shadow:0 16px 38px #10263a26,inset 0 1px #dfedf411}
+.across-options:before{content:'';position:absolute;left:-1px;top:24px;bottom:24px;width:1px;background:linear-gradient(transparent,#b9dde7aa,transparent);pointer-events:none}
+.across-options>button{position:relative;display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;min-height:61px;padding:9px 7px;text-align:left;background:none;border:1px solid transparent;border-radius:3px;color:inherit;transition:background .18s,border-color .18s}
+.across-options strong{font-size:12px;font-weight:400;line-height:1.3}
+.action-mark{box-sizing:border-box;display:grid;place-items:center;width:32px;height:32px;min-width:32px;border:1px solid #aac7dc28;border-radius:3px;color:#c8b9de;background:#b5cde504}
+.action-mark i{display:block;font:normal 25px/1 'Yu Mincho','SimSun',serif;transform:translateY(-.025em)}
+.action-mark svg{display:block;width:23px;height:23px;fill:none;stroke:#bfdce4;stroke-width:1.15;stroke-linecap:round;stroke-linejoin:round}
+.collection-count{font:10px/1 'Courier New',monospace;color:#94b8c8}
+.collection-action{margin-bottom:8px}
+.collection-action:after{content:'';position:absolute;left:7px;right:7px;bottom:-5px;height:1px;background:#b8cfe72b}
+.across-options>button:hover{background:#c8b2df10;border-color:#d2c2e634}
+.across-options>button[aria-pressed=true]{background:#a4dce715;box-shadow:inset 2px 0 #b1dee4;border-color:#b1dce33d}
+.across-options>button[aria-pressed=true] .action-mark{color:#dcf4f5;border-color:#b5dce569}
+.across-options>button:focus-visible{outline:1px solid #d5bce6;outline-offset:2px;background:#c8b2df14}
+@media(max-width:1000px) and (min-width:701px){.across-group{left:3%;width:170px}.across-options>button{gap:8px;padding-inline:5px}}
+@media(max-width:700px){
+  .across-group{left:13px;right:13px;top:calc(145px + env(safe-area-inset-top));width:auto;transform:none}
+  .scope-label{display:none}.across-options{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));padding:5px;gap:3px;border-radius:4px 17px 4px 4px}
+  .across-options:before{display:none}.across-options>button{display:flex;flex-direction:column;justify-content:flex-start;gap:7px;min-height:70px;padding:8px 1px 5px;text-align:center}
+  .action-mark{width:28px;height:28px;min-width:28px;flex:0 0 28px}.action-mark i{font-size:22px}.action-mark svg{width:21px;height:21px}
+  .across-options strong{font-size:10px;line-height:1.25}.collection-count{display:none}.collection-action{margin:0}.collection-action:after{left:auto;right:-3px;top:9px;bottom:9px;width:1px;height:auto}
+}
 </style>

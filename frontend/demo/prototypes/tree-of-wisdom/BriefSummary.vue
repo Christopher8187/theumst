@@ -9,7 +9,7 @@ const {t}=useWisdomI18n();
     <div v-if="emblem" class="summary-emblem" aria-hidden="true"><i></i><b>{{book.symbol}}</b><i></i></div>
     <h3 v-if="heading">{{t.summary}}</h3>
     <p>{{book.summary||book.title}}</p>
-    <details class="book-details"><summary>{{t.bookDetails}} <span>＋</span></summary><dl><div><dt>{{t.edition}}</dt><dd>{{book.version||book.edition||t.unavailable}}</dd></div><div><dt>{{t.isbn}}</dt><dd>{{book.isbn||'—'}}</dd></div><div><dt>{{t.progress}}</dt><dd>{{book.completed||0}} / {{book.count}}</dd></div></dl></details>
+    <details class="book-details"><summary>{{t.bookDetails}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></summary><dl><div><dt>{{t.edition}}</dt><dd>{{book.version||book.edition||t.unavailable}}</dd></div><div><dt>{{t.isbn}}</dt><dd>{{book.isbn||'—'}}</dd></div><div><dt>{{t.progress}}</dt><dd>{{book.completed||0}} / {{book.count}}</dd></div></dl></details>
   </section>
 </template>
 <style scoped>
@@ -19,4 +19,5 @@ const {t}=useWisdomI18n();
 
 <style scoped>
 .book-details summary:focus-visible{outline:1px solid #a9d2df;outline-offset:4px}
+.book-details summary svg{display:block;width:18px;height:18px;fill:none;stroke:#cdb8df;stroke-width:1.3;stroke-linecap:round;flex-shrink:0;transition:transform .18s}.book-details[open] summary svg{transform:rotate(45deg)}
 </style>
