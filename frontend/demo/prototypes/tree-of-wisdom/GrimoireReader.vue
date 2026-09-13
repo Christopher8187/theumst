@@ -4,39 +4,21 @@ import { useWisdomI18n } from './i18n';
 import type { SampleBook } from './books';
 import BriefSummary from './BriefSummary.vue';
 import BriefContents from './BriefContents.vue';
-import BriefExtract from './BriefExtract.vue';
-// Revision 6 refines the selected folio. The other studies remain in the previous checkpoint.
+// The Brief keeps summary and navigable contents together; reading begins in its realm.
 const props=defineProps<{book:SampleBook;added:boolean}>();
 const emit=defineEmits<{close:[];add:[];enter:[]}>();
 const {t}=useWisdomI18n();
 const dialog=shallowRef<HTMLDialogElement|null>(null);
-const panel=shallowRef<'summary'|'contents'|'extract'>(window.matchMedia('(max-width:700px)').matches?'summary':'contents');
-const page=shallowRef(0);
+const panel=shallowRef<'summary'|'contents'>(window.matchMedia('(max-width:700px)').matches?'summary':'contents');
 const selectedSection=shallowRef<number|null>(props.book.id==='analysis'?5:110);
 const previousFocus=document.activeElement as HTMLElement|null;
-function turn(next:number){
-  page.value=Math.max(0,Math.min(props.book.passages.length-1,next));
-  const match=props.book.contents?.find(section=>section.section_name===props.book.passages[page.value]?.title);
-  if(match)selectedSection.value=match.section_id;
-}
-function selectSection(id:number){
-  selectedSection.value=id;
-  const name=props.book.contents?.find(section=>section.section_id===id)?.section_name;
-  const found=props.book.passages.findIndex(passage=>passage.title===name);
-  if(found>=0){turn(found);panel.value='extract'}
-}
-function keydown(event:KeyboardEvent){
-  event.stopPropagation();
-  if(panel.value==='extract'&&!(event.target as Element).closest('.brief-contents')&&['ArrowLeft','ArrowRight'].includes(event.key)){
-    event.preventDefault();turn(page.value+(event.key==='ArrowLeft'?-1:1));
-  }
-}
+function selectSection(id:number){selectedSection.value=id}
 onMounted(()=>dialog.value?.showModal());
 onBeforeUnmount(()=>{dialog.value?.close();if(previousFocus?.isConnected)previousFocus.focus()});
 </script>
 
 <template>
-  <dialog ref="dialog" class="brief-dialog" aria-labelledby="brief-title" @cancel.prevent="emit('close')" @keydown="keydown" @click.self="emit('close')">
+  <dialog ref="dialog" class="brief-dialog" aria-labelledby="brief-title" @cancel.prevent="emit('close')" @click.self="emit('close')">
     <section class="brief-presentation">
       <header class="brief-heading">
         <h2 id="brief-title">{{book.title}}</h2>
@@ -45,13 +27,12 @@ onBeforeUnmount(()=>{dialog.value?.close();if(previousFocus?.isConnected)previou
       <div class="brief-workspace">
         <BriefSummary class="folio-summary" :class="{'mobile-hidden':panel!=='summary'}" :book="book" heading emblem/>
         <nav class="brief-tabs" :aria-label="t.brief">
+          <span class="contents-heading">{{t.contents}}</span>
           <button class="summary-tab" :aria-current="panel==='summary'?'page':undefined" @click="panel='summary'">{{t.summary}}</button>
-          <button :aria-current="panel==='contents'?'page':undefined" @click="panel='contents'">{{t.contents}}</button>
-          <button :aria-current="panel==='extract'?'page':undefined" @click="panel='extract'">{{t.extract}}</button>
+          <button class="contents-tab" :aria-current="panel==='contents'?'page':undefined" @click="panel='contents'">{{t.contents}}</button>
         </nav>
         <div class="folio-reading" :class="{'mobile-hidden':panel==='summary'}">
-          <BriefContents v-if="panel!=='extract'" :book="book" :selected="selectedSection" @select="selectSection"/>
-          <BriefExtract v-else :book="book" :page="page" @turn="turn"/>
+          <BriefContents :book="book" :selected="selectedSection" @select="selectSection"/>
         </div>
       </div>
       <footer class="brief-footer"><button @click="added?emit('enter'):emit('add')">{{added?t.enter:t.add}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></button></footer>
@@ -71,10 +52,11 @@ onBeforeUnmount(()=>{dialog.value?.close();if(previousFocus?.isConnected)previou
 .brief-workspace{position:relative;display:grid;grid-template-columns:42% 58%;grid-template-rows:49px minmax(0,1fr);min-height:0;flex:1}
 .folio-summary{grid-column:1;grid-row:1 / 3;border-right:1px solid #b6d4df40;box-shadow:inset -12px 0 17px -17px #07152a;padding:28px 36px}
 .brief-tabs{grid-column:2;grid-row:1;display:flex;gap:27px;align-items:stretch;padding:0 30px;border-bottom:1px solid #b5c9e326}
+.contents-heading{position:relative;display:flex;align-items:center;color:#e9d8ef;font-size:12px}.contents-heading:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#c8b4dc}
 .brief-tabs button{position:relative;min-height:44px;padding:12px 0;background:none;border:0;color:#a4bdd0;font-size:12px;transition:color .18s}
 .brief-tabs button:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#c8b4dc;transform:scaleX(0);transition:transform .18s}
 .brief-tabs button[aria-current]{color:#e9d8ef}.brief-tabs button[aria-current]:after{transform:scaleX(1)}
-.summary-tab{display:none}
+.summary-tab,.contents-tab{display:none}
 .folio-reading{grid-column:2;grid-row:2;min-height:0;min-width:0;display:flex}.folio-reading>*{width:100%;flex:1}
 .brief-footer{display:flex;justify-content:flex-end;flex-shrink:0;padding:15px 28px;border-top:1px solid #bdcfe32b;background:linear-gradient(90deg,transparent 42%,#101e310d 42%);border-radius:0 0 6px 18px}
 .brief-footer button{display:flex;align-items:center;justify-content:space-between;gap:42px;min-width:176px;min-height:44px;padding:11px 15px;border:1px solid #b0d9e176;border-radius:4px 13px 4px 4px;background:#b2dce910;color:#d0edf1;font-size:12px;transition:background .18s,box-shadow .18s}
@@ -82,17 +64,20 @@ onBeforeUnmount(()=>{dialog.value?.close();if(previousFocus?.isConnected)previou
 button:focus-visible{outline:1px solid #b7dce6;outline-offset:3px}.brief-heading button:focus-visible{outline-offset:-4px}
 .folio-summary :deep(.summary-emblem){height:96px;margin:0 0 25px}.folio-summary :deep(.summary-emblem i){width:96px;height:96px}.folio-summary :deep(.summary-emblem i:last-child){width:79px;height:79px}.folio-summary :deep(.summary-emblem b){font-size:54px;width:72px;height:72px;display:grid;place-items:center;line-height:1}
 .folio-summary :deep(h3){font-size:26px;margin-bottom:19px}.folio-summary :deep(.book-details){margin-top:26px}
-.folio-reading :deep(.brief-contents){padding:22px 28px}.folio-reading :deep(.contents-tree){margin:7px 0}.folio-reading :deep(.contents-row){min-height:48px}.folio-reading :deep(.reading-page){padding:26px 32px}.folio-reading :deep(.reading-page h3){font-size:29px}.folio-reading :deep(.reading-math .katex-display){margin:.65em 0}
+  .folio-reading :deep(.brief-contents){padding:22px 28px}.folio-reading :deep(.contents-tree){margin:7px 0}.folio-reading :deep(.contents-row){min-height:48px}
 @media(max-width:700px){
   .brief-presentation{left:12px;right:12px;top:max(12px,env(safe-area-inset-top));bottom:max(18px,calc(12px + env(safe-area-inset-bottom)));width:auto;height:auto;transform:none;border-radius:4px 18px 5px 13px;background:linear-gradient(135deg,#233d50f7,#223148f7)}
   .brief-heading{min-height:75px;padding:15px 17px 15px 21px;gap:14px}.brief-heading h2{font-size:22px;line-height:1.25}.brief-heading>button{flex-basis:36px;width:36px;height:36px}
   .brief-workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:49px minmax(0,1fr)}
-  .brief-tabs{grid-column:1;grid-row:1;padding:0 21px;gap:25px}.summary-tab{display:block}.brief-tabs button{font-size:12px}
+  .brief-tabs{grid-column:1;grid-row:1;padding:0 21px;gap:25px}.contents-heading{display:none}.summary-tab,.contents-tab{display:block}.brief-tabs button{font-size:12px}
   .folio-summary,.folio-reading{grid-column:1;grid-row:2}.folio-summary{border-right:0;box-shadow:none;padding:27px 25px}.mobile-hidden{display:none}
   .folio-summary :deep(h3){display:none}.folio-summary :deep(.summary-emblem){height:110px;margin:5px 0 28px}.folio-summary :deep(.brief-summary>p){line-height:1.85}
   .brief-footer{padding:12px 18px}.brief-footer button{width:100%;min-height:46px}
-  .folio-reading :deep(.brief-contents){padding:22px 18px}.folio-reading :deep(.reading-page){padding:23px}.folio-reading :deep(.reading-page h3){font-size:27px}
+  .folio-reading :deep(.brief-contents){padding:22px 18px}
 }
-@media(max-width:340px){.brief-heading h2{font-size:20px}.folio-summary{padding:24px 21px}.folio-reading :deep(.reading-page){padding:20px}.folio-reading :deep(.reading-page h3){font-size:25px}.brief-tabs{gap:23px}}
+@media(max-width:340px){.brief-heading h2{font-size:20px}.folio-summary{padding:24px 21px}.brief-tabs{gap:23px}}
 @media(prefers-reduced-motion:reduce){*,*:after{transition:none!important}}
+.folio-summary{padding:22px 32px}.folio-summary :deep(.summary-emblem){height:64px;margin:0 0 14px}.folio-summary :deep(.summary-emblem i){width:68px;height:68px}.folio-summary :deep(.summary-emblem i:last-child){width:54px;height:54px}.folio-summary :deep(.summary-emblem b){width:54px;height:54px;font-size:40px}.folio-summary :deep(h3){font-size:25px;margin-bottom:14px}.folio-summary :deep(>p){font-size:14px;line-height:1.7}.folio-summary :deep(.book-details){margin-top:20px;padding-top:12px}.folio-summary :deep(.book-details dl){margin-top:12px;gap:14px 24px}.folio-summary :deep(.book-details dt){text-transform:capitalize}
+@media(max-width:700px){.folio-summary{padding:20px 23px}.folio-summary :deep(.summary-emblem){height:58px;margin:0 0 16px}.folio-summary :deep(>p){font-size:14px;line-height:1.65}.folio-summary :deep(.book-details){margin-top:18px}}
+@media(max-width:700px) and (max-height:740px){.folio-summary{padding:17px 20px}.folio-summary :deep(.summary-emblem){display:none}.folio-summary :deep(>p){font-size:13px;line-height:1.6}.folio-summary :deep(.book-details){margin-top:14px;padding-top:8px}.folio-summary :deep(.book-details dl){gap:12px 20px}}
 </style>

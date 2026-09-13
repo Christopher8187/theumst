@@ -8,6 +8,7 @@ import RealmDiagram from './RealmDiagram.vue';
 import RealmContinuity from './RealmContinuity.vue';
 import RealmDestination from './RealmDestination.vue';
 import LanguageControl from './LanguageControl.vue';
+import GrimoireCompletion from './GrimoireCompletion.vue';
 
 const props = defineProps<{ book: SampleBook; reveal: number; ready: boolean; initialRealm?: RealmId }>();
 const emit = defineEmits<{ back: []; realm: [value: RealmId | null] }>();
@@ -80,7 +81,7 @@ onBeforeUnmount(() => clearTimeout(timer));
         <div class="book-underleaf" aria-hidden="true"></div>
         <div class="book-spine" aria-hidden="true"><i></i></div>
         <section v-for="(sheet,page) in sheets" :key="page" class="realm-leaf" :class="page===0?'leaf-left':'leaf-right'">
-          <header class="leaf-heading"><span v-if="page===0">{{book.title}}</span><span v-else aria-hidden="true"></span><small>{{page===0?'Ⅰ':'Ⅱ'}}</small></header>
+          <header class="leaf-heading"><span v-if="page===0">{{book.title}}</span><GrimoireCompletion v-else class="realm-progress" :book="book" compact/><small>{{page===0?'Ⅰ':'Ⅱ'}}</small></header>
           <div class="leaf-diagrams">
             <RealmContinuity :page="page" :active="activeRealm"/>
             <button v-for="realm in sheet" :key="realm.id" class="realm-choice" :class="{'is-lit':activeRealm===realm.id}" :data-realm="realm.id" :style="{'--ink':realm.accent}" :aria-label="`${t.realmEnter} · ${t[realm.id]}`" :disabled="busy" @pointerenter="illuminate($event,realm.id)" @pointerleave="hoveredRealm=null" @focus="focusRealm(realm.id)" @blur="focusedRealm=null" @click="activate(realm.id)">
@@ -98,7 +99,8 @@ onBeforeUnmount(() => clearTimeout(timer));
 
 <style scoped>
 .altar-interface{position:fixed;inset:0;z-index:15;perspective:1600px;color:#e5edf0}
-.altar-nav{position:absolute;top:22px;left:3%;right:3%;display:flex;justify-content:space-between;align-items:center;z-index:5}
+.altar-nav{position:absolute;top:22px;left:3%;right:3%;display:flex;justify-content:space-between;gap:20px;align-items:center;z-index:5}
+.realm-progress{margin-left:auto;margin-right:18px;max-width:210px}.realm-progress :deep(.completion-label){display:none}.realm-progress :deep(.completion-copy){justify-content:flex-end}.realm-progress :deep(progress){height:2px}.realm-progress :deep(.completion-values strong){font:11px 'Courier New',monospace;color:#c0d9df}.realm-progress :deep(.completion-values small){color:#9fb7c6}
 .altar-return{display:flex;align-items:center;gap:12px;min-height:44px;border:1px solid #c1d5df35;background:#173347c2;backdrop-filter:blur(15px);padding:10px 15px;color:#ddebf0;border-radius:3px;font:12px 'Bahnschrift','Segoe UI',sans-serif}
 .altar-return svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.2}
 .book-projection{position:absolute;inset:98px max(2.7%,calc((100vw - 1600px)/2)) 4.5%;display:flex;transform-origin:76% 83%;will-change:transform,opacity}
@@ -154,8 +156,9 @@ onBeforeUnmount(() => clearTimeout(timer));
 @keyframes realm-destination-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(15px)}}
 @media(max-width:700px){
   .altar-nav{top:calc(15px + env(safe-area-inset-top));left:12px;right:12px;gap:10px}
+  .realm-progress{margin-right:4px}.realm-progress :deep(.completion-values){gap:7px}.realm-progress :deep(.completion-values strong){font-size:10px}
   .altar-return{font-size:10px;padding:9px 10px;gap:7px}.altar-return svg{width:17px;height:17px}
-  .book-projection{inset:90px 9px max(24px,env(safe-area-inset-bottom))}
+  .book-projection{inset:calc(90px + env(safe-area-inset-top)) 9px max(24px,env(safe-area-inset-bottom))}
   .realm-leaf{padding:13px 8px 9px}.leaf-heading{padding:0 3px 10px;min-height:45px;gap:5px}.leaf-heading>span{font-size:12px}.leaf-heading small{font-size:9px}
   .realm-leaf::before{inset:67px 7px 10px}.realm-leaf::after{top:67px;left:11px}.leaf-diagrams{margin-top:4px}
   .realm-choice{padding:1px 2px 3px}.drawing{height:calc(100% - 27px)}
@@ -176,4 +179,5 @@ onBeforeUnmount(() => clearTimeout(timer));
 /* Short landscape retains the full drawing instead of shrinking its controls. */
 @media(max-height:500px){.altar-interface{overflow-y:auto;overflow-x:hidden}.altar-nav{position:sticky;top:10px;margin:10px 3%;height:44px;left:auto;right:auto}.book-projection{position:relative;inset:auto;margin:20px 2.7% 25px;height:650px}.realm-spread{min-height:650px}}
 @media(prefers-reduced-motion:reduce){.realm-spread,.drawing,.diagram-name,.diagram-name>svg{animation:none!important;transition:none}.returning-from-realm :deep(.realm-destination){animation:none}}
+@media(max-width:700px) and (max-height:660px) and (min-height:501px){.book-projection{top:calc(83px + env(safe-area-inset-top))}}
 </style>

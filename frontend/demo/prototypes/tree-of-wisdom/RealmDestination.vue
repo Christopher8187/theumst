@@ -6,6 +6,7 @@ import { purposeKey, type RealmId } from './realms';
 import { useWisdomI18n } from './i18n';
 import BriefExtract from './BriefExtract.vue';
 import RealmDiagram from './RealmDiagram.vue';
+import GrimoireCompletion from './GrimoireCompletion.vue';
 const props = defineProps<{ book: SampleBook; realm: RealmId; page: number; note: string }>();
 const emit = defineEmits<{ back: []; page: [value: number]; note: [value: string] }>();
 const { t } = useWisdomI18n();
@@ -26,7 +27,7 @@ onMounted(async () => { await nextTick(); title.value?.focus({ preventScroll: tr
   <section class="realm-destination" @keydown.esc.stop="emit('back')" :aria-label="t[realm]">
     <header class="destination-header">
       <button @click="emit('back')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h13"/></svg>{{t.realmReturn}}</button>
-      <span>{{book.title}}</span>
+      <div class="destination-book-state"><span>{{book.title}}</span><GrimoireCompletion class="destination-progress" :book="book" compact/></div>
     </header>
     <div class="destination-title"><h1 ref="title" tabindex="-1">{{t[realm]}}</h1><small>{{t.realmLocal}}</small></div>
     <BriefExtract v-if="realm==='text'||realm==='questions'" :book="studyBook" :page="page" @turn="emit('page',$event)"/>
@@ -40,5 +41,7 @@ onMounted(async () => { await nextTick(); title.value?.focus({ preventScroll: tr
 </style>
 
 <style scoped>
+.destination-book-state{min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:23px}.destination-book-state>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.destination-progress{width:145px;flex-shrink:0}.destination-progress :deep(.completion-label){display:none}.destination-progress :deep(.completion-copy){justify-content:flex-end}.destination-progress :deep(progress){height:2px}
+@media(max-width:700px){.destination-book-state{flex-direction:column;align-items:flex-end;gap:7px;max-width:65%}.destination-book-state>span{max-width:100%}.destination-progress{width:120px}.realm-destination{top:calc(90px + env(safe-area-inset-top))}}
 @media(max-height:500px){.realm-destination{position:relative;inset:auto;margin:20px 3%;height:520px}.destination-header{padding-block:8px}.destination-title{padding-top:13px}}
 </style>

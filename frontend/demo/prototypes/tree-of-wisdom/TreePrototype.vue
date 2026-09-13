@@ -46,7 +46,7 @@ const collectionTotal=computed(()=>sampleBooks.value.filter(book=>added.value.in
 const hasAdded=computed(()=>!!chosenBook.value&&added.value.includes(chosenBook.value.id));
 function updateUrl(){
   const query=new URLSearchParams(location.search);
-  query.set('prototype','wisdom');query.set('revision','8');query.delete('variant');query.delete('brief');query.delete('actions');query.set('place',place.value);query.set('view',scene.value);
+  query.set('prototype','wisdom');query.set('revision','9');query.delete('variant');query.delete('brief');query.delete('actions');query.set('place',place.value);query.set('view',scene.value);
   scene.value==='realms'&&activeRealm.value?query.set('realm',activeRealm.value):query.delete('realm');
   scene.value==='realms'&&departureScene.value==='collection'?query.set('from','collection'):query.delete('from');
   readerOpen.value?query.set('panel','brief'):query.delete('panel');
@@ -91,7 +91,7 @@ onBeforeUnmount(()=>{clearTimeout(toastTimer);window.removeEventListener('keydow
 </script>
 <template>
   <main class="wisdom-prototype interface-B actions-E chosen-folio" :class="{'brief-open':readerOpen,'showing-realms':scene==='realms','showing-collection':onlyMine,'at-home':place==='home','travelling':!!journey}" :data-altar-position="altarPosition.toFixed(3)">
-    <ArrivalTransition ref="arrival" :destination="sanctuaryArt.source" :frame-aspect="sanctuaryArt.frameAspect" :image-aspect="sanctuaryArt.imageAspect" :altar-pan="altarPan" :direction="journey" :at="place" @done="journeyDone" @progress="journeyPosition=$event"/>
+    <ArrivalTransition ref="arrival" :destination="sanctuaryArt.source" :frame-aspect="sanctuaryArt.frameAspect" :image-aspect="sanctuaryArt.imageAspect" :altar-pan="altarPan" :altar-moving="altarMoving" :direction="journey" :at="place" @done="journeyDone" @progress="journeyPosition=$event"/>
     <div class="home-landing" :style="{opacity:homeExposure}" :inert="!!journey||place!=='home'" :aria-hidden="place!=='home'||!!journey"><img class="landing-logo" :src="logo" alt="Theumst"><div class="home-threshold"><button @click="travel('up')">{{t.ascend}} <span>↑</span></button><a href="https://theumst.com/">{{t.openHomepage}} ↗</a></div></div>
     <div class="sanctuary-interface" :style="{opacity:treeExposure*entranceExposure}" :inert="!!journey||place!=='tree'||scene==='realms'" :aria-hidden="place!=='tree'||!!journey||scene==='realms'">
       <header class="wisdom-header"><button class="sanctuary-brand" :aria-label="t.allGrimoires" @click="goTree"><img :src="logo" alt="Theumst"></button><div class="selection-tools"><label class="grimoire-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="m12 12 5 5"/></svg><input v-model="search" :aria-label="onlyMine?t.searchGrimoires:t.search" :placeholder="onlyMine?t.searchGrimoires:t.search"><kbd>/</kbd></label><LanguageControl/></div></header>

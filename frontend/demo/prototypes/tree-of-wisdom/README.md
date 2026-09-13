@@ -7,7 +7,7 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=8&arrival=0&book=symmetry`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=9&arrival=0&book=symmetry`.
 The local Vite server uses port 5175.
 
 Christopher selected A's folio and E's navigation rail. Revision 6 combines
@@ -18,12 +18,14 @@ See [the entrance decision](round-six.md). Revision 7 retains that entrance and
 adds [the altar, realm book, and collection removal](round-seven.md).
 Revision 8 enlarges the realm book, connects its illustrated scenes, and makes
 each realm open with one activation. See [the connected spread](round-eight.md).
+Revision 9 develops [Orbit, Brief, progress and the world tree](round-nine.md).
 The revision 6 checkpoint is commit `c304345`.
 
-The scene uses the [extended Sanctuary panorama](assets/sanctuary-panorama.png).
-Its revised tree has small scholarly and sacred details and touches of color.
-The added altar is outside the entrance crop and appears when entering a grimoire. Both sequential image edits
-and their saved files are described in [the image prompts](scene-art-prompts.md).
+The scene uses the [world-tree panorama](assets/sanctuary-world-tree-panorama.png).
+The immense braided tree has a library built among its roots and trunk; a larger
+altar occupies the right side. The scholarly and sacred details and soft color
+remain. The image edits and saved files are described in
+[the image prompts](scene-art-prompts.md).
 
 ## Interaction
 
@@ -33,17 +35,19 @@ horizontal ribbon below search. Each mark has a centered square frame. The
 language control uses a vector translation symbol and remains visible on phones.
 
 Brief opens a translucent two-page folio. Summary is on the left, with
-Contents or Extract on the right. On phones it becomes one sheet with a
-single Summary, Contents, Extract tab row. The rail and browsing controls
+Contents on the right. On phones it becomes one sheet with a
+single Summary and Contents tab row. The rail and browsing controls
 fade while the folio is open. The close icon and Escape return to browsing.
 `panel=brief` opens Brief directly; this open state is retained in the URL.
 
 Contents retains the expandable tree and keyboard behavior. Real Analysis has
 four chapters and twenty section rows. Both short books have two chapters with
 two sections each, matching their four extracts. The first chapter opens
-initially. Extract supports chapter choices, numbered passages, Previous/Next,
-arrow keys and answer reveal. Selecting a section with an available extract
-opens that extract. Metadata is under the closed Book details disclosure.
+initially. Selecting a section highlights it within Contents. Extract has been
+removed from Brief; the Text and Questions arrival samples retain their reader.
+Book details opens by default and shows Edition, ISBN, Progress, Objects and
+Chapters. The completion bar also appears in the realm book's upper page margin
+and beside the grimoire title inside a realm.
 
 Search matches titles and subjects; slash focuses it. My grimoires has its own
 search, summaries, progress, Brief and Open actions. Add grimoire adds the
@@ -54,7 +58,7 @@ ruled book rises. Eight pen-and-ink drawings occupy uneven positions across its
 pages. Hover and keyboard focus illuminate the drawing and nearby scenery.
 One click, Enter, or Space opens its local arrival view. Escape returns to the
 book and restores focus. Return to grimoires retraces the pan. See
-[the current round](round-eight.md) for the scope of the arrival samples.
+[the current round](round-nine.md) for the scope of the arrival samples.
 English, Chinese and Japanese use the existing persisted Demo preference.
 The four realm actions retain coming-soon behavior across grimoires.
 The [round 5 vocabulary mapping](round-five.md) records the corrected Progress name.
