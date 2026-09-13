@@ -7,7 +7,7 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=9&arrival=0&book=symmetry`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=10&arrival=0&book=symmetry`.
 The local Vite server uses port 5175.
 
 Christopher selected A's folio and E's navigation rail. Revision 6 combines
@@ -19,9 +19,11 @@ adds [the altar, realm book, and collection removal](round-seven.md).
 Revision 8 enlarges the realm book, connects its illustrated scenes, and makes
 each realm open with one activation. See [the connected spread](round-eight.md).
 Revision 9 develops [Orbit, Brief, progress and the world tree](round-nine.md).
+Revision 10 moves the tree slightly farther away and reveals more upper branches.
+See [the tree framing adjustment](round-ten.md).
 The revision 6 checkpoint is commit `c304345`.
 
-The scene uses the [world-tree panorama](assets/sanctuary-world-tree-panorama.png).
+The scene uses the [world-tree panorama](assets/sanctuary-world-tree-distance.png).
 The immense braided tree has a library built among its roots and trunk; a larger
 altar occupies the right side. The scholarly and sacred details and soft color
 remain. The image edits and saved files are described in
