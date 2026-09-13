@@ -88,7 +88,7 @@ export function useTextStudy(
   const graph = computed(() => ({ authored_dependencies: studyCase !== 'no-dependencies', nodes: nodes.value, edges: studyCase === 'no-dependencies' ? [] : fixture.value.edges, graph_revision: 'local-authored-examples-v1', focus_knowledge_id: selectedId.value }));
   const graphStatus = ref('ready'), graphError = ref('');
   const toast = ref('');
-  const stub = ref<'project' | 'sound' | 'prompt' | null>(null);
+  const stub = ref<'sound' | 'prompt' | null>(null);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let focusBeforeAction: HTMLElement | null = null;
   const words = () => toValue(tRef);
@@ -140,10 +140,15 @@ export function useTextStudy(
     if (previous) restore(previous);
   }
   function action(name: string) {
-    if (name === 'project') return comingSoon('project');
     if (name === 'notes') { sideMode.value = 'notes'; return; }
-    if (name === 'similar' || name === 'crystallize') {
+    if (name === 'similar' || name === 'crystallize' || name === 'dependencies') {
       discoveryKind.value = name; sideMode.value = 'similar'; similarError.value = '';
+      if (name === 'dependencies') {
+        similarResults.value = selectedNode.value && studyCase !== 'no-dependencies'
+          ? discoveryExamples(session.fixtures, selectedNode.value, name) : [];
+        similarStatus.value = similarResults.value.length ? 'results' : 'empty';
+        return;
+      }
       if (['discovery-empty', 'discovery-error', 'discovery-unavailable', 'discovery-loading'].includes(studyCase)) {
         similarResults.value = []; similarStatus.value = studyCase.replace('discovery-', '');
         if (similarStatus.value === 'error') similarError.value = 'Local example of an unavailable discovery request.';
@@ -217,7 +222,7 @@ export function useTextStudy(
     session.notes.value = session.notes.value.filter(item => item.demo_note_id !== note.demo_note_id);
   }
   function comingSoon(kind?: string) {
-    if (kind === 'project' || kind === 'sound' || kind === 'prompt') {
+    if (kind === 'sound' || kind === 'prompt') {
       stub.value = kind;
       const message = words()[`${kind}Soon`];
       notify(message || words().comingSoon || 'This action will be designed in a later round.');

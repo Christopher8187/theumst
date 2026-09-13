@@ -151,6 +151,16 @@ export function createStudyFixtures(seedBooks: readonly SampleBook[] = entranceB
 }
 
 export function discoveryExamples(fixtures: Record<number, StudyFixture>, source: StudyNode, kind: string): StudyResult[] {
+  if (kind === 'dependencies') {
+    const fixture = fixtures[source.grimoire_id];
+    // An authored A -> B dependency means B uses A. Keep only incoming edges;
+    // reading order and the selected object's dependents do not qualify.
+    const dependencyIds = new Set(fixture.edges
+      .filter(edge => edge.relation_type === 'dependency' && edge.target_knowledge_id === source.knowledge_id)
+      .map(edge => edge.source_knowledge_id));
+    return fixture.nodes.filter(node => node.knowledge_id !== source.knowledge_id && dependencyIds.has(node.knowledge_id))
+      .map(node => ({ ...node, book_title: fixture.book.title, fixture_reason: 'Direct dependency' }));
+  }
   const all = Object.values(fixtures).flatMap(fixture => fixture.nodes);
   let matches: StudyNode[];
   if (kind === 'crystallize') {

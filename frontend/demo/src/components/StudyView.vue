@@ -53,17 +53,19 @@ function closeSidePanel() {
 
     <div class="study-split">
       <div class="knowledge-side">
+        <slot name="reading-tools"></slot>
         <div v-if="mode === 'questions'" class="exercise-nav">
           <button :disabled="position <= 0" type="button" @click="$emit('move', -1)">← {{ t.previous }}</button>
           <span>{{ Math.max(position + 1, 1) }} / {{ exercises.length }}</span>
           <button :disabled="position >= exercises.length - 1" type="button" @click="$emit('move', 1)">{{ t.next }} →</button>
         </div>
         <KnowledgeViewer :t="t" :node="current" :mode="mode" @soon="$emit('soon', $event)" @open-image="$emit('open-image', $event)" />
-        <div class="study-actions"><button type="button" :disabled="!canBack" @click="$emit('back-object')">{{ t.back }}</button><button type="button" :disabled="!current" @click="$emit('continue')">{{ t.continue }}</button><button type="button" @click="$emit('action','crystallize')">{{ t.crystallization }}</button>
+        <div class="study-actions"><slot name="reading-actions" :current="current"><button type="button" :disabled="!canBack" @click="$emit('back-object')">{{ t.back }}</button><button type="button" :disabled="!current" @click="$emit('continue')">{{ t.continue }}</button><button type="button" @click="$emit('action','crystallize')">{{ t.crystallization }}</button>
           <button type="button" @click="$emit('action', 'project')">↗ {{ t.project }}</button>
           <button type="button" :class="{ active: sideMode === 'notes' }" @click="$emit('action', 'notes')">✎ {{ t.notes }}</button>
           <button type="button" :class="{ active: sideMode === 'similar' }" @click="$emit('action', 'similar')">✦ {{ t.cluster }}</button>
           <button type="button" @click="$emit('action', mode === 'questions' ? 'book' : 'train')">{{ mode === 'questions' ? '▥' : '→' }} {{ mode === 'questions' ? t.book : t.train }}</button>
+        </slot>
         </div>
       </div>
 

@@ -95,6 +95,12 @@ generalization closeness measure.
 The results of Find neighbors, qualified by the selected relation as Semantic
 neighborhood, Dependency neighborhood, or Generalization neighborhood.
 
+**Dependencies**:
+Retrieve the knowledge objects that the selected knowledge object directly uses
+in its statement, explanation, or derivation, following incoming Dependency
+hierarchy relations.
+_Avoid_: Project, Projection search
+
 **Attached note**:
 A user's note attached to a particular knowledge object.
 

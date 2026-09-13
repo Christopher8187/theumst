@@ -1,0 +1,61 @@
+/* Selected B. The notebook is a transparent leaf of the existing realm folio. */
+.altar-interface .text-realm.notebook-selected{bottom:3.5%}
+.text-realm.notebook-selected{
+  --paper:transparent;
+  --paper-ink:#e8eeeb;
+  --paper-muted:#a9c1cc;
+  --paper-rule:#bed8dc35;
+}
+.text-realm.notebook-selected .text-folio .knowledge-side{
+  background:transparent;box-shadow:none;color-scheme:dark;
+}
+.text-realm.notebook-selected .text-folio .knowledge-viewer{
+  display:flex;flex-direction:column;padding-top:9px;padding-bottom:0;
+}
+.text-realm.notebook-selected .text-folio .knowledge-meta{flex-shrink:0;border-color:var(--paper-rule)}
+.text-realm.notebook-selected .text-folio .knowledge-meta>span:nth-child(3){color:#d7d6e1}
+.text-realm.notebook-selected .text-folio .knowledge-section{flex-shrink:0}
+.text-realm.notebook-selected .text-folio .knowledge-section h2{color:#c8ddde}
+.text-realm.notebook-selected .text-folio .workings-section{
+  display:flex;flex-direction:column;flex:1 0 auto;
+}
+.text-realm.notebook-selected .text-folio .workings-section .math-content{
+  padding-bottom:0;
+}
+.text-realm.notebook-selected .text-folio .workings-section .math-content::after{
+  display:none;
+}
+.text-realm.notebook-selected .text-folio .math-content{
+  background-image:repeating-linear-gradient(transparent 0 28px,#b9d5df1a 28px 29px,transparent 29px 30px);
+}
+/* Formula-bearing passages keep a clear mathematical writing area. */
+.text-realm.notebook-selected .text-folio .math-content:has(.katex-display){background-image:none}
+.text-realm.notebook-selected .text-folio .katex-display{background:transparent}
+.text-realm.notebook-selected .text-folio .workings-section::after{
+  content:'';display:block;min-height:0;flex:1 0 0;order:1;pointer-events:none;
+  background:repeating-linear-gradient(transparent 0 28px,#b9d5df1a 28px 29px,transparent 29px 30px);
+}
+.text-realm.notebook-selected .text-folio .sound-corner{order:2;flex-shrink:0}
+.text-realm.notebook-selected .text-folio .knowledge-section-head button,
+.text-realm.notebook-selected .text-folio .sound-corner{color:#aec9d4}
+.text-realm.notebook-selected .text-folio .study-actions{grid-template-columns:1fr 1.35fr 1fr;gap:8px}
+.text-realm.notebook-selected .text-folio .study-actions button{
+  color:#c3d5dc;border-color:transparent;background:transparent;
+}
+.text-realm.notebook-selected .text-folio .study-actions button:nth-child(2){
+  background:#b0e1dd18;border-color:#b6e4df8c;color:#def4e9;
+}
+.text-realm.notebook-selected .text-folio .knowledge-side button:hover:not(:disabled){
+  color:#f4f1e7;background:#b7e7eb14;border-color:#b7dddb91;
+}
+.text-realm.notebook-selected .text-folio .knowledge-section-head button:hover:not(:disabled),
+.text-realm.notebook-selected .text-folio .sound-corner:hover:not(:disabled){background:none}
+.text-realm.notebook-selected .text-folio .knowledge-side button:focus-visible{outline-color:#cab9de}
+.text-realm.notebook-selected .text-folio .knowledge-images button{color:#bfdce2;background:transparent;border-color:#a7c9d164}
+.text-realm.notebook-selected .text-folio .exercise-nav button,
+.text-realm.notebook-selected .text-folio .exercise-nav>span{color:#c7d8de}
+.text-realm.notebook-selected .text-folio .knowledge-side *{scrollbar-color:#a7c5d16b transparent}
+@media(max-width:900px){
+  .altar-interface .text-realm.notebook-selected{bottom:auto;padding-bottom:0}
+  .text-realm.notebook-selected .text-folio .knowledge-side{height:clamp(550px,calc(100dvh - 180px),800px)}
+}

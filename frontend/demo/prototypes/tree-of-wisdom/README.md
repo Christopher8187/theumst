@@ -7,9 +7,9 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=13&arrival=0&book=symmetry`.
-For the current Text prototypes, add `view=realms&place=tree&realm=text&notebook=A`.
-Use `notebook=B` or `notebook=C` to compare the other left-page designs.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=14&arrival=0&book=symmetry`.
+For the selected Text notebook, add `view=realms&place=tree&realm=text&notebook=B`.
+The earlier three-way notebook comparison remains at commit `714b160`.
 The local Vite server uses port 5175.
 
 Christopher selected A's folio and E's navigation rail. Revision 6 combines
@@ -29,6 +29,8 @@ Revision 12 compares [three notebook designs for Text's left page](round-twelve.
 Its temporary comparison bar appears only within the study view.
 Those designs were rejected. Revision 13 rebuilds the left leaf using
 [Christopher's photographed notebooks](round-thirteen.md).
+Revision 14 selects B, restores translucent blue, extends the ruling and adds
+[square notebook tools and Dependencies](round-fourteen.md).
 The revision 6 checkpoint is commit `c304345`.
 
 The scene uses the [world-tree panorama](assets/sanctuary-world-tree-distance.png).
@@ -72,7 +74,7 @@ ruled book rises. Eight pen-and-ink drawings occupy uneven positions across its
 pages. Hover and keyboard focus illuminate the drawing and nearby scenery.
 One click, Enter, or Space opens its local arrival view. Escape returns to the
 book and restores focus. Return to grimoires retraces the pan. See
-[the current round](round-twelve.md) for the notebook comparison, and
+[the current round](round-fourteen.md) for the selected notebook, and
 [round 11](round-eleven.md) for Text's connected functions and sample data.
 English, Chinese and Japanese use the existing persisted Demo preference.
 The four realm actions retain coming-soon behavior across grimoires.
