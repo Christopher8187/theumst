@@ -48,8 +48,8 @@ export function buildAtlas(
   const LIMIT = options.limit ?? ATLAS_NODE_LIMIT,
     EDGE_LIMIT = ATLAS_EDGE_LIMIT,
     W = 160,
-    H = 64;
-  // Notebook density changes whitespace, while cards retain their readable size.
+    H = options.density === "compact" ? 52 : 64;
+  // Notebook cards place the object number beside the title.
   const compact = options.density === "compact";
   const spacing = compact
     ? { row: 48, column: 56, clearance: 20, leafX: 16, leafTop: 52, leafBottom: 16, node: 28, gap: 40, parentX: 20, parentTop: 44, parentBottom: 24, port: 10 }
@@ -114,6 +114,8 @@ export function buildAtlas(
       edges: [],
       width: 800,
       height: 400,
+      nodeWidth: W,
+      nodeHeight: H,
       candidates: 0,
       omitted: 0,
     };
@@ -594,7 +596,9 @@ export function buildAtlas(
           y = n.y + H / 2,
           dx = 0,
           dy = 0;
-        const portLength = compact && !p.e.direct ? 16 : spacing.port;
+        // Departure only needs to clear the card. Keep the longer approach
+        // at arrowheads so a nearby tip cannot force an outgoing U-turn.
+        const portLength = compact ? (p.e.direct ? spacing.port : p.end === 's' && p.e.type === 'dependency' ? 8 : 16) : spacing.port;
         if (p.side === "left") {
           x = n.x;
           y += offset;
@@ -1021,6 +1025,8 @@ export function buildAtlas(
   placeGapBadges(layout, routes);
   return {
     ...layout,
+    nodeWidth: W,
+    nodeHeight: H,
     edges: routes.edges,
     hierarchy,
     candidates: local.candidates,

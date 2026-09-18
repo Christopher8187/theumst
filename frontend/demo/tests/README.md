@@ -21,7 +21,10 @@ gutter between sections 4.1 and 4.2.
 
 `node tests/atlas-endpoints.mjs` checks content-sized chapter rows, distinct
 incoming and outgoing ports, arrowhead clearance, and the reported 4 to 25
-route and +5 label placement in the Bounded sequences sample.
+route and +5 label placement in the Bounded sequences sample. It also checks
+that 1 to 27, 2 to 27 and 4 to 25 turn right without a short departure detour.
+Compact checks use the layout's returned card dimensions, including the
+52-unit height of cards with numbers beside their titles.
 
 `node tests/notebook-math.mjs` checks that inline mathematics stays within prose,
 display mathematics occupies separate notebook rows, and source text remains

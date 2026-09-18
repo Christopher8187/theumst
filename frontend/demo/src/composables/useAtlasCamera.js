@@ -7,7 +7,7 @@ export function useAtlasCamera(layout, viewport, scale, compact) {
     const drawing = layout.value;
     if (!compact.value || !drawing.placed.length) return { x: 0, y: 0, width: drawing.width, height: drawing.height };
     const rectangles = [...drawing.parents, ...drawing.tiles, ...drawing.badges,
-      ...drawing.placed.map(node => ({ x: node.x, y: node.y, w: 160, h: 64 }))];
+      ...drawing.placed.map(node => ({ x: node.x, y: node.y, w: drawing.nodeWidth, h: drawing.nodeHeight }))];
     const points = [...rectangles.flatMap(rect => [{ x: rect.x, y: rect.y }, { x: rect.x + rect.w, y: rect.y + rect.h }]),
       ...drawing.edges.flatMap(edge => edge.points)];
     const x = Math.min(...points.map(point => point.x)) - 24;
@@ -30,8 +30,8 @@ export function useAtlasCamera(layout, viewport, scale, compact) {
     if (!el || !node) return;
     const padX = compact.value ? Math.max(0, (el.clientWidth - drawingWidth.value) / 2) : 0;
     const padY = compact.value ? Math.max(0, (el.clientHeight - drawingHeight.value) / 2) : 0;
-    el.scrollLeft = Math.max(0, (node.x - bounds.value.x + 80) * scale.value + padX - el.clientWidth / 2);
-    el.scrollTop = Math.max(0, (node.y - bounds.value.y + 32) * scale.value + padY - el.clientHeight / 2);
+    el.scrollLeft = Math.max(0, (node.x - bounds.value.x + layout.value.nodeWidth / 2) * scale.value + padX - el.clientWidth / 2);
+    el.scrollTop = Math.max(0, (node.y - bounds.value.y + layout.value.nodeHeight / 2) * scale.value + padY - el.clientHeight / 2);
     measure();
   }
   function fit() {

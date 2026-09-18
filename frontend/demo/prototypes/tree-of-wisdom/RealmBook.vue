@@ -9,7 +9,8 @@ import RealmContinuity from './RealmContinuity.vue';
 import RealmDestination from './RealmDestination.vue';
 import LanguageControl from './LanguageControl.vue';
 import RealmFolio from './RealmFolio.vue';
-import GrimoireCompletion from './GrimoireCompletion.vue';
+import FolioNavigation from './FolioNavigation.vue';
+import FolioStatus from './FolioStatus.vue';
 import TextRealm from './text/TextRealm.vue';
 
 const props = defineProps<{ book: SampleBook; reveal: number; ready: boolean; initialRealm?: RealmId }>();
@@ -84,8 +85,8 @@ onBeforeUnmount(() => clearTimeout(timer));
       <div ref="spread" class="realm-pages" tabindex="-1" :aria-label="`${book.title} · ${t.realmBook}`">
         <section v-for="(sheet,page) in sheets" :key="page" class="realm-leaf" :class="page===0?'leaf-left':'leaf-right'">
           <header class="leaf-heading">
-            <template v-if="page===0"><button class="altar-return" :disabled="busy" :aria-label="t.backToTree" :title="t.backToTree" @click="leave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h17"/></svg><span>{{t.backToTree}}</span></button><span class="leaf-book-title">{{book.title}}</span></template>
-            <template v-else><GrimoireCompletion class="realm-progress" :book="book" compact/><LanguageControl/></template>
+            <FolioNavigation v-if="page===0" :title="book.title" :back-label="t.backToTree" :disabled="busy" @back="leave"/>
+            <FolioStatus v-else :book="book"/>
           </header>
           <div class="leaf-diagrams">
             <RealmContinuity :page="page" :active="activeRealm"/>
@@ -106,21 +107,14 @@ onBeforeUnmount(() => clearTimeout(timer));
 <style scoped>
 .altar-interface{position:fixed;inset:0;z-index:15;perspective:1600px;color:#e5edf0}
 .altar-nav{position:absolute;top:22px;left:3%;right:3%;display:flex;justify-content:space-between;gap:20px;align-items:center;z-index:5}
-.realm-progress{margin-left:auto;margin-right:18px;max-width:210px}.realm-progress :deep(.completion-label){display:none}.realm-progress :deep(.completion-copy){justify-content:flex-end}.realm-progress :deep(progress){height:2px}.realm-progress :deep(.completion-values strong){font:11px 'Courier New',monospace;color:#c0d9df}.realm-progress :deep(.completion-values small){color:#9fb7c6}
 .altar-return{display:flex;align-items:center;gap:12px;min-height:44px;border:1px solid #c1d5df35;background:#173347c2;backdrop-filter:blur(15px);padding:10px 15px;color:#ddebf0;border-radius:3px;font:12px 'Bahnschrift','Segoe UI',sans-serif}
 .altar-return svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.2}
 .book-projection{position:absolute;inset:16px max(2.7%,calc((100vw - 1600px)/2)) 16px;display:flex;transform-origin:76% 83%}
 .realm-spread{flex:1;display:flex}
 .realm-pages{display:grid;grid-template-columns:1fr 1fr;min-width:0;min-height:0;width:100%;outline:none}
 .realm-leaf{display:flex;flex-direction:column;min-width:0;min-height:0;padding:20px 24px 16px;position:relative}
-.realm-leaf::before{content:'';position:absolute;inset:64px 16px 16px;pointer-events:none;background:repeating-linear-gradient(transparent 0 31px,#a6ccda19 31px 32px)}
-.realm-leaf::after{content:'';position:absolute;top:64px;bottom:18px;left:27px;border-left:1px solid #c6a2c735;pointer-events:none}
 .leaf-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;color:#c9dce0;min-height:30px;padding:0 8px 12px;border-bottom:1px solid #c7e1e63c;z-index:1}
-.leaf-heading>span{font:italic 16px/1.25 Georgia,serif;max-width:35ch}
-.leaf-heading small{font:11px Georgia,serif;color:#a4c7cf}
-.leaf-heading .altar-return{background:transparent;backdrop-filter:none;border:0;padding:0;min-height:32px;gap:8px;flex-shrink:0}
-.leaf-heading .leaf-book-title{margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.leaf-heading :deep(.language-control){height:32px;background:transparent;border-radius:3px;backdrop-filter:none}
+.leaf-diagrams::before{content:"";position:absolute;inset:0;pointer-events:none;border-left:1px solid #c6a2c735;background:repeating-linear-gradient(transparent 0 31px,#a6ccda19 31px 32px)}
 .leaf-diagrams{position:relative;flex:1;min-height:0;margin-top:8px;z-index:1}
 /* The connecting ink never intercepts navigation, and no hit areas overlap. */
 .realm-choice{position:absolute;display:flex;flex-direction:column;align-items:stretch;justify-content:center;border:0;background:none;padding:3px 7px 8px;color:#c6d8df;min-width:44px;min-height:44px;cursor:pointer;isolation:isolate}
@@ -160,11 +154,10 @@ onBeforeUnmount(() => clearTimeout(timer));
 @keyframes realm-destination-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(15px)}}
 @media(max-width:700px){
   .altar-nav{top:calc(15px + env(safe-area-inset-top));left:12px;right:12px;gap:10px}
-  .realm-progress{margin-right:4px}.realm-progress :deep(.completion-values){gap:7px}.realm-progress :deep(.completion-values strong){font-size:10px}
   .altar-return{font-size:10px;padding:9px 10px;gap:7px}.altar-return svg{width:17px;height:17px}
   .book-projection{inset:calc(16px + env(safe-area-inset-top)) 9px max(16px,env(safe-area-inset-bottom))}
   .realm-leaf{padding:13px 8px 9px}.leaf-heading{padding:0 3px 10px;min-height:45px;gap:5px}.leaf-heading>span{font-size:12px}.leaf-heading small{font-size:9px}
-  .realm-leaf::before{inset:67px 7px 10px}.realm-leaf::after{top:67px;left:11px}.leaf-diagrams{margin-top:4px}
+  .leaf-diagrams{margin-top:4px}
   .realm-choice{padding:1px 2px 3px}.drawing{height:calc(100% - 27px)}
   .diagram-name{font-size:12px;gap:5px;min-height:25px}.diagram-mark{font-size:15px}.diagram-name>svg{display:none}
   .realm-choice .diagram-name{align-self:center!important;margin:0!important}
@@ -177,15 +170,9 @@ onBeforeUnmount(() => clearTimeout(timer));
   .realm-choice[data-realm=expand]{left:0;top:52%;width:91%;height:23%}
   .realm-choice[data-realm=progress]{right:0;top:78%;width:86%;height:21%}
 
-  .leaf-heading .altar-return span{display:none}
-  .leaf-heading .altar-return{min-width:28px}
-  .leaf-heading :deep(.language-control){gap:3px;padding-inline:4px}
-  .leaf-heading :deep(.language-control select){min-width:56px;padding-right:12px}
-  .leaf-heading :deep(.language-mark){width:15px;height:15px}
-  .leaf-heading .realm-progress{min-width:38px;margin-right:2px}
 }
 @media(max-width:360px){.book-projection{inset-inline:6px}.realm-leaf{padding-inline:5px}.leaf-heading>span{font-size:11px}.diagram-name{gap:4px}.diagram-mark{font-size:14px}}
-@media(max-height:660px) and (min-height:501px){.book-projection{top:16px;bottom:16px}.realm-leaf{padding-top:10px}.leaf-heading{min-height:35px}.realm-leaf::before,.realm-leaf::after{top:57px}}
+@media(max-height:660px) and (min-height:501px){.book-projection{top:16px;bottom:16px}.realm-leaf{padding-top:10px}.leaf-heading{min-height:35px}}
 /* Short landscape retains the full drawing instead of shrinking its controls. */
 @media(max-height:500px){.altar-interface{overflow-y:auto;overflow-x:hidden}.altar-nav{position:sticky;top:10px;margin:10px 3%;height:44px;left:auto;right:auto}.book-projection{position:relative;inset:auto;margin:20px 2.7% 25px;height:650px}.realm-spread{min-height:650px}}
 @media(prefers-reduced-motion:reduce){.realm-spread,.drawing,.diagram-name,.diagram-name>svg{animation:none!important;transition:none}.returning-from-realm :deep(.realm-destination){animation:none}}

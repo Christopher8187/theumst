@@ -27,7 +27,8 @@ for (const view of ['reading', 'hierarchy']) for (const limit of [8, 16, 24]) fo
   assert.equal(compact.omitted, regular.omitted, 'compression does not add omitted arrows');
   assert.equal(compact.unlabelled, 0, `${view}/${limit}/${relationships === sparse ? 'sparse' : 'dense'}: every gap keeps its label`);
   assert(compact.width < regular.width && compact.height < regular.height, `${view}/${limit}: both drawing dimensions shrink`);
-  const obstacles = [...compact.obstacles, ...compact.placed.map(node => ({ l: node.x, r: node.x + 160, t: node.y, b: node.y + 64 }))];
+  assert.equal(compact.nodeHeight, 52, "compact cards reclaim the number row");
+  const obstacles = [...compact.obstacles, ...compact.placed.map(node => ({ l: node.x, r: node.x + compact.nodeWidth, t: node.y, b: node.y + compact.nodeHeight }))];
   for (const edge of compact.edges) for (let i = 1; i < edge.points.length; i++) {
     const a = edge.points[i - 1], b = edge.points[i];
     assert(a.x === b.x || a.y === b.y, `${view}/${limit}: arrows remain orthogonal ${JSON.stringify({a,b})}`);
@@ -35,7 +36,7 @@ for (const view of ['reading', 'hierarchy']) for (const limit of [8, 16, 24]) fo
   }
   for (let i = 0; i < compact.placed.length; i++) for (const b of compact.placed.slice(i + 1)) {
     const a = compact.placed[i];
-    assert(!(a.x < b.x + 160 && a.x + 160 > b.x && a.y < b.y + 64 && a.y + 64 > b.y), 'cards do not overlap');
+    assert(!(a.x < b.x + compact.nodeWidth && a.x + compact.nodeWidth > b.x && a.y < b.y + compact.nodeHeight && a.y + compact.nodeHeight > b.y), 'cards do not overlap');
   }
   samples.push({ view, limit, relationships: relationships === sparse ? 'sparse' : 'dense', widthReduction: `${Math.round((1 - compact.width / regular.width) * 100)}%`, heightReduction: `${Math.round((1 - compact.height / regular.height) * 100)}%` });
 }

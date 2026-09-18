@@ -221,12 +221,13 @@ function zoom(direction) {
           :key="n.knowledge_id"
           :x="n.x"
           :y="n.y"
-          width="160"
-          height="64"
+          :width="layout.nodeWidth"
+          :height="layout.nodeHeight"
           ><button
             xmlns="http://www.w3.org/1999/xhtml"
             type="button"
             class="atlas-node"
+            :style="{width:layout.nodeWidth+'px',height:layout.nodeHeight+'px'}"
             :class="{
               selected: String(n.knowledge_id) === String(selectedId),
               done: n.completed,
@@ -244,7 +245,7 @@ function zoom(direction) {
     <div v-if="compactControls" class="atlas-overview" role="img" :aria-label="t.atlasOverview">
       <svg :viewBox="`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`" aria-hidden="true">
         <path v-for="(edge,i) in layout.edges" :key="i" :d="path(edge)" class="overview-edge"/>
-        <rect v-for="node in layout.placed" :key="node.knowledge_id" :x="node.x" :y="node.y" width="160" height="64" rx="6" class="overview-node" :class="{'is-current':String(node.knowledge_id)===String(selectedId)}"/>
+        <rect v-for="node in layout.placed" :key="node.knowledge_id" :x="node.x" :y="node.y" :width="layout.nodeWidth" :height="layout.nodeHeight" rx="6" class="overview-node" :class="{'is-current':String(node.knowledge_id)===String(selectedId)}"/>
         <rect :x="visible.x" :y="visible.y" :width="visible.width" :height="visible.height" class="overview-window"/>
       </svg>
     </div>

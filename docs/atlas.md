@@ -16,7 +16,8 @@ Activate an outside-view count with pointer, Enter or Space to report the omitte
 
 The local notebook prototype opts into `density: "compact"`. This reduces
 group and card spacing, header padding and routing clearances while retaining
-160×64 cards and the same selection, grouping and relationship rules. It uses
+160×52 cards with object numbers beside titles and the same selection,
+grouping and relationship rules. It uses
 small-corner rectangular groups, omits per-section object counts, and displays
 outside-view counts as `+N` with their full meaning in the accessible label and
 hover title. Compact reading rows pack each group's actual width with a
@@ -33,4 +34,8 @@ chapter on the following row. Aligned arrows reserve separate incoming and
 outgoing ports. Long horizontal dependencies bypass intervening cards below
 the row. The router reserves clearance around each arrowhead and its final
 straight segment. Omitted-range labels prefer clear space above horizontal
-gold arrows. See the [revision 20 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-twenty.md).
+gold arrows. Long dependency departures clear their source card by eight
+units; incoming arrowheads retain a longer approach. This avoids small
+down-and-up detours beside nearby short arrows. Rendering, the overview and
+camera centering use the card dimensions returned by the layout.
+See the [revision 21 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-twenty-one.md).

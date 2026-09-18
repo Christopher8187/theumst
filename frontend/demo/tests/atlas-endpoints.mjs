@@ -10,6 +10,11 @@ const layout = buildAtlas(nodes, sections, deps, 1, { density: 'compact' });
 const edge = (a, b) => { const e = layout.edges.find(e => e.a === a && e.b === b); assert(e, `${a}→${b} remains visible`); return e; };
 const failures = [];
 const check = (condition, message) => { if (!condition) failures.push(message); };
+for (const [a,b] of [[1,27],[2,27],[4,25]]) {
+  const route = edge(a,b).points;
+  check(route[2].y === route[1].y && route[2].x-route[1].x > 40,
+    `${a}→${b} should depart right without a short down-and-up wedge`);
+}
 const chapters = layout.parents.filter(g => g.depth === 0);
 check(chapters[0].y === chapters[2].y, 'Differentiation must fit beside Foundations and Integration');
 check(chapters[3].y > chapters[0].y, 'The wide fourth chapter belongs on the next row');
