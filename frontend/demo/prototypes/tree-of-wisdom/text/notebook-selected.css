@@ -4,6 +4,7 @@
 .text-realm.notebook-selected .text-topnav .text-return,
 .text-realm.notebook-selected .text-topnav .wisdom-language{min-height:36px;padding-block:5px}
 .text-realm.notebook-selected .text-folio{top:0;display:grid;grid-template-rows:minmax(0,1fr)}
+.text-realm.notebook-selected .text-folio::before{display:none}
 .text-realm.notebook-selected.all-notes-open .text-folio{grid-template-rows:50px minmax(0,1fr)}
 .text-realm.notebook-selected .text-folio .text-topnav{margin:0;padding:7px 24px;border-bottom:1px solid #bad9df26;gap:18px}
 .text-realm.notebook-selected .text-folio .text-completion{width:125px;margin-left:auto}
@@ -12,9 +13,9 @@
 .text-realm.notebook-selected .text-folio .study-topbar{display:grid;grid-template-columns:52.5% 47.5%;gap:0;padding:0}
 .text-realm.notebook-selected .text-folio .study-topbar>div:first-child{padding:10px 24px;width:100%}
 .text-realm.notebook-selected .text-folio .study-location{display:flex;align-items:center;gap:12px;padding:9px 22px;min-width:0}
-.text-realm.notebook-selected .text-folio .study-context{display:block;flex:1;min-width:0}
-.text-realm.notebook-selected .text-folio .atlas-heading{font:15px/1.15 'Bahnschrift','Segoe UI',sans-serif;letter-spacing:.4px;color:#d5ecee;margin:0 0 4px;flex-shrink:0}
-.text-realm.notebook-selected .text-folio .study-location .breadcrumbs{display:block;max-width:none;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.text-realm.notebook-selected .text-folio .study-context{display:flex;align-items:baseline;gap:12px;flex:1;min-width:0}
+.text-realm.notebook-selected .text-folio .atlas-heading{font-size:14px;line-height:1.4;letter-spacing:0;color:#d5ecee;margin:0;flex-shrink:0}
+.text-realm.notebook-selected .text-folio .study-location .breadcrumbs{display:block;max-width:none;font-size:12px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .text-realm.notebook-selected .text-folio .study-location .breadcrumbs span{display:inline;margin-right:9px}
 .text-realm.notebook-selected .text-folio .study-location .breadcrumbs i{margin-right:5px}
 .text-realm.notebook-selected .text-folio .study-location .text-completion{width:72px;flex-shrink:0;margin:0}
@@ -27,6 +28,7 @@
 .text-realm.notebook-selected .text-folio .study-topbar h1{font-size:18px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .text-realm.notebook-selected .text-folio .breadcrumbs{font-size:12px}
 .text-realm.notebook-selected{
+  --notebook-font:'Segoe UI',sans-serif;
   --paper:transparent;
   --paper-ink:#e8eeeb;
   --paper-muted:#a9c1cc;
@@ -38,10 +40,13 @@
 .text-realm.notebook-selected .text-folio .knowledge-viewer{
   display:flex;flex-direction:column;padding-top:9px;padding-bottom:0;
 }
-.text-realm.notebook-selected .text-folio .knowledge-meta{flex-shrink:0;border-color:var(--paper-rule)}
-.text-realm.notebook-selected .text-folio .knowledge-meta>span:nth-child(3){color:#d7d6e1}
-.text-realm.notebook-selected .text-folio .knowledge-section{flex-shrink:0}
-.text-realm.notebook-selected .text-folio .knowledge-section h2{color:#c8ddde}
+.text-realm.notebook-selected .text-folio .knowledge-meta{flex-shrink:0;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:12px;padding:0 0 12px;border:0;font-size:16px;line-height:30px}
+.text-realm.notebook-selected .text-folio .knowledge-meta .type-chip{padding:0;border:0;font-size:16px;line-height:30px;text-transform:capitalize;letter-spacing:0}
+.text-realm.notebook-selected .text-folio .knowledge-meta>span:nth-child(2){grid-column:3;grid-row:1;font:13px/30px var(--notebook-font)}
+.text-realm.notebook-selected .text-folio .knowledge-meta>span:nth-child(3){grid-column:2;grid-row:1;padding:0;color:#e8eeeb;font:500 16px/30px var(--notebook-font)}
+.text-realm.notebook-selected .text-folio .knowledge-section{flex-shrink:0;padding:0;margin:0;background:repeating-linear-gradient(#b9d5df2b 0 1px,transparent 1px 30px)}
+.text-realm.notebook-selected .text-folio .knowledge-section-head{height:30px;min-height:30px;margin:0;padding:0;align-items:center}
+.text-realm.notebook-selected .text-folio .knowledge-section h2{color:#c8ddde;font-size:13px;line-height:30px}
 .text-realm.notebook-selected .text-folio .workings-section{
   display:flex;flex-direction:column;flex:1 0 auto;
 }
@@ -52,14 +57,13 @@
   display:none;
 }
 .text-realm.notebook-selected .text-folio .math-content{
-  background-image:repeating-linear-gradient(transparent 0 28px,#b9d5df1a 28px 29px,transparent 29px 30px);
+  background:none;line-height:30px;padding:0;
 }
-/* Formula-bearing passages keep a clear mathematical writing area. */
-.text-realm.notebook-selected .text-folio .math-content:has(.katex-display){background-image:none}
-.text-realm.notebook-selected .text-folio .katex-display{background:transparent}
+.text-realm.notebook-selected .text-folio .math-content p{margin:0;min-height:30px}
+.text-realm.notebook-selected .text-folio .katex-display{background:transparent;margin:0;padding:0 0 4px;min-height:60px;box-sizing:border-box;display:grid;place-items:end center}
 .text-realm.notebook-selected .text-folio .workings-section::after{
   content:'';display:block;min-height:0;flex:1 0 0;order:1;pointer-events:none;
-  background:repeating-linear-gradient(transparent 0 28px,#b9d5df1a 28px 29px,transparent 29px 30px);
+  background:none;
 }
 .text-realm.notebook-selected .text-folio .sound-corner{order:2;flex-shrink:0}
 .text-realm.notebook-selected .text-folio .knowledge-section-head button,
@@ -88,7 +92,7 @@
 .altar-interface .text-realm.notebook-selected .text-folio .study-actions button,
 .altar-interface .text-realm.notebook-selected .text-folio .study-side-controls button{font-size:14px;min-height:41px}
 .text-realm.notebook-selected .text-folio .sound-corner,
-.text-realm.notebook-selected .text-folio .knowledge-section-head button{font-size:13px;min-height:34px}
+.text-realm.notebook-selected .text-folio .knowledge-section-head button{font-size:13px;min-height:30px;height:30px;padding-block:0}
 .text-realm.notebook-selected .text-folio .image-panel footer{font-size:14px;line-height:1.55;align-items:center}
 .text-realm.notebook-selected .text-folio .image-panel footer small{font-size:13px}
 .text-realm.notebook-selected .text-folio .image-panel footer a{display:inline-flex;align-items:center;min-height:40px;padding:7px 12px;border:1px solid #b5d4df70;border-radius:2px;color:#d5eae7;text-decoration:none}
@@ -107,6 +111,9 @@
 .text-realm.notebook-selected .text-folio .atlas-settings-panel select,
 .text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-center{font-size:12px;min-height:36px}
 .text-realm.notebook-selected .text-folio .section-atlas footer{font-size:13px}
+/* One type family across the leaf and instruments; KaTeX keeps mathematical glyphs. */
+.text-realm.notebook-selected .text-folio,
+.text-realm.notebook-selected .text-folio :is(h1,h2,h3,button,input,select,textarea,.atlas-heading,.breadcrumbs,.type-chip,.knowledge-meta>span,.math-content,.atlas-node,.atlas-node b,.atlas-node small,.completion-values strong,.completion-values small,.text-realm-mark,.atlas-scale,.atlas-legend,svg text){font-family:var(--notebook-font);font-style:normal;letter-spacing:normal}
 @media(max-width:900px){
   .altar-interface .text-realm.notebook-selected{top:auto;bottom:auto;padding-bottom:0;margin-block:16px}
   .text-realm.notebook-selected .text-folio{top:auto}
@@ -116,7 +123,7 @@
   .text-realm.notebook-selected .text-folio .study-topbar{display:grid;grid-template-columns:1fr;padding:0;gap:0}
   .text-realm.notebook-selected .text-folio .study-topbar>div:first-child{padding:15px 18px;flex-wrap:nowrap}
   .text-realm.notebook-selected .text-folio .study-location{padding:10px 18px;border-top:1px solid #bad9df26}
-  .text-realm.notebook-selected .text-folio .study-location .breadcrumbs{display:block;font-size:10px}
+  .text-realm.notebook-selected .text-folio .study-location .breadcrumbs{display:block;font-size:12px}
   .text-realm.notebook-selected .text-folio .text-realm-mark{font-size:20px}
   .text-realm.notebook-selected .text-folio .atlas-heading{font-size:16px}
   .text-realm.notebook-selected .text-folio .study-topbar>div:first-child{display:flex;flex-wrap:nowrap;gap:5px 14px}

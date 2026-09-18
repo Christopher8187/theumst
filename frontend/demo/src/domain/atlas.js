@@ -17,7 +17,7 @@ export function buildAtlas(
   // Notebook density changes whitespace, while cards retain their readable size.
   const compact = options.density === "compact";
   const spacing = compact
-    ? { row: 48, column: 80, clearance: 20, leafX: 16, leafTop: 52, leafBottom: 16, node: 28, gap: 40, parentX: 20, parentTop: 44, parentBottom: 24, port: 10 }
+    ? { row: 48, column: 56, clearance: 20, leafX: 16, leafTop: 52, leafBottom: 16, node: 28, gap: 40, parentX: 20, parentTop: 44, parentBottom: 24, port: 10 }
     : { row: 76, column: 140, clearance: 32, leafX: 28, leafTop: 88, leafBottom: 24, node: 42, gap: 48, parentX: 32, parentTop: 92, parentBottom: 32, port: 18 };
   const hierarchy = { book: { name: "", parent: null } };
   const bySection = new Map(sections.map((s) => [String(s.section_id), s]));
@@ -232,16 +232,21 @@ export function buildAtlas(
       colWidth = Math.max(...items.map((b) => b.w)),
       snake = new Map();
     let sy = 0;
+    const rowWidth = (row) => row.reduce((sum, b) => sum + b.w, 0) + colGap * (row.length - 1);
+    const readingWidth = Math.max(...items.filter((_, i) => i % columns === 0).map((_, i) => rowWidth(items.slice(i * columns, (i + 1) * columns))));
     for (let start = 0; start < items.length; start += columns) {
       const row = items.slice(start, start + columns),
         rowNumber = Math.floor(start / columns);
+      let cursor = rowNumber % 2 ? readingWidth : 0;
       row.forEach((b, i) => {
         const col = rowNumber % 2 ? columns - 1 - i : i;
+        if (rowNumber % 2) cursor -= b.w;
         snake.set(b.id, {
-          x: col * (colWidth + colGap),
+          x: compact ? cursor : col * (colWidth + colGap),
           y: sy,
           row: rowNumber,
         });
+        cursor += rowNumber % 2 ? -colGap : b.w + colGap;
       });
       sy += Math.max(...row.map((b) => b.h)) + gap;
     }
@@ -433,7 +438,7 @@ export function buildAtlas(
       height: Math.max(...macro.map((b) => b.y + b.h)) + 172,
     };
   }
-  function routeAll(placed, edges, extraObstacles = []) {
+  function routeAll(placed, edges, extraObstacles = [], groups = []) {
     const byId = new Map(placed.map((n) => [n.id, n])),
       out = new Map(),
       inc = new Map();
@@ -461,6 +466,10 @@ export function buildAtlas(
     for (const n of placed) {
       xValues.add(n.x - 24);
       xValues.add(n.x + W + 24);
+      if (compact) for (const offset of [40, 56]) {
+        xValues.add(n.x - offset);
+        xValues.add(n.x + W + offset);
+      }
       yValues.add(n.y - (compact ? 16 : 32));
       yValues.add(n.y + H + (compact ? 16 : 32));
     }
@@ -482,6 +491,14 @@ export function buildAtlas(
       e.toSide = { right: "left", left: "right", bottom: "top", top: "bottom" }[
         e.fromSide
       ];
+      if (compact && dx === 0 && placed.some(n => n.id !== a.id && n.id !== b.id && n.x === a.x && n.y > Math.min(a.y, b.y) && n.y < Math.max(a.y, b.y))) {
+        // Long dependencies leave from the side, clear of the short reading arrows.
+        e.fromSide = e.toSide = "left";
+      }
+      if (compact && (dx === 0 || dy === 0) && e.fromSide !== e.toSide) {
+        const peers = edges.filter(other => other.a === e.a && other.b === e.b);
+        e.alignedOffset = (peers.indexOf(e) - (peers.length - 1) / 2) * 16;
+      }
       for (const [id, side, end] of [
         [e.a, e.fromSide, "s"],
         [e.b, e.toSide, "t"],
@@ -495,7 +512,8 @@ export function buildAtlas(
         });
       }
     }
-    for (const bucket of ports.values())
+    for (const bucket of ports.values()) {
+      const assigned = bucket.filter(p => p.e.alignedOffset !== undefined).map(p => p.e.alignedOffset);
       bucket.forEach((p, i) => {
         const n = byId.get(p.id),
           horizontal = ["left", "right"].includes(p.side),
@@ -503,8 +521,16 @@ export function buildAtlas(
           portGap = Math.min(
             16,
             (length - 20) / Math.max(1, bucket.length - 1),
-          ),
-          offset = (i - (bucket.length - 1) / 2) * portGap;
+          );
+        let offset = (i - (bucket.length - 1) / 2) * portGap;
+        if (compact) {
+          if (p.e.alignedOffset !== undefined) offset = p.e.alignedOffset;
+          else {
+            const candidates = Array.from({ length: 1 + Math.floor((length - 20) / 8) }, (_, j) => j === 0 ? 0 : Math.ceil(j / 2) * 8 * (j % 2 ? -1 : 1));
+            offset = candidates.find(value => assigned.every(other => Math.abs(other - value) >= 12)) ?? offset;
+            assigned.push(offset);
+          }
+        }
         let x = n.x + W / 2,
           y = n.y + H / 2,
           dx = 0,
@@ -538,6 +564,7 @@ export function buildAtlas(
           yValues.add(y + dy + 8);
         }
       });
+    }
     const maxX = Math.max(...placed.map((n) => n.x + W)),
       maxY = Math.max(...placed.map((n) => n.y + H));
     for (let i = 0; i < 12; i++) {
@@ -600,6 +627,35 @@ export function buildAtlas(
     const occupied = new Set(),
       used = new Uint8Array(N),
       turns = new Uint8Array(N);
+    const horizontalCost = new Float64Array(N), verticalCost = new Float64Array(N);
+    function reserveLane(points, weight) {
+      if (!compact) return;
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        if (a.x === b.x) {
+          for (let x = 0; x < nx; x++) {
+            if (Math.abs(xs[x] - a.x) >= 8) continue;
+            for (let y = 0; y < ys.length - 1; y++) {
+              const overlap = Math.min(ys[y + 1], Math.max(a.y, b.y)) - Math.max(ys[y], Math.min(a.y, b.y));
+              if (overlap > 0) verticalCost[y * nx + x] += overlap * weight;
+            }
+          }
+        } else {
+          for (let y = 0; y < ys.length; y++) {
+            if (Math.abs(ys[y] - a.y) >= 8) continue;
+            for (let x = 0; x < nx - 1; x++) {
+              const overlap = Math.min(xs[x + 1], Math.max(a.x, b.x)) - Math.max(xs[x], Math.min(a.x, b.x));
+              if (overlap > 0) horizontalCost[y * nx + x] += overlap * weight;
+            }
+          }
+        }
+      }
+    }
+    // Crossing a group boundary is fine; following its ink makes arrows unreadable.
+    for (const g of groups) reserveLane([
+      { x: g.x, y: g.y }, { x: g.x + g.w, y: g.y },
+      { x: g.x + g.w, y: g.y + g.h }, { x: g.x, y: g.y + g.h }, { x: g.x, y: g.y },
+    ], 4);
     const key = (a, b) => (a < b ? a * N + b : b * N + a);
     const portCells = new Set(
       edges.flatMap((e) => [
@@ -679,6 +735,7 @@ export function buildAtlas(
           const nc =
               cost[state] +
               distance +
+              (nd === 0 ? horizontalCost : verticalCost)[Math.min(k, next)] +
               (dir !== 2 && dir !== nd ? 20 : 0) +
               (used[next] ? 35 : 0),
             ns = next * 3 + nd;
@@ -727,6 +784,7 @@ export function buildAtlas(
     let omitted = 0;
     for (const e of sorted) {
       e.points = find(e);
+      if (e.points) reserveLane(e.points, 6);
       if (!e.points) omitted++;
     }
     return {
@@ -875,7 +933,7 @@ export function buildAtlas(
   edges.push(
     ...dependencyEdges.slice(0, Math.max(0, EDGE_LIMIT - edges.length)),
   );
-  const routes = routeAll(layout.placed, edges, layout.obstacles);
+  const routes = routeAll(layout.placed, edges, layout.obstacles, [...layout.parents, ...layout.tiles]);
   placeGapBadges(layout, routes);
   return {
     ...layout,

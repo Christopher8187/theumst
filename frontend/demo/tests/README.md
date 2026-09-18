@@ -13,3 +13,8 @@ layouts, comparing visible objects and relationships with regular spacing.
 Synthetic cases cover card/heading collisions, gap labels and drawing size at
 8, 16 and 24 objects. Fourteen frozen Real Analysis cases cover relationships
 and gap labels at seven selected objects in both layouts.
+
+`node tests/atlas-route-clearance.mjs` reproduces the reported Real Analysis
+view at object 1. It checks straight aligned arrows, separation of the two
+dependencies to object 27, clearance from chapter borders, and the compact
+gutter between sections 4.1 and 4.2.

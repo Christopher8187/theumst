@@ -19,5 +19,10 @@ group and card spacing, header padding and routing clearances while retaining
 160×64 cards and the same selection, grouping and relationship rules. It uses
 small-corner rectangular groups, omits per-section object counts, and displays
 outside-view counts as `+N` with their full meaning in the accessible label and
-hover title. The ordinary Demo keeps its regular spacing and labels. See the
-[revision 18 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-eighteen.md).
+hover title. Compact reading rows pack each group's actual width with a
+56-unit gutter. Aligned connections share matching ports, keeping clear short
+vertical and horizontal arrows straight. Long dependencies that bypass cards
+in the same column leave from the side. Routing discourages parallel runs
+within eight drawing units of another arrow or group boundary. Perpendicular
+boundary crossings remain available. The ordinary Demo keeps its regular
+spacing and labels. See the [revision 19 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-nineteen.md).

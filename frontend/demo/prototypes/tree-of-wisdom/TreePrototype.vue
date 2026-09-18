@@ -49,7 +49,7 @@ const collectionTotal=computed(()=>sampleBooks.value.filter(book=>added.value.in
 const hasAdded=computed(()=>!!chosenBook.value&&added.value.includes(chosenBook.value.id));
 function updateUrl(){
   const query=new URLSearchParams(location.search);
-  query.set('prototype','wisdom');query.set('revision','18');query.delete('variant');query.delete('brief');query.delete('actions');query.set('place',place.value);query.set('view',scene.value);
+  query.set('prototype','wisdom');query.set('revision','19');query.delete('variant');query.delete('brief');query.delete('actions');query.set('place',place.value);query.set('view',scene.value);
   scene.value==='realms'&&activeRealm.value?query.set('realm',activeRealm.value):query.delete('realm');
   scene.value==='realms'&&departureScene.value==='collection'?query.set('from','collection'):query.delete('from');
   readerOpen.value?query.set('panel','brief'):query.delete('panel');
