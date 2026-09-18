@@ -15,6 +15,8 @@ Synthetic cases cover card/heading collisions, gap labels and drawing size at
 and gap labels at seven selected objects in both layouts. Every case also
 checks that arrows have distinct connection points on each card, including
 incoming versus outgoing arrows and regular versus compact spacing.
+Compact omitted counts must lie on their own dotted stroke, with no missing
+labels across the cases.
 
 `node tests/atlas-route-clearance.mjs` reproduces the reported Real Analysis
 view at object 1. It checks straight aligned arrows, separation of the two
@@ -31,6 +33,10 @@ tails for 29 to 31 and 29 to 32. Renaming all object IDs, object titles and
 section names must leave node positions and routed geometry unchanged.
 Compact checks use the layout's returned card dimensions, including the
 52-unit height of cards with numbers beside their titles.
+
+`node tests/atlas-reading-flow.mjs` covers reading-row transitions around item
+1, full arrowhead stems and balanced chapter placement around item 15, and
+the straight 27 to 34 route beside the 4 to 31 approach around item 29.
 
 `node tests/notebook-math.mjs` checks that inline mathematics stays within prose,
 display mathematics occupies separate notebook rows, and source text remains

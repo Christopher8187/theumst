@@ -142,6 +142,10 @@ function zoom(direction) {
         :aria-label="t.atlas"
       >
         <defs>
+          <mask v-if="compactControls" id="atlas-inline-counts" maskUnits="userSpaceOnUse" x="0" y="0" :width="layout.width" :height="layout.height" style="mask-type:luminance">
+            <rect x="0" y="0" :width="layout.width" :height="layout.height" fill="white"/>
+            <rect v-for="b in layout.badges" :key="`${b.a}-${b.b}`" :x="b.x" :y="b.y" :width="b.w" :height="b.h" fill="black"/>
+          </mask>
           <marker
             id="atlas-gold"
             markerWidth="8"
@@ -191,6 +195,7 @@ function zoom(direction) {
           :d="path(e)"
           class="atlas-edge"
           :class="e.type"
+          :mask="compactControls && e.type === 'gap' ? 'url(#atlas-inline-counts)' : undefined"
           :marker-end="
             e.type === 'dependency'
               ? 'url(#atlas-dependency)'
@@ -203,6 +208,7 @@ function zoom(direction) {
           v-for="b in layout.badges"
           :key="`${b.a}-${b.b}`"
           class="atlas-gap"
+          :class="{'atlas-gap-inline': b.inline}"
           role="button"
           tabindex="0"
           :aria-label="`+${b.count} ${t.outsideView}`"
@@ -212,7 +218,7 @@ function zoom(direction) {
         >
           <title>+{{ b.count }} {{ t.outsideView }}</title>
           <rect :x="b.x" :y="b.y" :width="b.w" :height="b.h" rx="6" />
-          <text :x="b.x + b.w / 2" :y="b.y + 16" text-anchor="middle">
+          <text :x="b.x + b.w / 2" :y="b.y + b.h / 2 + 4" text-anchor="middle" :transform="b.vertical ? `rotate(-90 ${b.anchorX} ${b.anchorY})` : undefined">
             +{{ b.count }}<template v-if="!compactControls"> {{ t.outsideView }}</template>
           </text>
         </g>

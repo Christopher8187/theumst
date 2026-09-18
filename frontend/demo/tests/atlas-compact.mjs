@@ -26,6 +26,18 @@ function checkEndpoints(layout, description) {
     }
   }
 }
+function checkInlineCounts(layout) {
+  for (const badge of layout.badges) {
+    assert(badge.inline, 'compact counts belong inside their dotted lines');
+    const edge = layout.edges.find(e => e.type === 'gap' && e.a === badge.a && e.b === badge.b);
+    const x = badge.x + badge.w/2, y = badge.y + badge.h/2;
+    assert(edge.points.some((a,i) => {
+      const b = edge.points[i+1];
+      return b && (a.x === b.x ? x === a.x && y > Math.min(a.y,b.y) && y < Math.max(a.y,b.y)
+        : y === a.y && x > Math.min(a.x,b.x) && x < Math.max(a.x,b.x));
+    }), 'count center lies on its own dotted line');
+  }
+}
 const samples = [];
 for (const view of ['reading', 'hierarchy']) for (const limit of [8, 16, 24]) for (const relationships of [sparse, dense]) {
   const options = { view, limit, book: relationships === sparse ? 1 : 24, dependency: 2 };
@@ -34,6 +46,7 @@ for (const view of ['reading', 'hierarchy']) for (const limit of [8, 16, 24]) fo
   const compact = buildAtlas(nodes, sections, relationships, selected, { ...options, density: 'compact' });
   checkEndpoints(regular, `${view}/${limit}/regular`);
   checkEndpoints(compact, `${view}/${limit}/compact`);
+  checkInlineCounts(compact);
   assert.deepEqual(compact.placed.map(node => node.knowledge_id), regular.placed.map(node => node.knowledge_id));
   assert.deepEqual(edgeKeys(compact), edgeKeys(regular), `${view}/${limit}: all relationships remain routed`);
   assert.equal(compact.omitted, regular.omitted, 'compression does not add omitted arrows');
@@ -61,6 +74,7 @@ for (const view of ['reading', 'hierarchy']) for (const selected of [1, 2, 4, 13
   const compact = buildAtlas(analysisNodes, analysisSections, analysisEdges, selected, { view, density: 'compact' });
   checkEndpoints(regular, `Real Analysis ${selected}/${view}/regular`);
   checkEndpoints(compact, `Real Analysis ${selected}/${view}/compact`);
+  checkInlineCounts(compact);
   assert.deepEqual(edgeKeys(compact), edgeKeys(regular), `Real Analysis ${selected}/${view}: relationships stay visible`);
   assert.equal(compact.unlabelled, 0, `Real Analysis ${selected}/${view}: all omitted ranges have labels`);
 }

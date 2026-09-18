@@ -12,8 +12,8 @@ const failures = [];
 const check = (condition, message) => { if (!condition) failures.push(message); };
 for (const [a,b] of [[1,27],[2,27],[4,25]]) {
   const route = edge(a,b).points;
-  check(route[2].y === route[1].y && route[2].x-route[1].x > 40,
-    `${a}→${b} should depart right without a short down-and-up wedge`);
+  check(route[2].y === route[1].y && Math.abs(route[2].x-route[1].x) > 40,
+    `${a}→${b} should reach a clear horizontal lane without a short down-and-up wedge`);
 }
 const chapters = layout.parents.filter(g => g.depth === 0);
 check(chapters[0].y === chapters[2].y, 'Differentiation must fit beside Foundations and Integration');
@@ -25,7 +25,8 @@ const terminal = edge(4,31), p = terminal.points.at(-2), q = terminal.points.at(
 check(Math.hypot(q.x-p.x,q.y-p.y)>=16, '4→31 must enter through the base of a full arrowhead');
 check(edge(4,25).end.y > edge(19,25).end.y, '4→25 uses a lower port than the golden 19→25 arrow');
 const badge = layout.badges.find(b => b.a===19 && b.b===25);
-check(badge && badge.y+badge.h < badge.anchorY, '+5 sits above its golden 19→25 arrow');
+check(badge?.inline && badge.y+badge.h/2 === badge.anchorY && badge.x+badge.w/2 === badge.anchorX,
+  '+5 is centered in its golden 19→25 arrow');
 const around13 = buildAtlas(nodes, sections, deps, 13, { density: 'compact' });
 const dependency13 = (a,b) => around13.edges.find(e=>e.a===a&&e.b===b&&e.type==='dependency');
 for (const [a,b] of [[4,31],[8,15],[13,15]]) {

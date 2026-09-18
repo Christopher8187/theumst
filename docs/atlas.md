@@ -30,12 +30,21 @@ spacing and labels.
 
 Compact chapter rows now choose their grouping from measured content widths
 and heights. This allows several short chapters beside one another and a wide
-chapter on the following row. Aligned arrows reserve separate incoming and
+chapter on the following row. Balanced column candidates can also put a short
+chapter below an earlier one beside a tall chapter, when that improves the
+drawing's area and aspect without increasing its height. Compact heading
+obstacles cover the text rather than the unused rest of the heading row.
+Aligned arrows reserve separate incoming and
 outgoing ports. Long horizontal dependencies bypass intervening cards below
-the row. The router reserves clearance around each arrowhead and its final
-straight segment. Omitted-range labels prefer clear space above horizontal
-gold arrows. Long dependency departures clear their source card by eight
-units; incoming arrowheads retain a longer approach. This avoids small
+the row. The router protects each arrowhead, while allowing perpendicular
+crossings farther back along its approach. Incoming stems have at least 16
+units; bends move farther back when a straight crossing lane needs room.
+Reading-order departures follow the placement of their enclosing chapters.
+Compact omitted-range counts interrupt their own dotted stroke, with no
+separate pill or offset. Placement searches along the stroke and avoids cards,
+headings, other routes and other counts. Pointer and keyboard activation retain
+the omitted-range explanation. Long dependency departures clear their source
+card by eight units. This avoids small
 down-and-up detours beside nearby short arrows. Rendering, the overview and
 camera centering use the card dimensions returned by the layout.
 Crowded compact sides retain an unused evenly spaced connection point when
@@ -50,4 +59,4 @@ fails, it allows the necessary reversal while retaining all collision checks.
 These rules apply to every grimoire; reported object numbers occur only in
 regression fixtures. Tests also rename IDs and labels and require unchanged
 geometry.
-See the [revision 22 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-twenty-two.md).
+See the [revision 23 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-twenty-three.md).

@@ -289,6 +289,32 @@ export function buildAtlas(
       });
       sy += Math.max(...row.map((b) => b.h)) + gap;
     }
+    if (compact && columns === 2 && t === 0) {
+      // A short chapter may fit below an earlier one beside a tall chapter.
+      // Compare balanced columns against the row layout, without making the
+      // drawing taller. Use measured boxes, never chapter numbers.
+      const height = sy - gap;
+      const score = (w, h) => w * h + .2 * (w - 2 * h) ** 2;
+      let bestScore = score(readingWidth, height);
+      for (let count = 2; count < items.length; count++) {
+        const stacks = Array.from({ length: count }, () => ({ items: [], w: 0, h: 0 }));
+        for (const item of items) {
+          const stack = stacks.reduce((a, b) => a.h <= b.h ? a : b);
+          stack.items.push({ item, y: stack.h });
+          stack.w = Math.max(stack.w, item.w);
+          stack.h += item.h + gap;
+        }
+        const w = stacks.reduce((sum, s) => sum + s.w, 0) + colGap * (count - 1);
+        const h = Math.max(...stacks.map(s => s.h - gap));
+        if (h > height || score(w, h) >= bestScore) continue;
+        bestScore = score(w, h);
+        let x = 0;
+        for (const stack of stacks) {
+          for (const [row, { item, y }] of stack.items.entries()) snake.set(item.id, { x, y, row });
+          x += stack.w + colGap;
+        }
+      }
+    }
     const layered = new Map();
     let dy = 0;
     for (const row of layers) {
@@ -444,7 +470,11 @@ export function buildAtlas(
       headers = [];
     function place(box, x, y, depth) {
       const item = { ...box, x, y, depth };
-      headers.push({ l: x + 13, r: x + box.w - 13, t: y + (compact ? 8 : 12), b: y + (compact ? 29 : 50) });
+      const heading = box.leaf ? hierarchy[box.id].name.slice(0, 27) : hierarchy[box.id].name;
+      // One em per glyph conservatively bounds the heading. Empty space to
+      // its right is traversable; the entire chapter width is not text.
+      const headingWidth = Array.from(heading).length * (box.leaf ? 12 : 17) + 24;
+      headers.push({ l: x + 13, r: x + (compact ? Math.min(box.w - 13, headingWidth) : box.w - 13), t: y + (compact ? 8 : 12), b: y + (compact ? 29 : 50) });
       if (box.leaf) {
         tiles.push(item);
         box.members.forEach((n, i) =>
@@ -481,6 +511,7 @@ export function buildAtlas(
     const byId = new Map(placed.map((n) => [n.id, n])),
       out = new Map(),
       inc = new Map();
+    const chapters = new Map(groups.filter(g => g.depth === 0).map(g => [g.id, g]));
     edges.forEach((e) => {
       (out.get(e.a) || out.set(e.a, []).get(e.a)).push(e);
       (inc.get(e.b) || inc.set(e.b, []).get(e.b)).push(e);
@@ -530,6 +561,19 @@ export function buildAtlas(
       e.toSide = { right: "left", left: "right", bottom: "top", top: "bottom" }[
         e.fromSide
       ];
+      const sourceChapter = chapters.get(direct(a.section));
+      const targetChapter = chapters.get(direct(b.section));
+      if (compact && e.type !== 'dependency' && sourceChapter && targetChapter
+        && sourceChapter !== targetChapter) {
+        // Follow chapter placement rather than the displacement between its
+        // last and first cards, which may point back through the source row.
+        if (targetChapter.y !== sourceChapter.y) {
+          e.fromSide = targetChapter.y > sourceChapter.y ? 'bottom' : 'top';
+        } else {
+          e.fromSide = targetChapter.x > sourceChapter.x ? 'right' : 'left';
+          e.toSide = targetChapter.x > sourceChapter.x ? 'left' : 'right';
+        }
+      }
       if (compact && dx === 0 && placed.some(n => n.id !== a.id && n.id !== b.id && n.x === a.x && n.y > Math.min(a.y, b.y) && n.y < Math.max(a.y, b.y))) {
         // Long dependencies leave from the side, clear of the short reading arrows.
         e.fromSide = e.toSide = "left";
@@ -610,7 +654,25 @@ export function buildAtlas(
           dy = 0;
         // Departure only needs to clear the card. Keep the longer approach
         // at arrowheads so a nearby tip cannot force an outgoing U-turn.
-        const portLength = compact ? (p.e.direct ? spacing.port : p.end === 's' && p.e.type === 'dependency' ? 8 : 16) : spacing.port;
+        let portLength = compact ? (p.end === 't' ? 16 : p.e.direct ? spacing.port : p.e.type === 'dependency' ? 8 : 16) : spacing.port;
+        if (compact && p.end === 't') {
+          // Put the approach bend beyond nearby straight crossing lanes.
+          // Their perpendicular crossing remains clear of the arrowhead.
+          const axis = horizontal ? n.y + H / 2 + offset : n.x + W / 2 + offset;
+          const boundary = p.side === 'left' ? n.x : p.side === 'right' ? n.x + W : p.side === 'top' ? n.y : n.y + H;
+          for (const other of edges) {
+            if (other === p.e || !other.direct) continue;
+            const a = byId.get(other.a), b = byId.get(other.b);
+            const crosses = horizontal ? a.x === b.x : a.y === b.y;
+            if (!crosses) continue;
+            const lo = horizontal ? Math.min(a.y,b.y)+H : Math.min(a.x,b.x)+W;
+            const hi = horizontal ? Math.max(a.y,b.y) : Math.max(a.x,b.x);
+            if (axis < lo || axis > hi) continue;
+            const lane = (horizontal ? a.x+W/2 : a.y+H/2)+other.alignedOffset;
+            const distance = ['left','top'].includes(p.side) ? boundary-lane : lane-boundary;
+            if (distance > 0 && distance < portLength+12) portLength = distance+12;
+          }
+        }
         if (p.side === "left") {
           x = n.x;
           y += offset;
@@ -649,10 +711,14 @@ export function buildAtlas(
       yValues.add(32 + i * 2);
       yValues.add(maxY + 40 + i * 4);
     }
-    const terminals = compact ? edges.map((e, owner) => ({
-      owner, l:Math.min(e.end.x,e.t.x)-5, r:Math.max(e.end.x,e.t.x)+5,
-      t:Math.min(e.end.y,e.t.y)-5, b:Math.max(e.end.y,e.t.y)+5,
-    })) : [];
+    const terminals = compact ? edges.map((e, owner) => {
+      // Protect the arrowhead itself, not the entire approach: a longer
+      // stem can pass cleanly across another route behind the head.
+      const x=e.end.x+Math.sign(e.t.x-e.end.x)*10;
+      const y=e.end.y+Math.sign(e.t.y-e.end.y)*10;
+      return { owner, l:Math.min(e.end.x,x)-5, r:Math.max(e.end.x,x)+5,
+        t:Math.min(e.end.y,y)-5, b:Math.max(e.end.y,y)+5 };
+    }) : [];
     for (const r of terminals) {
       xValues.add(r.l-1); xValues.add(r.r+1);
       yValues.add(r.t-1); yValues.add(r.b+1);
@@ -905,7 +971,7 @@ export function buildAtlas(
     };
   }
 
-  // Place labels after routing, beside a clear segment of their own dotted edge.
+  // Place counts after routing: inline for compact, beside the edge otherwise.
   function placeGapBadges(layout, routes) {
     const overlap = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
     const rect = (x, y, w, h, p = 0) => ({
@@ -939,11 +1005,13 @@ export function buildAtlas(
     const segments = routes.edges.flatMap((e) =>
       e.points.slice(1).map((b, i) => ({ a: e.points[i], b, edge: e })),
     );
+    const linePadding = compact ? 2 : 5;
     const lines = segments.map((s) => ({
-      l: Math.min(s.a.x, s.b.x) - 5,
-      r: Math.max(s.a.x, s.b.x) + 5,
-      t: Math.min(s.a.y, s.b.y) - 5,
-      b: Math.max(s.a.y, s.b.y) + 5,
+      edge: s.edge,
+      l: Math.min(s.a.x, s.b.x) - linePadding,
+      r: Math.max(s.a.x, s.b.x) + linePadding,
+      t: Math.min(s.a.y, s.b.y) - linePadding,
+      b: Math.max(s.a.y, s.b.y) + linePadding,
     }));
     const occupied = [],
       badges = [],
@@ -960,8 +1028,32 @@ export function buildAtlas(
         const horizontal = s.a.y === s.b.y,
           L = Math.abs(s.b.x - s.a.x) + Math.abs(s.b.y - s.a.y),
           w = compact ? Math.max(42, 22 + String(e.count).length * 8) : 108,
-          h = 24,
+          h = compact ? 18 : 24,
           along = horizontal ? w : h;
+        if (compact) {
+          // The count interrupts its own dotted stroke. Search only along
+          // that stroke; there is no detached label offset to optimize.
+          const textWidth = 20 + String(e.count).length * 8;
+          const width = horizontal ? textWidth : 18;
+          const height = horizontal ? 18 : textWidth;
+          const inset = textWidth / 2 + 10;
+          const positions = [L / 2];
+          for (let at = inset; at <= L - inset; at += 4) positions.push(at);
+          for (const at of positions) {
+            if (at < inset || at > L - inset) continue;
+            const ax = s.a.x + (s.b.x - s.a.x) * at / L;
+            const ay = s.a.y + (s.b.y - s.a.y) * at / L;
+            const x = ax - width / 2, y = ay - height / 2;
+            const r = rect(x, y, width, height, 1);
+            const score = Math.abs(travelled + at - length / 2) + (horizontal ? 0 : 80);
+            if (best && best.score <= score) continue;
+            if (fixed.some(o => overlap(r, o)) || occupied.some(o => overlap(r, o))
+              || lines.some(o => o.edge !== e && overlap(r, o))) continue;
+            best = { ...e, x, y, w: width, h: height, anchorX: ax, anchorY: ay, inline: true, vertical: !horizontal, score };
+          }
+          travelled += L;
+          continue;
+        }
         if (L >= 24) {
           const positions = [L / 2];
           for (let at = 8; at <= L - 8; at += 12) positions.push(at);

@@ -21,6 +21,9 @@
 .text-realm.notebook-selected .text-folio .atlas-compact .atlas-edge{stroke:#adbcdf;stroke-width:1.55;opacity:.86}
 .text-realm.notebook-selected .text-folio .atlas-compact .atlas-edge.order,
 .text-realm.notebook-selected .text-folio .atlas-compact .atlas-edge.gap{stroke:#d3b985}
+.text-realm.notebook-selected .text-folio .atlas-compact .atlas-gap-inline rect{fill:transparent;stroke:none}
+.text-realm.notebook-selected .text-folio .atlas-compact .atlas-gap-inline text{fill:#e5cc99;font:13px var(--notebook-font)}
+.text-realm.notebook-selected .text-folio .atlas-compact .atlas-gap-inline:hover text,.text-realm.notebook-selected .text-folio .atlas-compact .atlas-gap-inline:focus-visible text{fill:#fff0c9}
 .text-realm.notebook-selected .text-folio .atlas-compact .atlas-settings-trigger{top:12px;right:12px;z-index:8;background:#153546ef;border-color:#92cbd877;box-shadow:0 3px 12px #08182c33}
 .text-realm.notebook-selected .text-folio .atlas-compact .atlas-settings-panel{top:55px;right:12px;z-index:9;max-width:calc(100% - 24px);background:#163444f5}
 .text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-count{grid-column:1/-1;margin:0;padding-top:10px;border-top:1px solid #b6d7df33;font-size:13px}
