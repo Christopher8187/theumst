@@ -28,6 +28,13 @@ within eight drawing units of another arrow or group boundary. Perpendicular
 boundary crossings remain available. The ordinary Demo keeps its regular
 spacing and labels.
 
+In the local notebook, Text excludes exercise cards before applying the
+visible-object limit. The model still receives the complete ordered list, so
+object numbers, dependency distances and gold omitted-position counts retain
+their original meaning. Questions permits all working types within the same
+bounded view. Selecting a non-exercise there opens it in Text. The shared
+layout's optional `excludedTypes` setting affects eligibility only.
+
 Compact chapter rows now choose their grouping from measured content widths
 and heights. This allows several short chapters beside one another and a wide
 chapter on the following row. Balanced column candidates can also put a short

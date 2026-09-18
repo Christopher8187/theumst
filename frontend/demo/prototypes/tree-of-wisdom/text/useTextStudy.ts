@@ -2,6 +2,7 @@ import { computed, inject, onBeforeUnmount, onMounted, provide, reactive, ref, s
 import { useNoteGuard } from '../../../src/composables/useNoteGuard';
 import { type SampleBook } from '../books';
 import { createStudyFixtures, discoveryExamples, sampleBookIds, type StudyFixture, type StudyImage, type StudyMode, type StudyNode, type StudyResult } from './studyFixtures';
+import { adjacentStudyNode, realmForNode } from './studyNavigation';
 
 type SideMode = 'graph' | 'notes' | 'similar' | 'image';
 type Position = { bookId: number; id: number; mode: StudyMode };
@@ -74,7 +75,10 @@ export function useTextStudy(
   const selectedId = computed(() => reader.value.selectedId);
   const selectedNode = computed(() => nodes.value.find(node => node.knowledge_id === selectedId.value) || null);
   const mode = computed(() => reader.value.mode);
-  const canBack = computed(() => reader.value.history.length > 0);
+  const canBack = computed(() => mode.value === 'questions'
+    ? !!adjacentStudyNode(nodes.value, selectedId.value, 'questions', -1)
+    : reader.value.history.length > 0);
+  const canContinue = computed(() => !!adjacentStudyNode(nodes.value, selectedId.value, mode.value, 1));
   const originBookId = computed(() => reader.value.origin?.bookId || initialBookId());
   const sideMode = ref<SideMode>('graph');
   const activeImage = shallowRef<StudyImage | null>(null);
@@ -108,7 +112,12 @@ export function useTextStudy(
   provide('actionFocus', () => focusBeforeAction);
   watch(actionBusy, busy => { if (busy && typeof document !== 'undefined') focusBeforeAction = document.activeElement as HTMLElement | null; }, { flush: 'sync' });
   watch(actionBusy, busy => { if (!busy && focusBeforeAction?.isConnected) focusBeforeAction.focus(); }, { flush: 'post' });
-  watch([() => toValue(bookIdRef), () => toValue(initialModeRef)], () => { reader.value = readerForEntrance(); showingAllNotes.value = false; closeSide(); });
+  watch([() => toValue(bookIdRef), () => toValue(initialModeRef)], ([nextBook, nextMode], [previousBook]) => {
+    // A selection can change realms in this same reader. The parent mirrors
+    // that realm in the URL; its acknowledgement must not reset the position.
+    if (nextBook === previousBook && reader.value.mode === (nextMode || 'text')) return;
+    reader.value = readerForEntrance(); showingAllNotes.value = false; closeSide();
+  });
 
   function currentPosition(): Position { return { bookId: reader.value.bookId, id: selectedId.value, mode: mode.value }; }
   function rememberPosition() {
@@ -128,14 +137,15 @@ export function useTextStudy(
     const target = nodes.value.find(node => node.knowledge_id === Number(id));
     if (!target || target.knowledge_id === selectedId.value) return;
     if (recordHistory) reader.value.history.push(currentPosition());
-    closeSide(); reader.value.selectedId = target.knowledge_id; rememberPosition();
+    closeSide(); reader.value.mode = realmForNode(target); reader.value.selectedId = target.knowledge_id; rememberPosition();
   }
   function continueReading() {
-    const at = nodes.value.findIndex(node => node.knowledge_id === selectedId.value);
-    if (at >= 0 && at < nodes.value.length - 1) select(nodes.value[at + 1].knowledge_id);
+    const next = adjacentStudyNode(nodes.value, selectedId.value, mode.value, 1);
+    if (next) select(next.knowledge_id);
     else notify(words().endOfGrimoire || 'You have reached the end of this grimoire.');
   }
   function backObject() {
+    if (mode.value === 'questions') { moveExercise(-1); return; }
     const previous = reader.value.history.pop();
     if (previous) restore(previous);
   }
@@ -177,7 +187,7 @@ export function useTextStudy(
     const previous = currentPosition();
     reader.value.origin ||= previous;
     reader.value.history.push(previous);
-    restore({ bookId: result.grimoire_id, id: result.knowledge_id, mode: 'text' });
+    restore({ bookId: result.grimoire_id, id: result.knowledge_id, mode: realmForNode(target) });
   }
   function returnOrigin() {
     const origin = reader.value.origin;
@@ -187,9 +197,7 @@ export function useTextStudy(
     restore(origin);
   }
   function moveExercise(delta: number) {
-    const exercises = nodes.value.filter(node => node.type === 'exercise');
-    const at = exercises.findIndex(node => node.knowledge_id === selectedId.value);
-    const target = exercises[at + delta];
+    const target = adjacentStudyNode(nodes.value, selectedId.value, 'questions', delta < 0 ? -1 : 1);
     if (target) select(target.knowledge_id);
   }
   function markDone(node: Pick<StudyNode, 'knowledge_id'>) {
@@ -237,7 +245,7 @@ export function useTextStudy(
   onBeforeUnmount(() => { clearTimeout(toastTimer); window.removeEventListener('beforeunload', beforeUnload); });
   rememberPosition();
   return { book, sampleBook, nodes, sections, selectedId, selectedNode, mode, sideMode, notes, allNotes, showingAllNotes,
-    graph, graphStatus, graphError, similarResults, similarStatus, similarError, discoveryKind, originBookId, activeImage, canBack,
+    graph, graphStatus, graphError, similarResults, similarStatus, similarError, discoveryKind, originBookId, activeImage, canBack, canContinue,
     guard, actionBusy, toast, stub, run, select, continueReading, backObject, action, closeSide, saveNote, deleteNote, openResult,
     returnOrigin, moveExercise, markDone, openImage, notesPage, returnFromNotes, comingSoon, closeStub };
 }

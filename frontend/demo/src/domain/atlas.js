@@ -51,6 +51,7 @@ export function buildAtlas(
     H = options.density === "compact" ? 52 : 64;
   // Notebook cards place the object number beside the title.
   const compact = options.density === "compact";
+  const excludedTypes = new Set(options.excludedTypes || []);
   // Above a compact card, leave room below the heading for a 16-unit
   // arrowhead approach and two lanes separated by 8 units.
   const spacing = compact
@@ -107,8 +108,7 @@ export function buildAtlas(
     adjacency.get(a).push(b);
     adjacency.get(b).push(a);
   });
-  if (!nodes.length)
-    return {
+  const emptyLayout = {
       placed: [],
       parents: [],
       tiles: [],
@@ -120,7 +120,9 @@ export function buildAtlas(
       nodeHeight: H,
       candidates: 0,
       omitted: 0,
+      unlabelled: 0,
     };
+  if (!nodes.length) return emptyLayout;
   function ancestry(section) {
     const a = [];
     const seen = new Set();
@@ -150,6 +152,7 @@ export function buildAtlas(
       }
     }
     const candidates = nodes.filter((n) => {
+      if (excludedTypes.has(n.type)) return false;
       const b = Math.abs(n.id - s.current) <= s.book,
         p = (d.get(n.id) ?? Infinity) <= s.dep;
       return s.combine === "either" ? b || p : b && p;
@@ -655,7 +658,7 @@ export function buildAtlas(
         // Departure only needs to clear the card. Keep the longer approach
         // at arrowheads so a nearby tip cannot force an outgoing U-turn.
         let portLength = compact ? (p.end === 't' ? 16 : p.e.direct ? spacing.port : p.e.type === 'dependency' ? 8 : 16) : spacing.port;
-        if (compact && p.end === 't') {
+        if (compact && p.end === 't' && !p.e.direct) {
           // Put the approach bend beyond nearby straight crossing lanes.
           // Their perpendicular crossing remains clear of the arrowhead.
           const axis = horizontal ? n.y + H / 2 + offset : n.x + W / 2 + offset;
@@ -670,7 +673,14 @@ export function buildAtlas(
             if (axis < lo || axis > hi) continue;
             const lane = (horizontal ? a.x+W/2 : a.y+H/2)+other.alignedOffset;
             const distance = ['left','top'].includes(p.side) ? boundary-lane : lane-boundary;
-            if (distance > 0 && distance < portLength+12) portLength = distance+12;
+            if (distance > 0 && distance < portLength+12) {
+              const sign = ['left','top'].includes(p.side) ? -1 : 1;
+              const oldEnd = boundary+sign*portLength, newEnd = boundary+sign*(distance+12);
+              const blockedExtension = obstacles.some(o => horizontal
+                ? axis>o.t && axis<o.b && Math.max(oldEnd,newEnd)>o.l && Math.min(oldEnd,newEnd)<o.r
+                : axis>o.l && axis<o.r && Math.max(oldEnd,newEnd)>o.t && Math.min(oldEnd,newEnd)<o.b);
+              if (!blockedExtension) portLength = distance+12;
+            }
           }
         }
         if (p.side === "left") {
@@ -1036,7 +1046,7 @@ export function buildAtlas(
           const textWidth = 20 + String(e.count).length * 8;
           const width = horizontal ? textWidth : 18;
           const height = horizontal ? 18 : textWidth;
-          const inset = textWidth / 2 + 10;
+          const inset = textWidth / 2 + 6;
           const positions = [L / 2];
           for (let at = inset; at <= L - inset; at += 4) positions.push(at);
           for (const at of positions) {
@@ -1124,6 +1134,7 @@ export function buildAtlas(
     dep: options.dependency ?? 2,
     combine: "either",
   });
+  if (!local.shown.length) return emptyLayout;
   const layout = arrange(local.shown, options.view === "hierarchy" ? 1 : 0);
   const ids = new Set(layout.placed.map((n) => n.id));
   const edges = [];

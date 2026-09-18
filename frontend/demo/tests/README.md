@@ -41,3 +41,10 @@ the straight 27 to 34 route beside the 4 to 31 approach around item 29.
 `node tests/notebook-math.mjs` checks that inline mathematics stays within prose,
 display mathematics occupies separate notebook rows, and source text remains
 escaped. Tall formula sizing also requires a browser check.
+
+`node tests/study-realms.mjs` checks the notebook's separate Text and Questions
+sequences, completed exercises, end boundaries, type-based realm selection,
+and Atlas filtering without renumbering. It covers every non-exercise position
+in both layouts of the frozen Real Analysis sample and checks that filtering loses no routes
+or omitted-position labels. Browser checks cover the actual realm switch,
+URL, shared progress appearance, and the Back/Continue controls.

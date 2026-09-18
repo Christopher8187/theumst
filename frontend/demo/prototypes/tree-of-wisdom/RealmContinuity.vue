@@ -67,7 +67,7 @@ defineProps<{ page: number; active: RealmId | null }>();
 .continuous-ink{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;color:#c3d3dd;stroke-width:.85;opacity:.72}
 .continuous-ink g[class*="trail"],.neutral-bridge,.narrow-composition path{opacity:.38;transition:opacity .2s,color .2s,filter .2s}
 .faint{opacity:.43;stroke-width:.65}
-.lit-text .trail-text,.lit-questions .trail-questions,.lit-notes .trail-notes,.lit-review .trail-review,.lit-preview .trail-preview,.lit-advice .trail-advice,.lit-expand .trail-expand,.lit-progress .trail-progress{opacity:.65;color:var(--realm-accent)}
+.lit-text .trail-text,.lit-questions .trail-questions,.lit-notes .trail-notes,.lit-review .trail-review,.lit-preview .trail-preview,.lit-advice .trail-advice,.lit-expand .trail-expand,.lit-progress .trail-progress{opacity:.65;color:var(--realm-accent);transition-duration:70ms;transition-timing-function:ease-out}
 .narrow-composition{display:none}
 @media(max-width:700px){.wide-composition{display:none}.narrow-composition{display:block}.continuous-ink{stroke-width:1.2;opacity:.62}}
 @media(prefers-reduced-motion:reduce){.continuous-ink g,.continuous-ink path{transition:none}}

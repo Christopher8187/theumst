@@ -17,6 +17,9 @@ const emit = defineEmits(["continue", "back-object", "select", "retry-graph", "e
 const current = computed(() => props.selectedNode
   || props.nodes.find(node => node.knowledge_id === props.selectedId)
   || props.nodes[0]);
+const locationSections = computed(() => props.notebook
+  ? current.value?.breadcrumbs?.slice(-1) || []
+  : current.value?.breadcrumbs || []);
 const exercises = computed(() => props.nodes.filter(node => node.type === "exercise"));
 const position = computed(() => exercises.value.findIndex(node => node.knowledge_id === current.value?.knowledge_id));
 const closableSideModes = new Set(["notes", "similar", "image"]);
@@ -50,7 +53,7 @@ function closeSidePanel() {
       <div class="study-context">
       <h2 v-if="notebook && sideMode === 'graph'" class="atlas-heading">{{t.atlas}}</h2>
       <div v-if="current?.breadcrumbs?.length" class="breadcrumbs">
-        <span v-for="section in current.breadcrumbs" :key="section.section_id"><i>{{ section.number }}</i>{{ section.name }}</span>
+        <span v-for="section in locationSections" :key="section.section_id" :title="`${section.number} ${section.name}`"><i>{{ section.number }}</i>{{ section.name }}</span>
       </div>
       </div>
       <slot name="study-controls"/>
@@ -60,7 +63,7 @@ function closeSidePanel() {
     <div class="study-split">
       <div class="knowledge-side">
         <slot name="reading-tools"></slot>
-        <div v-if="mode === 'questions'" class="exercise-nav">
+        <div v-if="mode === 'questions' && !notebook" class="exercise-nav">
           <button :disabled="position <= 0" type="button" @click="$emit('move', -1)">← {{ t.previous }}</button>
           <span>{{ Math.max(position + 1, 1) }} / {{ exercises.length }}</span>
           <button :disabled="position >= exercises.length - 1" type="button" @click="$emit('move', 1)">{{ t.next }} →</button>
@@ -80,7 +83,7 @@ function closeSidePanel() {
         <NotePanel v-if="sideMode === 'notes'" :t="t" :node="current" :notes="notes" :grimoire-id="book.grimoire_id" @close="$emit('close-side')" @save="$emit('save-note', $event)" @notes-page="$emit('notes-page')" />
         <SearchPanel v-else-if="sideMode === 'similar'" :t="t" :results="similarResults" :kind="discoveryKind" :status="similarStatus" :error="similarError" @close="$emit('close-side')" @open="$emit('open-result', $event)" />
         <ImagePanel :t="t" v-else-if="sideMode === 'image'" :image="activeImage" :node="current" :download-image="notebook" @close="$emit('close-side')" />
-        <SectionAtlas v-else :t="t" :nodes="nodes" :sections="sections" :graph="graph" :selected-id="current?.knowledge_id" :compact-controls="notebook" @select="$emit('select',$event)" />
+        <SectionAtlas v-else :t="t" :nodes="nodes" :sections="sections" :graph="graph" :selected-id="current?.knowledge_id" :compact-controls="notebook" :excluded-types="notebook && mode === 'text' ? ['exercise'] : []" @select="$emit('select',$event)" />
         <div v-if="!notebook || (originBookId && originBookId !== book.grimoire_id)" class="study-side-controls">
           <button v-if="current && !notebook" type="button" :class="{ done: current.completed }" @click="$emit('done', current)">{{ current.completed ? '✓ ' + t.completed : '○ ' + t.markDone }}</button>
           <button v-if="originBookId && originBookId !== book.grimoire_id" type="button" @click="$emit('return-origin')">← {{ t.returnOrigin }}</button>

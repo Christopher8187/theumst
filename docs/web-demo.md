@@ -8,6 +8,14 @@ Text follows the complete available grimoire order. Continue visits one next obj
 
 Mark done saves the object's completion, refreshes visible completion feedback and keeps the object selected. Completion is shared between Text and Questions. Their saved positions are independent. A cross-book excursion preserves the first original book, object and realm through further jumps; Return to original book restores all three.
 
+The local issue 70 notebook prototype now differs from the deployed reader:
+Text's Continue skips exercises, and its Atlas hides exercise cards. Questions
+uses Back and Continue for the previous and next exercise, without wrapping;
+its Atlas includes all types, and selecting a non-exercise opens Text at that
+object. Selection preserves separate realm positions and shared completion.
+The header displays only the smallest containing subsection. These prototype
+decisions are recorded in [round 24](../frontend/demo/prototypes/tree-of-wisdom/round-twenty-four.md).
+
 ## Notes and availability
 
 Notes opens on the right with an attached-note selector and New note. Multiple notes may attach to one object. All notes opens the broader Notes realm. Switching or leaving edited writing offers Save and continue, Discard and continue and Keep editing, preserving the intended destination. Save failure keeps the draft.

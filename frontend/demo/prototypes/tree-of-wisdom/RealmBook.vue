@@ -69,6 +69,11 @@ async function returnToBook() {
   }, reduced ? 0 : 240);
 }
 function leave() { if (!busy.value) emit('back'); }
+function studyModeChanged(mode: 'text' | 'questions') {
+  lastRealm.value = mode;
+  destination.value = mode;
+  emit('realm', mode);
+}
 function escape() { if(inStudy.value)return; if (destination.value) returnToBook(); else leave(); }
 watch(() => props.ready, async ready => {
   if (ready && !destination.value) { await nextTick(); spread.value?.focus({ preventScroll: true }); }
@@ -99,7 +104,7 @@ onBeforeUnmount(() => clearTimeout(timer));
       </div>
       </RealmFolio>
     </div>
-    <TextRealm v-if="inStudy" :book="book" :initial-mode="destination==='questions'?'questions':'text'" @back="returnToBook" @completion="(id,count)=>emit('completion',id,count)"/>
+    <TextRealm v-if="inStudy" :book="book" :initial-mode="destination==='questions'?'questions':'text'" @mode="studyModeChanged" @back="returnToBook" @completion="(id,count)=>emit('completion',id,count)"/>
     <RealmDestination v-else-if="destination" :book="book" :realm="destination" :note="note" :page="destination==='questions'?questionPage:textPage" @back="returnToBook" @note="note=$event" @page="destination==='questions'?questionPage=$event:textPage=$event"/>
   </section>
 </template>
@@ -125,10 +130,10 @@ onBeforeUnmount(() => clearTimeout(timer));
 .diagram-name{display:flex;align-items:center;gap:8px;align-self:center;position:relative;white-space:nowrap;font:italic 15px/1.4 Georgia,serif;min-height:28px;color:#dce5e8;transition:color .18s,text-shadow .18s}
 .diagram-mark{font:18px/1 'Noto Serif CJK SC','SimSun',serif;color:var(--ink);opacity:.72}
 .diagram-name>svg{width:16px;height:16px;flex-shrink:0;fill:none;stroke:var(--ink);stroke-width:1.2;opacity:0;pointer-events:none;transform:translateX(-4px);transition:opacity .18s,transform .18s}
-.is-lit .drawing{color:var(--ink);filter:drop-shadow(0 0 2px var(--ink)) drop-shadow(0 0 9px color-mix(in srgb,var(--ink) 32%,transparent))}
-.is-lit .diagram-name{color:#fff8f1;text-shadow:0 0 9px var(--ink)}
+.is-lit .drawing{color:var(--ink);filter:drop-shadow(0 0 2px var(--ink)) drop-shadow(0 0 9px color-mix(in srgb,var(--ink) 32%,transparent));transition-duration:70ms;transition-timing-function:ease-out}
+.is-lit .diagram-name{color:#fff8f1;text-shadow:0 0 9px var(--ink);transition-duration:70ms}
 .is-lit .diagram-mark{opacity:1}
-.is-lit .diagram-name>svg{opacity:1;transform:none}
+.is-lit .diagram-name>svg{opacity:1;transform:none;transition-duration:70ms}
 .realm-choice[data-realm=text]{left:0;top:0;width:61%;height:49%;--tilt:-4deg}
 .realm-choice[data-realm=questions]{right:0;top:12%;width:35%;height:39%;--tilt:7deg}
 .realm-choice[data-realm=notes]{left:0;top:53%;width:46%;height:45%;--tilt:-6deg}

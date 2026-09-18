@@ -12,6 +12,7 @@ const props = defineProps({
   graph: Object,
   selectedId: [Number, String],
   compactControls: Boolean,
+  excludedTypes: { type: Array, default: () => [] },
 });
 const emit = defineEmits(["select"]);
 const bookDistance = ref(3),
@@ -52,6 +53,7 @@ const layout = computed(() =>
       dependency: dependencyDistance.value,
       view: view.value,
       density: props.compactControls ? 'compact' : 'regular',
+      excludedTypes: props.excludedTypes,
     },
   ),
 );

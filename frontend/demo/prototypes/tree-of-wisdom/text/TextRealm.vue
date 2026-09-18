@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Selected daily notebook, with the existing Text realm's translucent blue palette.
-import { computed, nextTick, onMounted, toRef, useTemplateRef } from 'vue';
+import { computed, nextTick, onMounted, toRef, useTemplateRef, watch } from 'vue';
 import StudyView from '../../../src/components/StudyView.vue';
 import NotesDesk from '../../../src/components/NotesDesk.vue';
 import NoteDecision from '../../../src/components/NoteDecision.vue';
@@ -18,7 +18,7 @@ import './notebook-selected.css';
 import './atlas-instrument.css';
 
 const props = defineProps<{ book: SampleBook; initialMode?: 'text' | 'questions' }>();
-const emit = defineEmits<{ back: []; completion: [bookId: string, count: number] }>();
+const emit = defineEmits<{ back: []; completion: [bookId: string, count: number]; mode: [mode: 'text' | 'questions'] }>();
 const { t, lang } = useWisdomI18n();
 function updateNotebookUrl() {
   const query = new URLSearchParams(location.search);
@@ -36,12 +36,14 @@ const copy = computed(() => ({ ...t.value,
   dependencies: lang.value === 'zh' ? '依赖' : lang.value === 'ja' ? '依存関係' : 'Dependencies',
   dependenciesMethod: lang.value === 'zh' ? '当前知识对象直接依赖的知识对象。' : lang.value === 'ja' ? 'この知識オブジェクトが直接依存する知識オブジェクト。' : 'Knowledge objects this object directly depends on.',
   noDependencies: lang.value === 'zh' ? '此知识对象尚未记录依赖关系。' : lang.value === 'ja' ? 'この知識オブジェクトの依存関係は記録されていません。' : 'No dependencies are recorded for this knowledge object.',
+  limitedArrows: lang.value === 'zh' ? '部分箭头无法显示。继续仍可访问此领域中的下一个对象。' : lang.value === 'ja' ? '一部の矢印を表示できません。「続ける」でこの領域の次のオブジェクトに進めます。' : 'Some arrows could not fit. Continue still visits the next object in this realm.',
   similarityMethod: lang.value === 'zh' ? '此原型使用关联知识示例，分数为示例值。' : lang.value === 'ja' ? 'この試作の関連知識とスコアは例示用です。' : 'Illustrative matches for this prototype. Scores are sample values.',
 }));
 const state = useTextStudy(bookId, copy, (id: string, count: number) => emit('completion', id, count), toRef(props, 'initialMode'));
 const { book, sampleBook, nodes, sections, selectedId, selectedNode, mode, sideMode,
   notes, allNotes, showingAllNotes, graph, similarResults, similarStatus, similarError,
-  discoveryKind, originBookId, activeImage, canBack, guard, actionBusy, toast } = state;
+  discoveryKind, originBookId, activeImage, canBack, canContinue, guard, actionBusy, toast } = state;
+watch(mode, value => emit('mode', value));
 const title = useTemplateRef<HTMLElement>('title');
 function back() { state.run(() => {
   if (!showingAllNotes.value && originBookId.value && book.value.grimoire_id !== originBookId.value) state.returnOrigin();
@@ -91,7 +93,7 @@ onMounted(async () => { updateNotebookUrl(); await nextTick(); title.value?.focu
         </template>
         <template #reading-actions="{current}">
           <button type="button" :disabled="!canBack" @click="state.run(state.backObject)">{{t.back}}</button>
-          <button type="button" :disabled="!current" @click="state.run(state.continueReading)">{{t.continue}}</button>
+          <button type="button" :disabled="!current || !canContinue" @click="state.run(state.continueReading)">{{t.continue}}</button>
           <button v-if="current" class="notebook-done" type="button" :class="{done:current.completed}" @click="state.run(state.markDone,current)">{{current.completed?'✓ '+t.completed:'○ '+t.markDone}}</button>
         </template>
       </StudyView>

@@ -7,7 +7,7 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=23&arrival=0&book=analysis`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=24&arrival=0&book=analysis`.
 For the selected Text notebook, add `view=realms&place=tree&realm=text&notebook=B`.
 The earlier three-way notebook comparison remains at commit `714b160`.
 The local Vite server uses port 5175.
@@ -42,6 +42,7 @@ Revision 20 shares [the Realms book frame, expanding math rows and adaptive Atla
 Revision 21 shares [navigation and status controls, aligns page rules and simplifies arrow departures](round-twenty-one.md). Graph numbers sit beside their titles in shorter cards.
 Revision 22 adds [equation spacing and shared routing improvements](round-twenty-two.md), including distinct connection points on crowded cards.
 Revision 23 places [omitted counts inside dotted arrows, improves reading flow and keeps image links inline](round-twenty-three.md).
+Revision 24 shares [progress sizing, the smallest subsection heading and separate Text/Questions navigation](round-twenty-four.md), with faster realm illumination.
 The revision 6 checkpoint is commit `c304345`.
 
 The scene uses the [world-tree panorama](assets/sanctuary-world-tree-distance.png).
@@ -85,7 +86,7 @@ ruled book rises. Eight pen-and-ink drawings occupy uneven positions across its
 pages. Hover and keyboard focus illuminate the drawing and nearby scenery.
 One click, Enter, or Space opens its local arrival view. Escape returns to the
 book and restores focus. Return to grimoires retraces the pan. See
-[the current round](round-twenty-three.md) for the selected notebook, and
+[the current round](round-twenty-four.md) for the selected notebook, and
 [round 11](round-eleven.md) for Text's connected functions and sample data.
 English, Chinese and Japanese use the existing persisted Demo preference.
 The four realm actions retain coming-soon behavior across grimoires.

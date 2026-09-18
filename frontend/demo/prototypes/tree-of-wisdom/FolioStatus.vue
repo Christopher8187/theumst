@@ -11,7 +11,7 @@ defineProps<{ book: SampleBook }>();
 
 <style scoped>
 .folio-status{display:flex;align-items:center;justify-content:flex-end;gap:34px;flex:1;min-width:0}
-.folio-status .folio-progress{max-width:210px;min-width:38px;margin:0}
+.folio-status .folio-progress{flex:0 0 clamp(86px,14vw,210px);width:clamp(86px,14vw,210px);max-width:210px;min-width:0;margin:0}
 .folio-status :deep(.completion-label){display:none}
 .folio-status :deep(.completion-copy){justify-content:flex-end}
 .folio-status :deep(progress){height:2px}
