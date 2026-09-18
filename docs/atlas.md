@@ -25,4 +25,12 @@ vertical and horizontal arrows straight. Long dependencies that bypass cards
 in the same column leave from the side. Routing discourages parallel runs
 within eight drawing units of another arrow or group boundary. Perpendicular
 boundary crossings remain available. The ordinary Demo keeps its regular
-spacing and labels. See the [revision 19 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-nineteen.md).
+spacing and labels.
+
+Compact chapter rows now choose their grouping from measured content widths
+and heights. This allows several short chapters beside one another and a wide
+chapter on the following row. Aligned arrows reserve separate incoming and
+outgoing ports. Long horizontal dependencies bypass intervening cards below
+the row. The router reserves clearance around each arrowhead and its final
+straight segment. Omitted-range labels prefer clear space above horizontal
+gold arrows. See the [revision 20 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-twenty.md).

@@ -3,6 +3,41 @@
 export const ATLAS_NODE_LIMIT = 24;
 export const ATLAS_EDGE_LIMIT = 72;
 
+// Try content-derived row widths, preserving reader order. A wide chapter can
+// occupy its own row while several narrower chapters share the preceding row.
+function chapterRows(items, gutter, rowGap) {
+  const widths = new Set();
+  for (let i = 0; i < items.length; i++) {
+    let width = 0;
+    for (let j = i; j < items.length; j++) {
+      width += items[j].w + (j === i ? 0 : gutter);
+      widths.add(width);
+    }
+  }
+  let best;
+  for (const width of widths) {
+    const states = Array(items.length + 1);
+    states[items.length] = { height: 0, rows: [] };
+    for (let i = items.length - 1; i >= 0; i--) {
+      let rowWidth = 0, rowHeight = 0;
+      for (let j = i; j < items.length; j++) {
+        rowWidth += items[j].w + (j === i ? 0 : gutter);
+        rowHeight = Math.max(rowHeight, items[j].h);
+        if (rowWidth > width) break;
+        if (!states[j + 1]) continue;
+        const height = rowHeight + (j + 1 < items.length ? rowGap + states[j + 1].height : 0);
+        if (!states[i] || height < states[i].height)
+          states[i] = { height, rows: [items.slice(i, j + 1), ...states[j + 1].rows] };
+      }
+    }
+    if (!states[0]) continue;
+    const { height, rows } = states[0];
+    const score = width * height + .2 * (width - 2 * height) ** 2;
+    if (!best || score < best.score) best = { rows, score };
+  }
+  return best.rows;
+}
+
 export function buildAtlas(
   objects,
   sections,
@@ -233,10 +268,10 @@ export function buildAtlas(
       snake = new Map();
     let sy = 0;
     const rowWidth = (row) => row.reduce((sum, b) => sum + b.w, 0) + colGap * (row.length - 1);
-    const readingWidth = Math.max(...items.filter((_, i) => i % columns === 0).map((_, i) => rowWidth(items.slice(i * columns, (i + 1) * columns))));
-    for (let start = 0; start < items.length; start += columns) {
-      const row = items.slice(start, start + columns),
-        rowNumber = Math.floor(start / columns);
+    const readingRows = compact && columns === 2 ? chapterRows(items, colGap, gap)
+      : items.filter((_, i) => i % columns === 0).map((_, i) => items.slice(i * columns, (i + 1) * columns));
+    const readingWidth = Math.max(...readingRows.map(rowWidth));
+    for (const [rowNumber, row] of readingRows.entries()) {
       let cursor = rowNumber % 2 ? readingWidth : 0;
       row.forEach((b, i) => {
         const col = rowNumber % 2 ? columns - 1 - i : i;
@@ -495,9 +530,9 @@ export function buildAtlas(
         // Long dependencies leave from the side, clear of the short reading arrows.
         e.fromSide = e.toSide = "left";
       }
-      if (compact && (dx === 0 || dy === 0) && e.fromSide !== e.toSide) {
-        const peers = edges.filter(other => other.a === e.a && other.b === e.b);
-        e.alignedOffset = (peers.indexOf(e) - (peers.length - 1) / 2) * 16;
+      if (compact && e.type === "dependency" && dy === 0 && placed.some(n => n.id !== a.id && n.id !== b.id && n.y === a.y && n.x > Math.min(a.x,b.x) && n.x < Math.max(a.x,b.x))) {
+        // Bypass intervening cards below the row, leaving the direct gold lane clear.
+        e.fromSide = e.toSide = "bottom";
       }
       for (const [id, side, end] of [
         [e.a, e.fromSide, "s"],
@@ -510,6 +545,30 @@ export function buildAtlas(
           id,
           side,
         });
+      }
+    }
+    if (compact) {
+      const pinned = new Map();
+      // Allocate a shared offset at both ends, without reusing another arrow's
+      // incoming or outgoing port on either card.
+      for (const e of [...edges].sort((a,b) => Math.abs(a.b-a.a)-Math.abs(b.b-b.a))) {
+        const a = byId.get(e.a), b = byId.get(e.b);
+        if ((a.x !== b.x && a.y !== b.y) || e.fromSide === e.toSide) continue;
+        const keys = [e.a+':'+e.fromSide,e.b+':'+e.toSide];
+        const horizontal = ['left','right'].includes(e.fromSide);
+        const length = horizontal ? H : W;
+        const candidates = [0,16,-16,32,-32,48,-48,64,-64].filter(v=>Math.abs(v)<=(length-20)/2);
+        const offset = candidates.find(v=>keys.every(key=>(pinned.get(key)||[]).every(other=>Math.abs(other-v)>=12)));
+        if (offset === undefined) continue;
+        e.alignedOffset = offset;
+        for (const key of keys) (pinned.get(key)||pinned.set(key,[]).get(key)).push(offset);
+        const line = horizontal ? a.y+H/2+offset : a.x+W/2+offset;
+        const start = horizontal ? Math.min(a.x,b.x)+W : Math.min(a.y,b.y)+H;
+        const end = horizontal ? Math.max(a.x,b.x) : Math.max(a.y,b.y);
+        const barriers = [...placed.filter(n=>n!==a&&n!==b).map(n=>({l:n.x-7,r:n.x+W+7,t:n.y-7,b:n.y+H+7})),...extraObstacles];
+        e.direct = !barriers.some(o=>horizontal
+          ? line>o.t&&line<o.b&&end>o.l&&start<o.r
+          : line>o.l&&line<o.r&&end>o.t&&start<o.b);
       }
     }
     for (const bucket of ports.values()) {
@@ -535,22 +594,23 @@ export function buildAtlas(
           y = n.y + H / 2,
           dx = 0,
           dy = 0;
+        const portLength = compact && !p.e.direct ? 16 : spacing.port;
         if (p.side === "left") {
           x = n.x;
           y += offset;
-          dx = -spacing.port;
+          dx = -portLength;
         } else if (p.side === "right") {
           x = n.x + W;
           y += offset;
-          dx = spacing.port;
+          dx = portLength;
         } else if (p.side === "top") {
           x += offset;
           y = n.y;
-          dy = -spacing.port;
+          dy = -portLength;
         } else {
           x += offset;
           y = n.y + H;
-          dy = spacing.port;
+          dy = portLength;
         }
         p.e[p.end === "s" ? "start" : "end"] = { x, y };
         p.e[p.end] = { x: x + dx, y: y + dy };
@@ -572,6 +632,14 @@ export function buildAtlas(
       xValues.add(maxX + 40 + i * 9);
       yValues.add(32 + i * 2);
       yValues.add(maxY + 40 + i * 4);
+    }
+    const terminals = compact ? edges.map((e, owner) => ({
+      owner, l:Math.min(e.end.x,e.t.x)-5, r:Math.max(e.end.x,e.t.x)+5,
+      t:Math.min(e.end.y,e.t.y)-5, b:Math.max(e.end.y,e.t.y)+5,
+    })) : [];
+    for (const r of terminals) {
+      xValues.add(r.l-1); xValues.add(r.r+1);
+      yValues.add(r.t-1); yValues.add(r.b+1);
     }
     const xs = [...xValues].sort((a, b) => a - b),
       ys = [...yValues].sort((a, b) => a - b),
@@ -627,6 +695,16 @@ export function buildAtlas(
     const occupied = new Set(),
       used = new Uint8Array(N),
       turns = new Uint8Array(N);
+    const terminalH = new Int32Array(N).fill(-1), terminalV = new Int32Array(N).fill(-1);
+    for (const r of terminals) {
+      for (let y = 0; y < ys.length; y++) for (let x = 0; x < nx; x++) {
+        const k = y*nx+x;
+        if (x+1<nx && ys[y]>r.t && ys[y]<r.b && xs[x+1]>r.l && xs[x]<r.r)
+          terminalH[k] = terminalH[k] === -1 || terminalH[k] === r.owner ? r.owner : -2;
+        if (y+1<ys.length && xs[x]>r.l && xs[x]<r.r && ys[y+1]>r.t && ys[y]<r.b)
+          terminalV[k] = terminalV[k] === -1 || terminalV[k] === r.owner ? r.owner : -2;
+      }
+    }
     const horizontalCost = new Float64Array(N), verticalCost = new Float64Array(N);
     function reserveLane(points, weight) {
       if (!compact) return;
@@ -664,6 +742,7 @@ export function buildAtlas(
       ]),
     );
     function find(e) {
+      const owner = edges.indexOf(e);
       const start = yAt.get(e.s.y) * nx + xAt.get(e.s.x),
         target = yAt.get(e.t.y) * nx + xAt.get(e.t.x),
         cost = new Float64Array(N * 3);
@@ -720,6 +799,8 @@ export function buildAtlas(
           [8, k - nx, 1],
         ];
         for (const [bit, next, nd] of options) {
+          if (compact && ((k === start && bit === {right:2,left:1,bottom:8,top:4}[e.fromSide])
+            || (next === target && bit === {left:2,right:1,top:8,bottom:4}[e.toSide]))) continue;
           if (
             !(links[k] & bit) ||
             occupied.has(key(k, next)) ||
@@ -727,6 +808,8 @@ export function buildAtlas(
             (portCells.has(next) && next !== target && next !== start)
           )
             continue;
+          const terminalOwner = (nd === 0 ? terminalH : terminalV)[Math.min(k,next)];
+          if (terminalOwner !== -1 && terminalOwner !== owner) continue;
           if (dir !== 2 && dir !== nd && used[k]) continue;
           const distance =
             nd === 0
@@ -875,7 +958,8 @@ export function buildAtlas(
                   const score =
                     Math.abs(travelled + at - length / 2) +
                     gap * 4 +
-                    Math.abs(shift) * 2;
+                    Math.abs(shift) * 2 +
+                    (compact && horizontal && side > 0 ? 80 : 0);
                   if (best && score >= best.score) continue;
                   if (
                     x < 8 ||

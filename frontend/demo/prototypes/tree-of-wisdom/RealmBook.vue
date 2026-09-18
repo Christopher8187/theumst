@@ -8,6 +8,7 @@ import RealmDiagram from './RealmDiagram.vue';
 import RealmContinuity from './RealmContinuity.vue';
 import RealmDestination from './RealmDestination.vue';
 import LanguageControl from './LanguageControl.vue';
+import RealmFolio from './RealmFolio.vue';
 import GrimoireCompletion from './GrimoireCompletion.vue';
 import TextRealm from './text/TextRealm.vue';
 
@@ -30,7 +31,7 @@ const sheets = [realms.slice(0, 4), realms.slice(4)];
 const activeRealm = computed(() => enteringRealm.value ?? hoveredRealm.value ?? focusedRealm.value);
 const accent = computed(() => realms.find(realm => realm.id === activeRealm.value)?.accent ?? '#bfe6e9');
 const busy = computed(() => !!enteringRealm.value || returning.value || reforming.value);
-const motionStyle = computed(() => ({ opacity: props.reveal, transform: `translate3d(0,${(1-props.reveal)*110}px,0) rotateX(${(1-props.reveal)*32}deg) scale(${.82+.18*props.reveal})` }));
+const motionStyle = computed(() => ({ willChange: props.reveal < 1 ? 'transform, opacity' : 'auto', opacity: props.reveal, transform: `translate3d(0,${(1-props.reveal)*110}px,0) rotateX(${(1-props.reveal)*32}deg) scale(${.82+.18*props.reveal})` }));
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 function illuminate(event: PointerEvent, id: RealmId) {
@@ -79,9 +80,8 @@ onBeforeUnmount(() => clearTimeout(timer));
     <div v-if="destination && !inStudy" class="altar-nav" :inert="busy" :style="{opacity:reveal}"><button class="altar-return" :disabled="busy" @click="leave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h17"/></svg>{{t.backToTree}}</button><LanguageControl/></div>
     <div v-show="!destination" class="book-projection" :style="motionStyle">
       <div class="projection-plinth" aria-hidden="true"><i></i><i></i></div>
-      <div ref="spread" class="realm-spread" tabindex="-1" :aria-label="`${book.title} · ${t.realmBook}`">
-        <div class="book-underleaf" aria-hidden="true"></div>
-        <div class="book-spine" aria-hidden="true"><i></i></div>
+      <RealmFolio class="realm-spread">
+      <div ref="spread" class="realm-pages" tabindex="-1" :aria-label="`${book.title} · ${t.realmBook}`">
         <section v-for="(sheet,page) in sheets" :key="page" class="realm-leaf" :class="page===0?'leaf-left':'leaf-right'">
           <header class="leaf-heading">
             <template v-if="page===0"><button class="altar-return" :disabled="busy" :aria-label="t.backToTree" :title="t.backToTree" @click="leave"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h17"/></svg><span>{{t.backToTree}}</span></button><span class="leaf-book-title">{{book.title}}</span></template>
@@ -95,8 +95,8 @@ onBeforeUnmount(() => clearTimeout(timer));
             </button>
           </div>
         </section>
-        <div class="spine-bookmark" aria-hidden="true"></div>
       </div>
+      </RealmFolio>
     </div>
     <TextRealm v-if="inStudy" :book="book" :initial-mode="destination==='questions'?'questions':'text'" @back="returnToBook" @completion="(id,count)=>emit('completion',id,count)"/>
     <RealmDestination v-else-if="destination" :book="book" :realm="destination" :note="note" :page="destination==='questions'?questionPage:textPage" @back="returnToBook" @note="note=$event" @page="destination==='questions'?questionPage=$event:textPage=$event"/>
@@ -109,13 +109,12 @@ onBeforeUnmount(() => clearTimeout(timer));
 .realm-progress{margin-left:auto;margin-right:18px;max-width:210px}.realm-progress :deep(.completion-label){display:none}.realm-progress :deep(.completion-copy){justify-content:flex-end}.realm-progress :deep(progress){height:2px}.realm-progress :deep(.completion-values strong){font:11px 'Courier New',monospace;color:#c0d9df}.realm-progress :deep(.completion-values small){color:#9fb7c6}
 .altar-return{display:flex;align-items:center;gap:12px;min-height:44px;border:1px solid #c1d5df35;background:#173347c2;backdrop-filter:blur(15px);padding:10px 15px;color:#ddebf0;border-radius:3px;font:12px 'Bahnschrift','Segoe UI',sans-serif}
 .altar-return svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.2}
-.book-projection{position:absolute;inset:16px max(2.7%,calc((100vw - 1600px)/2)) 16px;display:flex;transform-origin:76% 83%;will-change:transform,opacity}
-.realm-spread{position:relative;flex:1;display:grid;grid-template-columns:1fr 1fr;min-width:0;min-height:0;isolation:isolate;outline:none;filter:drop-shadow(0 22px 30px #132d3e40)}
-.realm-leaf{display:flex;flex-direction:column;min-width:0;min-height:0;padding:20px 24px 16px;border:1px solid #c3e3e17d;background:linear-gradient(100deg,#183747ac,#163348c9);backdrop-filter:blur(20px) saturate(.74);box-shadow:inset 0 0 30px #9ecbda08;position:relative}
+.book-projection{position:absolute;inset:16px max(2.7%,calc((100vw - 1600px)/2)) 16px;display:flex;transform-origin:76% 83%}
+.realm-spread{flex:1;display:flex}
+.realm-pages{display:grid;grid-template-columns:1fr 1fr;min-width:0;min-height:0;width:100%;outline:none}
+.realm-leaf{display:flex;flex-direction:column;min-width:0;min-height:0;padding:20px 24px 16px;position:relative}
 .realm-leaf::before{content:'';position:absolute;inset:64px 16px 16px;pointer-events:none;background:repeating-linear-gradient(transparent 0 31px,#a6ccda19 31px 32px)}
 .realm-leaf::after{content:'';position:absolute;top:64px;bottom:18px;left:27px;border-left:1px solid #c6a2c735;pointer-events:none}
-.leaf-left{border-radius:5px 14px 2px 5px;border-right-color:#d4e9ea21;transform:perspective(1800px) rotateY(1.3deg);transform-origin:right center}
-.leaf-right{border-radius:14px 5px 5px 2px;border-left-color:#d4e9ea21;background:linear-gradient(90deg,#163348d4,#213747b8);transform:perspective(1800px) rotateY(-1.3deg);transform-origin:left center}
 .leaf-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;color:#c9dce0;min-height:30px;padding:0 8px 12px;border-bottom:1px solid #c7e1e63c;z-index:1}
 .leaf-heading>span{font:italic 16px/1.25 Georgia,serif;max-width:35ch}
 .leaf-heading small{font:11px Georgia,serif;color:#a4c7cf}
@@ -149,10 +148,6 @@ onBeforeUnmount(() => clearTimeout(timer));
 .realm-choice[data-realm=notes] .diagram-name{align-self:flex-start;margin-left:18%}
 .realm-choice[data-realm=preview] .diagram-name{align-self:flex-start;margin-left:12%}
 .realm-choice[data-realm=expand] .diagram-name{align-self:flex-start;margin-left:29%}
-.book-spine{position:absolute;z-index:4;top:3px;bottom:-7px;left:calc(50% - 9px);width:18px;background:linear-gradient(90deg,transparent,#071e3547 44%,#bde3e767 49%,#d9bfdfab 50%,#071e3565 60%,transparent);border-radius:50%;pointer-events:none}
-.book-spine i{display:block;margin:auto;width:1px;height:100%;box-shadow:0 0 15px #c9b6e373}
-.book-underleaf{position:absolute;inset:10px 3px -9px;border:1px solid #c1dfe56e;border-bottom:3px double #b3d8e68a;background:#1536494d;border-radius:4px;z-index:-1;transform:rotate(.2deg)}
-.spine-bookmark{position:absolute;z-index:5;top:-6px;left:calc(50% + 13px);width:12px;height:56px;background:linear-gradient(#ccb3da92,#9cafcf2e);clip-path:polygon(0 0,100% 0,100% 100%,50% 88%,0 100%);border-top:1px solid #e5cceb}
 .projection-plinth{position:absolute;bottom:-20px;left:69%;width:20%;height:16%;pointer-events:none;opacity:.45;background:conic-gradient(from -29deg at 50% 100%,transparent 0deg,#c4e7e71c 10deg,transparent 60deg);filter:blur(7px)}
 .projection-plinth i{position:absolute;bottom:0;left:0;right:0;height:30px;border:1px solid #c4e4ed90;border-radius:50%;transform:rotate(-8deg);box-shadow:0 0 20px #acded544}
 .projection-plinth i:last-child{inset:auto 12% 9px;height:15px;opacity:.5}
@@ -181,7 +176,7 @@ onBeforeUnmount(() => clearTimeout(timer));
   .realm-choice[data-realm=advice]{right:0;top:28%;width:88%;height:22%}
   .realm-choice[data-realm=expand]{left:0;top:52%;width:91%;height:23%}
   .realm-choice[data-realm=progress]{right:0;top:78%;width:86%;height:21%}
-  .book-spine{width:12px;left:calc(50% - 6px)}.spine-bookmark{left:calc(50% + 8px);width:8px;height:40px}
+
   .leaf-heading .altar-return span{display:none}
   .leaf-heading .altar-return{min-width:28px}
   .leaf-heading :deep(.language-control){gap:3px;padding-inline:4px}

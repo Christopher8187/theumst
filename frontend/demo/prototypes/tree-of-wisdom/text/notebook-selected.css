@@ -1,16 +1,17 @@
 /* Selected B. The notebook is a transparent leaf of the existing realm folio. */
-.altar-interface .text-realm.notebook-selected{top:16px;bottom:16px}
+.altar-interface .text-realm.notebook-selected{top:16px;bottom:16px;inset-inline:max(2.7%,calc((100vw - 1600px)/2))}
 .text-realm.notebook-selected .text-topnav{min-height:36px;margin-bottom:8px}
 .text-realm.notebook-selected .text-topnav .text-return,
 .text-realm.notebook-selected .text-topnav .wisdom-language{min-height:36px;padding-block:5px}
-.text-realm.notebook-selected .text-folio{top:0;display:grid;grid-template-rows:minmax(0,1fr)}
+.text-realm.notebook-selected .text-folio{position:absolute;inset:0;display:grid;grid-template-rows:minmax(0,1fr)}
 .text-realm.notebook-selected .text-folio::before{display:none}
 .text-realm.notebook-selected.all-notes-open .text-folio{grid-template-rows:50px minmax(0,1fr)}
 .text-realm.notebook-selected .text-folio .text-topnav{margin:0;padding:7px 24px;border-bottom:1px solid #bad9df26;gap:18px}
 .text-realm.notebook-selected .text-folio .text-completion{width:125px;margin-left:auto}
 .text-realm.notebook-selected .text-folio .text-completion .completion-values strong{font-size:12px}
 .text-realm.notebook-selected .text-folio .study-view{height:auto;min-height:0;grid-template-rows:64px minmax(0,1fr)}
-.text-realm.notebook-selected .text-folio .study-topbar{display:grid;grid-template-columns:52.5% 47.5%;gap:0;padding:0}
+.text-realm.notebook-selected .text-folio .study-topbar{display:grid;grid-template-columns:1fr 1fr;gap:0;padding:0}
+.text-realm.notebook-selected .text-folio .study-split{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .text-realm.notebook-selected .text-folio .study-topbar>div:first-child{padding:10px 24px;width:100%}
 .text-realm.notebook-selected .text-folio .study-location{display:flex;align-items:center;gap:12px;padding:9px 22px;min-width:0}
 .text-realm.notebook-selected .text-folio .study-context{display:flex;align-items:baseline;gap:12px;flex:1;min-width:0}
@@ -33,6 +34,7 @@
   --paper-ink:#e8eeeb;
   --paper-muted:#a9c1cc;
   --paper-rule:#bed8dc35;
+  --notebook-rule:#b9d5df2b;
 }
 .text-realm.notebook-selected .text-folio .knowledge-side{
   background:transparent;box-shadow:none;color-scheme:dark;
@@ -41,11 +43,12 @@
   display:flex;flex-direction:column;padding-top:9px;padding-bottom:0;
 }
 .text-realm.notebook-selected .text-folio .knowledge-meta{flex-shrink:0;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:12px;padding:0 0 12px;border:0;font-size:16px;line-height:30px}
-.text-realm.notebook-selected .text-folio .knowledge-meta .type-chip{padding:0;border:0;font-size:16px;line-height:30px;text-transform:capitalize;letter-spacing:0}
+.text-realm.notebook-selected .text-folio .knowledge-meta .type-chip{padding:1px 7px;border:1px solid #b9d5df60;border-radius:2px;font-size:14px;line-height:24px;text-transform:capitalize;letter-spacing:0}
 .text-realm.notebook-selected .text-folio .knowledge-meta>span:nth-child(2){grid-column:3;grid-row:1;font:13px/30px var(--notebook-font)}
 .text-realm.notebook-selected .text-folio .knowledge-meta>span:nth-child(3){grid-column:2;grid-row:1;padding:0;color:#e8eeeb;font:500 16px/30px var(--notebook-font)}
-.text-realm.notebook-selected .text-folio .knowledge-section{flex-shrink:0;padding:0;margin:0;background:repeating-linear-gradient(#b9d5df2b 0 1px,transparent 1px 30px)}
-.text-realm.notebook-selected .text-folio .knowledge-section-head{height:30px;min-height:30px;margin:0;padding:0;align-items:center}
+.text-realm.notebook-selected .text-folio .knowledge-section{flex-shrink:0;padding:0;margin:0;background:none}
+.text-realm.notebook-selected .text-folio .knowledge-section-head{height:30px;min-height:30px;margin:0;padding:0;align-items:center;border-bottom:1px solid var(--notebook-rule)}
+.text-realm.notebook-selected .text-folio .statement-section .knowledge-section-head{box-shadow:inset 0 1px var(--notebook-rule)}
 .text-realm.notebook-selected .text-folio .knowledge-section h2{color:#c8ddde;font-size:13px;line-height:30px}
 .text-realm.notebook-selected .text-folio .workings-section{
   display:flex;flex-direction:column;flex:1 0 auto;
@@ -60,10 +63,10 @@
   background:none;line-height:30px;padding:0;
 }
 .text-realm.notebook-selected .text-folio .math-content p{margin:0;min-height:30px}
-.text-realm.notebook-selected .text-folio .katex-display{background:transparent;margin:0;padding:0 0 4px;min-height:60px;box-sizing:border-box;display:grid;place-items:end center}
+.text-realm.notebook-selected .text-folio .notebook-display-row .katex-display{background:none;margin:0;padding:0;min-height:0;display:block}
 .text-realm.notebook-selected .text-folio .workings-section::after{
   content:'';display:block;min-height:0;flex:1 0 0;order:1;pointer-events:none;
-  background:none;
+  background:repeating-linear-gradient(transparent 0 29px,var(--notebook-rule) 29px 30px);
 }
 .text-realm.notebook-selected .text-folio .sound-corner{order:2;flex-shrink:0}
 .text-realm.notebook-selected .text-folio .knowledge-section-head button,
@@ -115,8 +118,8 @@
 .text-realm.notebook-selected .text-folio,
 .text-realm.notebook-selected .text-folio :is(h1,h2,h3,button,input,select,textarea,.atlas-heading,.breadcrumbs,.type-chip,.knowledge-meta>span,.math-content,.atlas-node,.atlas-node b,.atlas-node small,.completion-values strong,.completion-values small,.text-realm-mark,.atlas-scale,.atlas-legend,svg text){font-family:var(--notebook-font);font-style:normal;letter-spacing:normal}
 @media(max-width:900px){
-  .altar-interface .text-realm.notebook-selected{top:auto;bottom:auto;padding-bottom:0;margin-block:16px}
-  .text-realm.notebook-selected .text-folio{top:auto}
+  .altar-interface .text-realm.notebook-selected{inset:auto;padding-bottom:0;margin-block:16px}
+  .text-realm.notebook-selected .text-folio{position:relative;inset:auto}
   .text-realm.notebook-selected .text-folio{display:flex;flex-direction:column}
   .text-realm.notebook-selected .text-folio .text-topnav{gap:10px;padding:9px 16px;flex-wrap:nowrap}
   .text-realm.notebook-selected .text-folio .text-completion{order:initial;flex:1;max-width:115px;min-width:60px}

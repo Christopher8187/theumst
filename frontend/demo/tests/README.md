@@ -18,3 +18,11 @@ and gap labels at seven selected objects in both layouts.
 view at object 1. It checks straight aligned arrows, separation of the two
 dependencies to object 27, clearance from chapter borders, and the compact
 gutter between sections 4.1 and 4.2.
+
+`node tests/atlas-endpoints.mjs` checks content-sized chapter rows, distinct
+incoming and outgoing ports, arrowhead clearance, and the reported 4 to 25
+route and +5 label placement in the Bounded sequences sample.
+
+`node tests/notebook-math.mjs` checks that inline mathematics stays within prose,
+display mathematics occupies separate notebook rows, and source text remains
+escaped. Tall formula sizing also requires a browser check.
