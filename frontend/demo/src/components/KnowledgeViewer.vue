@@ -36,7 +36,7 @@ function openInlineImage(event) {
           ▧ {{ image.semantic_context_name || `${t.bookImage} ${image.source_image_id}` }}
         </button>
       </div>
-      <button class="sound-corner" type="button" :aria-label="notebook?t.prompt:t.listen" @click="$emit('soon', notebook?'prompt':'sound')">{{notebook?'✦ '+t.prompt:'▶'}}</button>
+      <button v-if="!notebook" class="sound-corner" type="button" :aria-label="t.listen" @click="$emit('soon', 'sound')">▶</button>
     </section>
   </article>
   <div v-else class="knowledge-empty">{{ t.selectNode }}</div>

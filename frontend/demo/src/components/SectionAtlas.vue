@@ -1,8 +1,9 @@
 <script setup>
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { buildAtlas } from "../domain/atlas";
 import { renderMath } from "../math";
 import AtlasSettings from "./AtlasSettings.vue";
+import { useAtlasCamera } from '../composables/useAtlasCamera';
 
 const props = defineProps({
   t: Object,
@@ -16,7 +17,7 @@ const emit = defineEmits(["select"]);
 const bookDistance = ref(3),
   dependencyDistance = ref(2),
   view = ref("reading"),
-  scale = ref(0.65);
+  scale = ref(props.compactControls ? 1.1 : 0.65);
 const viewport = ref(null);
 const reportedGap = ref(null);
 const gapReport = computed(() =>
@@ -57,27 +58,17 @@ const path = (edge) =>
   edge.points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
 const label = (edge) =>
   edge.type === "dependency" ? props.t.dependency : props.t.readingOrder;
-async function center() {
-  await nextTick();
-  const node = layout.value.placed.find(
-    (n) => String(n.knowledge_id) === String(props.selectedId),
-  );
-  if (!node || !viewport.value) return;
-  viewport.value.scrollLeft = Math.max(
-    0,
-    (node.x + 80) * scale.value - viewport.value.clientWidth / 2,
-  );
-  viewport.value.scrollTop = Math.max(
-    0,
-    (node.y + 32) * scale.value - viewport.value.clientHeight / 2,
-  );
-}
-watch([layout, scale], center, { flush: "post" });
+const camera = useAtlasCamera(layout, viewport, scale, computed(() => props.compactControls));
+const { bounds, drawingWidth, drawingHeight, visible } = camera;
+function center() { return camera.center(props.selectedId); }
+watch([layout, scale], center, { flush: 'post', immediate: true });
+watch([() => camera.frame.value.width, () => camera.frame.value.height], center);
+const scales = [.5, .65, .8, 1, 1.1, 1.25, 1.5];
 </script>
 
 <template>
   <section class="section-atlas" :class="{'atlas-compact':compactControls}" :aria-label="t.atlas">
-    <header>
+    <header v-if="!compactControls">
       <h2>{{ t.atlas }}</h2>
       <button v-if="!compactControls" type="button" @click="center">{{ t.centerCurrent }}</button>
     </header>
@@ -119,14 +110,16 @@ watch([layout, scale], center, { flush: "post" });
       <p>{{ t.eitherDistance }}</p>
       <label v-if="compactControls" class="atlas-scale">{{t.scale}}
         <select v-model.number="scale">
-          <option :value="0.5">50%</option><option :value="0.65">65%</option>
-          <option :value="0.8">80%</option><option :value="1">100%</option>
+          <option v-if="!scales.includes(scale)" :value="scale">{{Math.round(scale*100)}}%</option>
+          <option v-for="size in scales" :key="size" :value="size">{{Math.round(size*100)}}%</option>
         </select>
       </label>
       <button v-if="compactControls" class="atlas-center" type="button" @click="center">{{t.centerCurrent}}</button>
+      <button v-if="compactControls" type="button" @click="camera.fit">{{t.fitMap}}</button>
+      <p v-if="compactControls" class="atlas-count">{{layout.placed.length}} / {{layout.candidates}} {{t.qualifyingObjects}}</p>
     </div>
     </AtlasSettings>
-    <div class="atlas-legend">
+    <div v-if="!compactControls" class="atlas-legend">
       <span class="gold">{{ t.readingOrder }}</span
       ><span>{{ t.dependency }}</span>
     </div>
@@ -138,11 +131,13 @@ watch([layout, scale], center, { flush: "post" });
       class="atlas-viewport"
       tabindex="0"
       :aria-label="t.atlas"
+      @scroll="camera.measure"
     >
+      <div :class="{'atlas-canvas':compactControls}">
       <svg
-        :width="layout.width * scale"
-        :height="layout.height * scale"
-        :viewBox="`0 0 ${layout.width} ${layout.height}`"
+        :width="drawingWidth"
+        :height="drawingHeight"
+        :viewBox="`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`"
         role="group"
         :aria-label="t.atlas"
       >
@@ -243,11 +238,19 @@ watch([layout, scale], center, { flush: "post" });
           </button></foreignObject
         >
       </svg>
+      </div>
+    </div>
+    <div v-if="compactControls" class="atlas-overview" role="img" :aria-label="t.atlasOverview">
+      <svg :viewBox="`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`" aria-hidden="true">
+        <path v-for="(edge,i) in layout.edges" :key="i" :d="path(edge)" class="overview-edge"/>
+        <rect v-for="node in layout.placed" :key="node.knowledge_id" :x="node.x" :y="node.y" width="160" height="64" rx="6" class="overview-node" :class="{'is-current':String(node.knowledge_id)===String(selectedId)}"/>
+        <rect :x="visible.x" :y="visible.y" :width="visible.width" :height="visible.height" class="overview-window"/>
+      </svg>
     </div>
     <p v-if="reportedGap" role="status" class="atlas-message">
       {{ gapReport }}
     </p>
-    <footer>
+    <footer v-if="!compactControls">
       <span
         >{{ layout.placed.length }} / {{ layout.candidates }}
         {{ t.qualifyingObjects }}</span

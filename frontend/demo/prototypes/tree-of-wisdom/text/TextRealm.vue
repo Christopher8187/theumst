@@ -12,6 +12,7 @@ import { useTextStudy } from './useTextStudy';
 import NotebookTools from './NotebookTools.vue';
 import './notebook-variants.css';
 import './notebook-selected.css';
+import './atlas-instrument.css';
 
 const props = defineProps<{ book: SampleBook; initialMode?: 'text' | 'questions' }>();
 const emit = defineEmits<{ back: []; completion: [bookId: string, count: number] }>();
@@ -24,6 +25,8 @@ function updateNotebookUrl() {
 const bookId = computed(() => props.book.id);
 const copy = computed(() => ({ ...t.value,
   atlasSettings: lang.value === 'zh' ? '设置' : lang.value === 'ja' ? '設定' : 'Settings',
+  atlasOverview: lang.value === 'zh' ? '全图' : lang.value === 'ja' ? '全体図' : 'Map overview',
+  fitMap: lang.value === 'zh' ? '适应视图' : lang.value === 'ja' ? '全体を表示' : 'Fit map',
   download: lang.value === 'zh' ? '下载' : lang.value === 'ja' ? 'ダウンロード' : 'Download',
   dependencies: lang.value === 'zh' ? '依赖' : lang.value === 'ja' ? '依存関係' : 'Dependencies',
   dependenciesMethod: lang.value === 'zh' ? '当前知识对象直接依赖的知识对象。' : lang.value === 'ja' ? 'この知識オブジェクトが直接依存する知識オブジェクト。' : 'Knowledge objects this object directly depends on.',
@@ -49,13 +52,13 @@ onMounted(async () => { updateNotebookUrl(); await nextTick(); title.value?.focu
 
 <template>
   <section class="text-realm notebook-study notebook-B notebook-selected" :class="{'all-notes-open':showingAllNotes}" @keydown.esc.capture="escape" :aria-label="showingAllNotes?t.notes:mode==='questions'?t.questions:t.text">
+    <div class="text-folio" :inert="actionBusy || !!guard.pending.value">
     <nav class="text-topnav" :inert="actionBusy || !!guard.pending.value">
       <button class="text-return" type="button" @click="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h17"/></svg>{{!showingAllNotes && originBookId && book.grimoire_id!==originBookId?t.returnOrigin:t.realmReturn}}</button>
       <span v-if="showingAllNotes" tabindex="-1" class="text-realm-mark"><span aria-hidden="true">寫</span>{{t.notes}}</span>
       <GrimoireCompletion class="text-completion" :book="sampleBook" compact/>
       <LanguageControl/>
     </nav>
-    <div class="text-folio" :inert="actionBusy || !!guard.pending.value">
       <div class="text-spine" aria-hidden="true"><i></i></div>
       <StudyView v-if="!showingAllNotes" notebook :t="copy" :book="book" :nodes="nodes" :sections="sections"
         :selected-id="selectedId" :selected-node="selectedNode" :mode="mode" :side-mode="sideMode" :can-back="canBack"
@@ -70,16 +73,19 @@ onMounted(async () => { updateNotebookUrl(); await nextTick(); title.value?.focu
         @done="state.run(state.markDone,$event)" @open-image="state.run(state.openImage,$event)"
         @soon="state.comingSoon($event)">
         <template #study-heading>
-          <span ref="title" tabindex="-1" class="text-realm-mark"><span aria-hidden="true">{{mode==='questions'?'問':'書'}}</span>{{mode==='questions'?t.questions:t.text}}</span>
           <h1>{{book.title}}</h1>
+          <span ref="title" tabindex="-1" class="text-realm-mark"><span aria-hidden="true">{{mode==='questions'?'問':'書'}}</span>{{mode==='questions'?t.questions:t.text}}</span>
         </template>
-        <template #reading-tools>
-          <NotebookTools :labels="copy" :side-mode="sideMode" :discovery-kind="discoveryKind" @action="state.run(state.action,$event)"/>
+        <template #reading-footer>
+          <div class="notebook-action-row">
+            <NotebookTools :labels="copy" :side-mode="sideMode" :discovery-kind="discoveryKind" :mode="mode" @action="state.run(state.action,$event)"/>
+            <button class="notebook-prompt" type="button" @click="state.comingSoon('prompt')">✦ {{t.prompt}}</button>
+          </div>
         </template>
         <template #reading-actions="{current}">
           <button type="button" :disabled="!canBack" @click="state.run(state.backObject)">{{t.back}}</button>
           <button type="button" :disabled="!current" @click="state.run(state.continueReading)">{{t.continue}}</button>
-          <button type="button" @click="state.run(state.action,mode==='questions'?'book':'train')">{{mode==='questions'?'▥':'→'}} {{mode==='questions'?t.book:t.train}}</button>
+          <button v-if="current" class="notebook-done" type="button" :class="{done:current.completed}" @click="state.run(state.markDone,current)">{{current.completed?'✓ '+t.completed:'○ '+t.markDone}}</button>
         </template>
       </StudyView>
       <NotesDesk v-else :t="copy" :notes="allNotes" :grimoire-id="book.grimoire_id"/>
