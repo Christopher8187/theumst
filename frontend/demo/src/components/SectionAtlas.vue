@@ -51,6 +51,7 @@ const layout = computed(() =>
       book: bookDistance.value,
       dependency: dependencyDistance.value,
       view: view.value,
+      density: props.compactControls ? 'compact' : 'regular',
     },
   ),
 );
@@ -168,19 +169,19 @@ function zoom(direction) {
             :y="p.y"
             :width="p.w"
             :height="p.h"
-            :rx="p.depth === 0 ? 44 : 24"
+            :rx="compactControls ? 4 : p.depth === 0 ? 44 : 24"
           />
-          <text :x="p.x + 30" :y="p.y + 39">
+          <text :x="p.x + (compactControls ? 16 : 30)" :y="p.y + (compactControls ? 25 : 39)">
             {{ layout.hierarchy[p.id].name }}
           </text>
         </g>
         <g v-for="s in layout.tiles" :key="s.id" class="atlas-section">
-          <rect :x="s.x" :y="s.y" :width="s.w" :height="s.h" rx="28" />
-          <text :x="s.x + 16" :y="s.y + 29">
+          <rect :x="s.x" :y="s.y" :width="s.w" :height="s.h" :rx="compactControls ? 3 : 28" />
+          <text :x="s.x + 16" :y="s.y + (compactControls ? 25 : 29)">
             {{ layout.hierarchy[s.id].name.slice(0, 27) }}
             <title>{{ layout.hierarchy[s.id].name }}</title>
           </text>
-          <text :x="s.x + 16" :y="s.y + 48">
+          <text v-if="!compactControls" :x="s.x + 16" :y="s.y + 48">
             {{ s.members.length }} {{ t.objectsShown }}
           </text>
         </g>
@@ -209,9 +210,10 @@ function zoom(direction) {
           @keydown.enter.prevent="reportGap(b)"
           @keydown.space.prevent="reportGap(b)"
         >
+          <title>+{{ b.count }} {{ t.outsideView }}</title>
           <rect :x="b.x" :y="b.y" :width="b.w" :height="b.h" rx="6" />
           <text :x="b.x + b.w / 2" :y="b.y + 16" text-anchor="middle">
-            +{{ b.count }} {{ t.outsideView }}
+            +{{ b.count }}<template v-if="!compactControls"> {{ t.outsideView }}</template>
           </text>
         </g>
         <foreignObject

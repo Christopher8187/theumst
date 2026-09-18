@@ -7,7 +7,7 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=17&arrival=0&book=analysis`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=18&arrival=0&book=analysis`.
 For the selected Text notebook, add `view=realms&place=tree&realm=text&notebook=B`.
 The earlier three-way notebook comparison remains at commit `714b160`.
 The local Vite server uses port 5175.
@@ -36,6 +36,7 @@ header and places [Atlas controls inside Settings](round-fifteen.md).
 Revision 16 moves navigation into the book, consolidates the left-page tools,
 and develops [the Atlas instrument display](round-sixteen.md).
 Revision 17 combines the two book header rows and places [zoom and the overview inside the graph](round-seventeen.md).
+Revision 18 tightens [Atlas spacing and group outlines](round-eighteen.md).
 The revision 6 checkpoint is commit `c304345`.
 
 The scene uses the [world-tree panorama](assets/sanctuary-world-tree-distance.png).
@@ -79,7 +80,7 @@ ruled book rises. Eight pen-and-ink drawings occupy uneven positions across its
 pages. Hover and keyboard focus illuminate the drawing and nearby scenery.
 One click, Enter, or Space opens its local arrival view. Escape returns to the
 book and restores focus. Return to grimoires retraces the pan. See
-[the current round](round-seventeen.md) for the selected notebook, and
+[the current round](round-eighteen.md) for the selected notebook, and
 [round 11](round-eleven.md) for Text's connected functions and sample data.
 English, Chinese and Japanese use the existing persisted Demo preference.
 The four realm actions retain coming-soon behavior across grimoires.

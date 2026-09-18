@@ -14,6 +14,11 @@ export function buildAtlas(
     EDGE_LIMIT = ATLAS_EDGE_LIMIT,
     W = 160,
     H = 64;
+  // Notebook density changes whitespace, while cards retain their readable size.
+  const compact = options.density === "compact";
+  const spacing = compact
+    ? { row: 48, column: 80, clearance: 20, leafX: 16, leafTop: 52, leafBottom: 16, node: 28, gap: 40, parentX: 20, parentTop: 44, parentBottom: 24, port: 10 }
+    : { row: 76, column: 140, clearance: 32, leafX: 28, leafTop: 88, leafBottom: 24, node: 42, gap: 48, parentX: 32, parentTop: 92, parentBottom: 32, port: 18 };
   const hierarchy = { book: { name: "", parent: null } };
   const bySection = new Map(sections.map((s) => [String(s.section_id), s]));
   for (const s of sections)
@@ -222,8 +227,8 @@ export function buildAtlas(
         refresh();
       }
     }
-    const gap = 76,
-      colGap = 140,
+    const gap = spacing.row,
+      colGap = spacing.column,
       colWidth = Math.max(...items.map((b) => b.w)),
       snake = new Map();
     let sy = 0;
@@ -275,13 +280,13 @@ export function buildAtlas(
       for (let pass = 0; pass < items.length; pass++) {
         const hit = accepted.filter(
           (a) =>
-            b.x < a.x + a.w + 32 &&
-            b.x + b.w + 32 > a.x &&
-            b.y < a.y + a.h + 32 &&
-            b.y + b.h + 32 > a.y,
+            b.x < a.x + a.w + spacing.clearance &&
+            b.x + b.w + spacing.clearance > a.x &&
+            b.y < a.y + a.h + spacing.clearance &&
+            b.y + b.h + spacing.clearance > a.y,
         );
         if (!hit.length) break;
-        b.y = Math.max(...hit.map((a) => a.y + a.h + 32));
+        b.y = Math.max(...hit.map((a) => a.y + a.h + spacing.clearance));
       }
       accepted.push(b);
     }
@@ -328,13 +333,13 @@ export function buildAtlas(
         id,
         members,
         gaps: ownGaps,
-        w: 216,
+        w: W + spacing.leafX * 2,
         h:
-          88 +
+          spacing.leafTop +
           members.length * H +
-          Math.max(0, members.length - 1) * 42 +
-          24 +
-          ownGaps.length * 48,
+          Math.max(0, members.length - 1) * spacing.node +
+          spacing.leafBottom +
+          ownGaps.length * spacing.gap,
         leaf: true,
       };
       const next = (children.get(id) || []).filter((child) => !seen.has(child));
@@ -362,8 +367,8 @@ export function buildAtlas(
       return {
         id,
         children: packed,
-        w: Math.max(...packed.map((b) => b.x + b.w)) + 64,
-        h: Math.max(...packed.map((b) => b.y + b.h)) + 124,
+        w: Math.max(...packed.map((b) => b.x + b.w)) + spacing.parentX * 2,
+        h: Math.max(...packed.map((b) => b.y + b.h)) + spacing.parentTop + spacing.parentBottom,
         leaf: false,
       };
     }
@@ -374,8 +379,10 @@ export function buildAtlas(
         top.push({
           id,
           members: visible.filter((n) => n.section === id),
-          w: 216,
-          h: 112 + visible.filter((n) => n.section === id).length * 106,
+          w: W + spacing.leafX * 2,
+          h: compact
+            ? spacing.leafTop + spacing.leafBottom + visible.filter((n) => n.section === id).length * (H + spacing.node)
+            : 112 + visible.filter((n) => n.section === id).length * 106,
           leaf: true,
         });
     const macro = packBoxes(
@@ -393,25 +400,25 @@ export function buildAtlas(
       headers = [];
     function place(box, x, y, depth) {
       const item = { ...box, x, y, depth };
-      headers.push({ l: x + 13, r: x + box.w - 13, t: y + 12, b: y + 50 });
+      headers.push({ l: x + 13, r: x + box.w - 13, t: y + (compact ? 8 : 12), b: y + (compact ? 29 : 50) });
       if (box.leaf) {
         tiles.push(item);
         box.members.forEach((n, i) =>
           placed.push({
             ...n,
-            x: x + 28,
+            x: x + spacing.leafX,
             y:
               y +
-              88 +
-              i * (H + 42) +
-              (box.gaps || []).filter((g) => g.b <= n.id).length * 48,
+              spacing.leafTop +
+              i * (H + spacing.node) +
+              (box.gaps || []).filter((g) => g.b <= n.id).length * spacing.gap,
             rank: box.rank,
           }),
         );
       } else {
         parents.push(item);
         for (const child of box.children)
-          place(child, x + 32 + child.x, y + 92 + child.y, depth + 1);
+          place(child, x + spacing.parentX + child.x, y + spacing.parentTop + child.y, depth + 1);
       }
     }
     for (const box of macro) place(box, box.x + 180, box.y + 72, 0);
@@ -454,8 +461,8 @@ export function buildAtlas(
     for (const n of placed) {
       xValues.add(n.x - 24);
       xValues.add(n.x + W + 24);
-      yValues.add(n.y - 32);
-      yValues.add(n.y + H + 32);
+      yValues.add(n.y - (compact ? 16 : 32));
+      yValues.add(n.y + H + (compact ? 16 : 32));
     }
 
     const ports = new Map();
@@ -493,11 +500,11 @@ export function buildAtlas(
         const n = byId.get(p.id),
           horizontal = ["left", "right"].includes(p.side),
           length = horizontal ? H : W,
-          spacing = Math.min(
+          portGap = Math.min(
             16,
             (length - 20) / Math.max(1, bucket.length - 1),
           ),
-          offset = (i - (bucket.length - 1) / 2) * spacing;
+          offset = (i - (bucket.length - 1) / 2) * portGap;
         let x = n.x + W / 2,
           y = n.y + H / 2,
           dx = 0,
@@ -505,19 +512,19 @@ export function buildAtlas(
         if (p.side === "left") {
           x = n.x;
           y += offset;
-          dx = -18;
+          dx = -spacing.port;
         } else if (p.side === "right") {
           x = n.x + W;
           y += offset;
-          dx = 18;
+          dx = spacing.port;
         } else if (p.side === "top") {
           x += offset;
           y = n.y;
-          dy = -18;
+          dy = -spacing.port;
         } else {
           x += offset;
           y = n.y + H;
-          dy = 18;
+          dy = spacing.port;
         }
         p.e[p.end === "s" ? "start" : "end"] = { x, y };
         p.e[p.end] = { x: x + dx, y: y + dy };
@@ -740,7 +747,7 @@ export function buildAtlas(
       b: y + h + p,
     });
     const insideRounded = (r, p) => {
-      const radius = 37,
+      const radius = compact ? 4 : 37,
         l = p.x + 7,
         t = p.y + 7,
         right = p.x + p.w - 7,
@@ -784,7 +791,7 @@ export function buildAtlas(
       for (const s of own) {
         const horizontal = s.a.y === s.b.y,
           L = Math.abs(s.b.x - s.a.x) + Math.abs(s.b.y - s.a.y),
-          w = 108,
+          w = compact ? Math.max(42, 22 + String(e.count).length * 8) : 108,
           h = 24,
           along = horizontal ? w : h;
         if (L >= 24) {
@@ -793,7 +800,7 @@ export function buildAtlas(
           for (const at of positions) {
             const ax = s.a.x + ((s.b.x - s.a.x) * at) / L,
               ay = s.a.y + ((s.b.y - s.a.y) * at) / L;
-            for (const gap of [10, 16, 24, 32, 44, 56])
+            for (const gap of compact ? [10, 16, 24, 32, 44, 56, 72, 88, 112, 128] : [10, 16, 24, 32, 44, 56])
               for (const side of [-1, 1])
                 for (const shift of horizontal ? [0, -24, 24, -44, 44] : [0]) {
                   const x = horizontal

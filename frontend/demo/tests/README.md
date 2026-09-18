@@ -7,3 +7,9 @@ Run the `.mjs` checks with Node from `frontend/demo`: `node tests/graph-contents
 Follow the [browser objectives](../../../docs/testing/web-demo.md) after deterministic checks. Preserve distinct results for simulated API display, real PostgreSQL/Qdrant study behavior and the deployed application. All three frontend builds are required for a coordinated release. Screenshots, raw traces and timing samples belong in the Parent Repo Test Area; durable results belong in release evidence.
 
 `atlas-api.mjs` checks the reader's Atlas view request through the real normalizer and both layouts, including separate dependency and reading-order paths sharing endpoints. Its response is simulated; the database and deployed-browser checks establish the stored-data path.
+
+`node tests/atlas-compact.mjs` checks the notebook's compact spacing in both
+layouts, comparing visible objects and relationships with regular spacing.
+Synthetic cases cover card/heading collisions, gap labels and drawing size at
+8, 16 and 24 objects. Fourteen frozen Real Analysis cases cover relationships
+and gap labels at seven selected objects in both layouts.

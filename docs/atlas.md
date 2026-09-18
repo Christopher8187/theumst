@@ -13,3 +13,11 @@ The layout ranks strongly connected section groups without deleting object relat
 The 0.1.0 limits are 24 objects and 72 arrows. Chrome 152 checks covered 8/19, 16/43 and 24/70 object/arrow combinations. A dense case with 72 supplied dependency edges rendered 23 objects and 72 total arrows, including 22 order arrows. It displayed the arrow-limit notice and measured 60.1 ms through layout and 67.3 ms through the second painted frame. At 1440, 768 and 390 CSS pixels the page had no horizontal overflow; the Atlas retained its own scrollable viewport. These fixture measurements support the selected bounds, not a universal latency guarantee. Do not raise them without further measurements. Math must render safely. See [testing](testing.md) and [browser objectives](testing/web-demo.md).
 
 Activate an outside-view count with pointer, Enter or Space to report the omitted range of book positions. This leaves the view unchanged; Continue still visits one next object. Nested groups restart their own rows and preserve the section hierarchy.
+
+The local notebook prototype opts into `density: "compact"`. This reduces
+group and card spacing, header padding and routing clearances while retaining
+160×64 cards and the same selection, grouping and relationship rules. It uses
+small-corner rectangular groups, omits per-section object counts, and displays
+outside-view counts as `+N` with their full meaning in the accessible label and
+hover title. The ordinary Demo keeps its regular spacing and labels. See the
+[revision 18 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-eighteen.md).
