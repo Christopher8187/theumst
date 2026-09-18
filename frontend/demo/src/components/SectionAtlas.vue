@@ -64,6 +64,10 @@ function center() { return camera.center(props.selectedId); }
 watch([layout, scale], center, { flush: 'post', immediate: true });
 watch([() => camera.frame.value.width, () => camera.frame.value.height], center);
 const scales = [.5, .65, .8, 1, 1.1, 1.25, 1.5];
+function zoom(direction) {
+  const candidates = direction > 0 ? scales : [...scales].reverse();
+  scale.value = candidates.find(size => direction > 0 ? size > scale.value : size < scale.value) ?? scale.value;
+}
 </script>
 
 <template>
@@ -108,12 +112,6 @@ const scales = [.5, .65, .8, 1, 1.1, 1.25, 1.5];
         </button>
       </div>
       <p>{{ t.eitherDistance }}</p>
-      <label v-if="compactControls" class="atlas-scale">{{t.scale}}
-        <select v-model.number="scale">
-          <option v-if="!scales.includes(scale)" :value="scale">{{Math.round(scale*100)}}%</option>
-          <option v-for="size in scales" :key="size" :value="size">{{Math.round(size*100)}}%</option>
-        </select>
-      </label>
       <button v-if="compactControls" class="atlas-center" type="button" @click="center">{{t.centerCurrent}}</button>
       <button v-if="compactControls" type="button" @click="camera.fit">{{t.fitMap}}</button>
       <p v-if="compactControls" class="atlas-count">{{layout.placed.length}} / {{layout.candidates}} {{t.qualifyingObjects}}</p>
@@ -126,6 +124,7 @@ const scales = [.5, .65, .8, 1, 1.1, 1.25, 1.5];
     <p v-if="!relations.length" class="atlas-message">
       {{ t.noAuthoredDependencies }}
     </p>
+    <div :class="compactControls?'atlas-display':'atlas-display-flat'">
     <div
       ref="viewport"
       class="atlas-viewport"
@@ -247,6 +246,15 @@ const scales = [.5, .65, .8, 1, 1.1, 1.25, 1.5];
         <rect :x="visible.x" :y="visible.y" :width="visible.width" :height="visible.height" class="overview-window"/>
       </svg>
     </div>
+    <div v-if="compactControls" class="atlas-zoom" role="group" :aria-label="t.scale">
+      <button type="button" :aria-label="t.zoomOut" :title="t.zoomOut" :disabled="scale<=scales[0]" @click="zoom(-1)">−</button>
+      <select v-model.number="scale" :aria-label="t.scale">
+        <option v-if="!scales.includes(scale)" :value="scale">{{Math.round(scale*100)}}%</option>
+        <option v-for="size in scales" :key="size" :value="size">{{Math.round(size*100)}}%</option>
+      </select>
+      <button type="button" :aria-label="t.zoomIn" :title="t.zoomIn" :disabled="scale>=scales[scales.length-1]" @click="zoom(1)">+</button>
+    </div>
+    </div>
     <p v-if="reportedGap" role="status" class="atlas-message">
       {{ gapReport }}
     </p>
@@ -271,6 +279,7 @@ const scales = [.5, .65, .8, 1, 1.1, 1.25, 1.5];
 </template>
 
 <style scoped>
+.atlas-display-flat { display: contents; }
 .section-atlas {
   background: #151b27;
   border: 1px solid #455169;

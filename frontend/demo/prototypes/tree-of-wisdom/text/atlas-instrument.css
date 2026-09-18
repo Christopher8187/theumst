@@ -1,7 +1,8 @@
 /* The right leaf uses a quieter instrument display; graph geometry is unchanged. */
 .text-realm.notebook-selected .text-folio .atlas-compact{gap:12px;overflow:visible}
+.text-realm.notebook-selected .text-folio .atlas-compact .atlas-display{position:relative;flex:1;min-height:240px;display:flex;min-width:0}
 .text-realm.notebook-selected .text-folio .atlas-compact .atlas-viewport{
-  position:relative;flex:1;min-height:240px;border:1px solid #8bc9d66b;border-radius:14px 3px 14px 3px;
+  position:absolute;inset:0;min-height:0;border:1px solid #8bc9d66b;border-radius:14px 3px 14px 3px;
   background:linear-gradient(#8ccddb0b 1px,transparent 1px),linear-gradient(90deg,#8ccddb0b 1px,transparent 1px),radial-gradient(ellipse at 42% 42%,#26566b85,#0b243bb0 78%);
   background-size:32px 32px,32px 32px,auto;box-shadow:inset 0 0 40px #0b203b45,0 0 0 3px #85c5d307;
 }
@@ -22,10 +23,16 @@
 .text-realm.notebook-selected .text-folio .atlas-compact .atlas-settings-trigger{top:12px;right:12px;z-index:8;background:#153546ef;border-color:#92cbd877;box-shadow:0 3px 12px #08182c33}
 .text-realm.notebook-selected .text-folio .atlas-compact .atlas-settings-panel{top:55px;right:12px;z-index:9;max-width:calc(100% - 24px);background:#163444f5}
 .text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-count{grid-column:1/-1;margin:0;padding-top:10px;border-top:1px solid #b6d7df33;font-size:13px}
-.text-realm.notebook-selected .text-folio .atlas-overview{height:94px;flex-shrink:0;background:#102d3c85;border:1px solid #92cbd836;border-radius:3px;overflow:hidden;position:relative}
+.text-realm.notebook-selected .text-folio .atlas-overview{position:absolute;bottom:16px;right:16px;width:36%;max-width:220px;height:100px;background:#102d3cde;backdrop-filter:blur(10px);border:1px solid #92cbd851;border-radius:3px;overflow:hidden;pointer-events:none;box-shadow:0 3px 16px #091d343b}
 .text-realm.notebook-selected .text-folio .atlas-overview svg{width:100%;height:100%;display:block;padding:8px}
 .atlas-overview .overview-edge{fill:none;stroke:#95bdce;stroke-width:2}
 .atlas-overview .overview-node{fill:#93c2cc88;stroke:#a9dbe2;stroke-width:1}
 .atlas-overview .overview-node.is-current{fill:#d5ede0;stroke:#e3f7e6;stroke-width:4}
 .atlas-overview .overview-window{fill:#a9d9e914;stroke:#b9d5eb;stroke-width:2;stroke-dasharray:6 4;pointer-events:none}
+.text-realm.notebook-selected .text-folio .atlas-zoom{position:absolute;bottom:16px;left:14px;display:flex;align-items:center;gap:0;background:#102d3ce8;border:1px solid #92cbd866;border-radius:3px;box-shadow:0 3px 16px #091d343b;backdrop-filter:blur(10px)}
+.text-realm.notebook-selected .text-folio .atlas-zoom button,
+.text-realm.notebook-selected .text-folio .atlas-zoom select{min-height:34px;border:0;border-radius:0;background:transparent;padding:5px 8px;color:#d8eeee;font:13px 'Bahnschrift','Segoe UI',sans-serif}
+.text-realm.notebook-selected .text-folio .atlas-zoom button{width:33px;font-size:20px;line-height:1}
+.text-realm.notebook-selected .text-folio .atlas-zoom select{border-inline:1px solid #92cbd833;color-scheme:dark}
+@media(max-width:540px){.text-realm.notebook-selected .text-folio .atlas-overview{height:80px;bottom:14px;right:12px}.text-realm.notebook-selected .text-folio .atlas-zoom{left:12px;bottom:14px}}
 @media(prefers-reduced-motion:reduce){.atlas-compact .atlas-node{transition:none!important}}

@@ -47,10 +47,13 @@ function closeSidePanel() {
     <div class="study-topbar">
       <div><slot name="study-heading"><p>{{ mode === 'questions' ? t.questionMode : t.textMode }}</p><h1>{{ book?.title }}</h1></slot></div>
       <div class="study-location">
+      <div class="study-context">
       <h2 v-if="notebook && sideMode === 'graph'" class="atlas-heading">{{t.atlas}}</h2>
       <div v-if="current?.breadcrumbs?.length" class="breadcrumbs">
         <span v-for="section in current.breadcrumbs" :key="section.section_id"><i>{{ section.number }}</i>{{ section.name }}</span>
       </div>
+      </div>
+      <slot name="study-controls"/>
       </div>
     </div>
 
@@ -88,5 +91,5 @@ function closeSidePanel() {
 </template>
 
 <style scoped>
-.study-location{display:contents}
+.study-location,.study-context{display:contents}
 </style>
