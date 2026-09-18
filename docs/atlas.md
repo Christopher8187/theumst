@@ -38,4 +38,16 @@ gold arrows. Long dependency departures clear their source card by eight
 units; incoming arrowheads retain a longer approach. This avoids small
 down-and-up detours beside nearby short arrows. Rendering, the overview and
 camera centering use the card dimensions returned by the layout.
-See the [revision 21 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-twenty-one.md).
+Crowded compact sides retain an unused evenly spaced connection point when
+the preferred 12-unit spacing is unavailable. If that point is occupied, the
+allocator bisects the widest free interval. Incoming and outgoing arrows
+share the same reservation list. Compact heading-to-card space includes room
+for two approach lanes and the arrowhead stem.
+
+Routing charges each bend the distance of one card width. It first searches
+for an approach that does not reverse near the destination. If that search
+fails, it allows the necessary reversal while retaining all collision checks.
+These rules apply to every grimoire; reported object numbers occur only in
+regression fixtures. Tests also rename IDs and labels and require unchanged
+geometry.
+See the [revision 22 design notes](../frontend/demo/prototypes/tree-of-wisdom/round-twenty-two.md).

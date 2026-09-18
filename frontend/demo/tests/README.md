@@ -12,7 +12,9 @@ Follow the [browser objectives](../../../docs/testing/web-demo.md) after determi
 layouts, comparing visible objects and relationships with regular spacing.
 Synthetic cases cover card/heading collisions, gap labels and drawing size at
 8, 16 and 24 objects. Fourteen frozen Real Analysis cases cover relationships
-and gap labels at seven selected objects in both layouts.
+and gap labels at seven selected objects in both layouts. Every case also
+checks that arrows have distinct connection points on each card, including
+incoming versus outgoing arrows and regular versus compact spacing.
 
 `node tests/atlas-route-clearance.mjs` reproduces the reported Real Analysis
 view at object 1. It checks straight aligned arrows, separation of the two
@@ -23,6 +25,10 @@ gutter between sections 4.1 and 4.2.
 incoming and outgoing ports, arrowhead clearance, and the reported 4 to 25
 route and +5 label placement in the Bounded sequences sample. It also checks
 that 1 to 27, 2 to 27 and 4 to 25 turn right without a short departure detour.
+The object 13 view checks the full approaches of 4 to 31, 8 to 15 and 13 to 15,
+so moving a reversed hook earlier does not count as a fix. It checks separate
+tails for 29 to 31 and 29 to 32. Renaming all object IDs, object titles and
+section names must leave node positions and routed geometry unchanged.
 Compact checks use the layout's returned card dimensions, including the
 52-unit height of cards with numbers beside their titles.
 

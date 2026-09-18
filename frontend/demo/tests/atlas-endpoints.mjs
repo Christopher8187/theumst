@@ -26,5 +26,36 @@ check(Math.hypot(q.x-p.x,q.y-p.y)>=16, '4→31 must enter through the base of a 
 check(edge(4,25).end.y > edge(19,25).end.y, '4→25 uses a lower port than the golden 19→25 arrow');
 const badge = layout.badges.find(b => b.a===19 && b.b===25);
 check(badge && badge.y+badge.h < badge.anchorY, '+5 sits above its golden 19→25 arrow');
+const around13 = buildAtlas(nodes, sections, deps, 13, { density: 'compact' });
+const dependency13 = (a,b) => around13.edges.find(e=>e.a===a&&e.b===b&&e.type==='dependency');
+for (const [a,b] of [[4,31],[8,15],[13,15]]) {
+  const e = dependency13(a,b);
+  check(!!e, `${a}→${b} remains visible around item 13`);
+  if (!e) continue;
+  const last = e.points.at(-1), approach = e.points.at(-2);
+  const dx = Math.sign(last.x-approach.x), dy = Math.sign(last.y-approach.y);
+  for (let i=1;i<e.points.length-1;i++) {
+    const p=e.points[i-1],q=e.points[i];
+    check((q.x-p.x)*dx+(q.y-p.y)*dy>=0,
+      `${a}→${b} approaches monotonically instead of moving its hook earlier`);
+  }
+}
+const tail31=dependency13(29,31).start,tail32=dependency13(29,32).start;
+check(Math.hypot(tail31.x-tail32.x,tail31.y-tail32.y)>=8,
+  '29→31 and 29→32 have separate departure points');
+// Geometry must depend on relationships and reader order, not these IDs/names.
+const renameId = id => id * 101 + 7000;
+const renamed = buildAtlas(
+  nodes.map(n => ({ ...n, knowledge_id: renameId(n.knowledge_id), label: `Renamed ${n.knowledge_id}` })),
+  sections.map(s => ({ ...s, section_name: `Renamed ${s.section_id}` })),
+  deps.map(e => ({ source_knowledge_id: renameId(e.source_knowledge_id), target_knowledge_id: renameId(e.target_knowledge_id) })),
+  renameId(13), { density: 'compact' },
+);
+const geometry = l => ({
+  nodes: l.placed.map(n => [n.id, n.x, n.y]),
+  edges: l.edges.map(e => [e.type, e.a, e.b, e.points]),
+  omitted: l.omitted,
+});
+assert.deepEqual(geometry(renamed), geometry(around13), 'renaming IDs and labels leaves routing unchanged');
 assert.deepEqual(failures, []);
-console.log('Adaptive chapter rows, distinct tips/tails, arrowhead clearance and +5 placement passed.');
+console.log('Adaptive chapter rows, distinct tips/tails, hook-free approaches and renamed-ID geometry passed.');

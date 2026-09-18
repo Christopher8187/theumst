@@ -16,12 +16,24 @@ const edgeKeys = layout => layout.edges.map(edge => `${edge.type}:${edge.a}:${ed
 const crosses = (a, b, rect) => a.x === b.x
   ? a.x > rect.l && a.x < rect.r && Math.max(a.y, b.y) > rect.t && Math.min(a.y, b.y) < rect.b
   : a.y > rect.t && a.y < rect.b && Math.max(a.x, b.x) > rect.l && Math.min(a.x, b.x) < rect.r;
+function checkEndpoints(layout, description) {
+  const ports = new Map();
+  for (const edge of layout.edges) {
+    for (const [node, point] of [[edge.a, edge.start], [edge.b, edge.end]]) {
+      const key = `${node}:${point.x}:${point.y}`;
+      assert(!ports.has(key), `${description}: ${edge.a}→${edge.b} shares a connection point with ${ports.get(key)}`);
+      ports.set(key, `${edge.a}→${edge.b}`);
+    }
+  }
+}
 const samples = [];
 for (const view of ['reading', 'hierarchy']) for (const limit of [8, 16, 24]) for (const relationships of [sparse, dense]) {
   const options = { view, limit, book: relationships === sparse ? 1 : 24, dependency: 2 };
   const selected = relationships === sparse ? 120 : 140;
   const regular = buildAtlas(nodes, sections, relationships, selected, options);
   const compact = buildAtlas(nodes, sections, relationships, selected, { ...options, density: 'compact' });
+  checkEndpoints(regular, `${view}/${limit}/regular`);
+  checkEndpoints(compact, `${view}/${limit}/compact`);
   assert.deepEqual(compact.placed.map(node => node.knowledge_id), regular.placed.map(node => node.knowledge_id));
   assert.deepEqual(edgeKeys(compact), edgeKeys(regular), `${view}/${limit}: all relationships remain routed`);
   assert.equal(compact.omitted, regular.omitted, 'compression does not add omitted arrows');
@@ -47,6 +59,8 @@ const analysisEdges = analysis.deps.map(([a, b]) => ({ source_knowledge_id: a, t
 for (const view of ['reading', 'hierarchy']) for (const selected of [1, 2, 4, 13, 25, 29, 36]) {
   const regular = buildAtlas(analysisNodes, analysisSections, analysisEdges, selected, { view });
   const compact = buildAtlas(analysisNodes, analysisSections, analysisEdges, selected, { view, density: 'compact' });
+  checkEndpoints(regular, `Real Analysis ${selected}/${view}/regular`);
+  checkEndpoints(compact, `Real Analysis ${selected}/${view}/compact`);
   assert.deepEqual(edgeKeys(compact), edgeKeys(regular), `Real Analysis ${selected}/${view}: relationships stay visible`);
   assert.equal(compact.unlabelled, 0, `Real Analysis ${selected}/${view}: all omitted ranges have labels`);
 }

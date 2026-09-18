@@ -14,7 +14,7 @@ const rows = computed(() => notebookMathRows(props.content));
 
 <style scoped>
 .notebook-text-row{line-height:30px;min-height:30px;background:repeating-linear-gradient(transparent 0 29px,var(--notebook-rule,#b9d5df2b) 29px 30px)}
-.notebook-display-row{display:grid;place-items:center;min-height:30px;padding:8px 8px;border-bottom:1px solid var(--notebook-rule,#b9d5df2b);overflow-x:auto;overflow-y:hidden}
+.notebook-display-row{display:grid;place-items:center;min-height:30px;padding:12px 8px;border-bottom:1px solid var(--notebook-rule,#b9d5df2b);overflow-x:auto;overflow-y:hidden}
 .notebook-display-row :deep(.katex-display){margin:0;padding:0;min-height:0;width:100%;max-width:100%;background:none;display:block;overflow-x:auto;overflow-y:hidden}
 .notebook-display-row :deep(.katex-display>.katex){text-align:center}
 </style>

@@ -51,8 +51,10 @@ export function buildAtlas(
     H = options.density === "compact" ? 52 : 64;
   // Notebook cards place the object number beside the title.
   const compact = options.density === "compact";
+  // Above a compact card, leave room below the heading for a 16-unit
+  // arrowhead approach and two lanes separated by 8 units.
   const spacing = compact
-    ? { row: 48, column: 56, clearance: 20, leafX: 16, leafTop: 52, leafBottom: 16, node: 28, gap: 40, parentX: 20, parentTop: 44, parentBottom: 24, port: 10 }
+    ? { row: 48, column: 56, clearance: 20, leafX: 16, leafTop: 60, leafBottom: 16, node: 28, gap: 40, parentX: 20, parentTop: 44, parentBottom: 24, port: 10 }
     : { row: 76, column: 140, clearance: 32, leafX: 28, leafTop: 88, leafBottom: 24, node: 42, gap: 48, parentX: 32, parentTop: 92, parentBottom: 32, port: 18 };
   const hierarchy = { book: { name: "", parent: null } };
   const bySection = new Map(sections.map((s) => [String(s.section_id), s]));
@@ -588,7 +590,17 @@ export function buildAtlas(
           if (p.e.alignedOffset !== undefined) offset = p.e.alignedOffset;
           else {
             const candidates = Array.from({ length: 1 + Math.floor((length - 20) / 8) }, (_, j) => j === 0 ? 0 : Math.ceil(j / 2) * 8 * (j % 2 ? -1 : 1));
-            offset = candidates.find(value => assigned.every(other => Math.abs(other - value) >= 12)) ?? offset;
+            const preferred = candidates.find(value => assigned.every(other => Math.abs(other - value) >= 12));
+            if (preferred !== undefined) offset = preferred;
+            else if (assigned.some(other => Math.abs(other - offset) < 1)) {
+              // Crowded sides may need closer spacing, but must never reuse a
+              // pinned port. Bisect the largest remaining interval instead.
+              const limit = (length - 20) / 2;
+              const ordered = [...new Set([-limit, ...assigned, limit])].sort((a,b)=>a-b);
+              const available = [-limit, limit, ...ordered.slice(1).map((v,j)=>(v+ordered[j])/2)];
+              const clearance = value => Math.min(...assigned.map(other=>Math.abs(other-value)));
+              offset = available.sort((a,b)=>clearance(b)-clearance(a)||Math.abs(a-offset)-Math.abs(b-offset))[0];
+            }
             assigned.push(offset);
           }
         }
@@ -745,8 +757,10 @@ export function buildAtlas(
         yAt.get(e.t.y) * nx + xAt.get(e.t.x),
       ]),
     );
-    function find(e) {
+    function find(e, smoothArrival = true) {
       const owner = edges.indexOf(e);
+      const arrivalRadius = W;
+      const reverseArrival = { left: 2, right: 1, top: 8, bottom: 4 }[e.toSide];
       const start = yAt.get(e.s.y) * nx + xAt.get(e.s.x),
         target = yAt.get(e.t.y) * nx + xAt.get(e.t.x),
         cost = new Float64Array(N * 3);
@@ -803,6 +817,11 @@ export function buildAtlas(
           [8, k - nx, 1],
         ];
         for (const [bit, next, nd] of options) {
+          // Prefer an approach without reversals within one card width of
+          // the tip. This avoids shifting a tiny hook to a nearby grid lane.
+          const reversesNearArrival = bit === reverseArrival
+            && Math.abs(xs[k % nx] - e.end.x) + Math.abs(ys[Math.floor(k / nx)] - e.end.y) < arrivalRadius;
+          if (smoothArrival && reversesNearArrival) continue;
           if (compact && ((k === start && bit === {right:2,left:1,bottom:8,top:4}[e.fromSide])
             || (next === target && bit === {left:2,right:1,top:8,bottom:4}[e.toSide]))) continue;
           if (
@@ -823,7 +842,9 @@ export function buildAtlas(
               cost[state] +
               distance +
               (nd === 0 ? horizontalCost : verticalCost)[Math.min(k, next)] +
-              (dir !== 2 && dir !== nd ? 20 : 0) +
+              // A bend costs one card width: a short detour must not win
+              // merely by avoiding a few pixels of parallel-lane cost.
+              (dir !== 2 && dir !== nd ? W : 0) +
               (used[next] ? 35 : 0),
             ns = next * 3 + nd;
           if (nc < cost[ns]) {
@@ -833,7 +854,9 @@ export function buildAtlas(
           }
         }
       }
-      if (finish < 0) return null;
+      // If the surrounding geometry requires a reversal, retain the edge
+      // through the same collision checks rather than silently dropping it.
+      if (finish < 0) return smoothArrival ? find(e, false) : null;
       const cells = [];
       for (let at = finish; at >= 0; at = prev[at])
         cells.push(Math.floor(at / 3));
