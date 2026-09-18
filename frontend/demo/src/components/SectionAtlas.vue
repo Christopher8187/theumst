@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { buildAtlas } from "../domain/atlas";
 import { renderMath } from "../math";
+import AtlasSettings from "./AtlasSettings.vue";
 
 const props = defineProps({
   t: Object,
@@ -9,6 +10,7 @@ const props = defineProps({
   sections: Array,
   graph: Object,
   selectedId: [Number, String],
+  compactControls: Boolean,
 });
 const emit = defineEmits(["select"]);
 const bookDistance = ref(3),
@@ -74,11 +76,12 @@ watch([layout, scale], center, { flush: "post" });
 </script>
 
 <template>
-  <section class="section-atlas" :aria-label="t.atlas">
+  <section class="section-atlas" :class="{'atlas-compact':compactControls}" :aria-label="t.atlas">
     <header>
       <h2>{{ t.atlas }}</h2>
-      <button type="button" @click="center">{{ t.centerCurrent }}</button>
+      <button v-if="!compactControls" type="button" @click="center">{{ t.centerCurrent }}</button>
     </header>
+    <AtlasSettings :compact="compactControls" :label="t.atlasSettings">
     <div class="atlas-controls">
       <label
         >{{ t.bookDistance }} {{ bookDistance
@@ -114,7 +117,15 @@ watch([layout, scale], center, { flush: "post" });
         </button>
       </div>
       <p>{{ t.eitherDistance }}</p>
+      <label v-if="compactControls" class="atlas-scale">{{t.scale}}
+        <select v-model.number="scale">
+          <option :value="0.5">50%</option><option :value="0.65">65%</option>
+          <option :value="0.8">80%</option><option :value="1">100%</option>
+        </select>
+      </label>
+      <button v-if="compactControls" class="atlas-center" type="button" @click="center">{{t.centerCurrent}}</button>
     </div>
+    </AtlasSettings>
     <div class="atlas-legend">
       <span class="gold">{{ t.readingOrder }}</span
       ><span>{{ t.dependency }}</span>
@@ -240,7 +251,7 @@ watch([layout, scale], center, { flush: "post" });
       <span
         >{{ layout.placed.length }} / {{ layout.candidates }}
         {{ t.qualifyingObjects }}</span
-      ><label
+      ><label v-if="!compactControls"
         >{{ t.scale
         }}<select v-model.number="scale">
           <option :value="0.5">50%</option>

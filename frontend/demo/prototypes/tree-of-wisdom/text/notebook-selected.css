@@ -1,5 +1,14 @@
 /* Selected B. The notebook is a transparent leaf of the existing realm folio. */
-.altar-interface .text-realm.notebook-selected{bottom:3.5%}
+.altar-interface .text-realm.notebook-selected{top:10px;bottom:2.5%}
+.text-realm.notebook-selected .text-topnav{min-height:36px;margin-bottom:8px}
+.text-realm.notebook-selected .text-topnav .text-return,
+.text-realm.notebook-selected .text-topnav .wisdom-language{min-height:36px;padding-block:5px}
+.text-realm.notebook-selected .text-folio{top:46px}
+.text-realm.notebook-selected .text-folio .study-topbar>div:first-child{align-items:center;gap:18px}
+.text-realm.notebook-selected .text-folio .text-realm-mark{flex-shrink:0;color:#f0f2e8;font:italic 23px/1.2 Georgia,serif;gap:8px;text-shadow:none}
+.text-realm.notebook-selected .text-folio .text-realm-mark>span{font:28px/1 'SimSun',serif;color:#c9e8dc}
+.text-realm.notebook-selected .text-folio .study-topbar h1{font-size:18px}
+.text-realm.notebook-selected .text-folio .breadcrumbs{font-size:12px}
 .text-realm.notebook-selected{
   --paper:transparent;
   --paper-ink:#e8eeeb;
@@ -55,7 +64,32 @@
 .text-realm.notebook-selected .text-folio .exercise-nav button,
 .text-realm.notebook-selected .text-folio .exercise-nav>span{color:#c7d8de}
 .text-realm.notebook-selected .text-folio .knowledge-side *{scrollbar-color:#a7c5d16b transparent}
+.altar-interface .text-realm.notebook-selected .text-folio .study-actions button,
+.altar-interface .text-realm.notebook-selected .text-folio .study-side-controls button{font-size:14px;min-height:41px}
+.text-realm.notebook-selected .text-folio .sound-corner,
+.text-realm.notebook-selected .text-folio .knowledge-section-head button{font-size:13px;min-height:34px}
+.text-realm.notebook-selected .text-folio .image-panel footer{font-size:14px;line-height:1.55;align-items:center}
+.text-realm.notebook-selected .text-folio .image-panel footer small{font-size:13px}
+.text-realm.notebook-selected .text-folio .image-panel footer a{display:inline-flex;align-items:center;min-height:40px;padding:7px 12px;border:1px solid #b5d4df70;border-radius:2px;color:#d5eae7;text-decoration:none}
+.text-realm.notebook-selected .text-folio .image-panel footer a:hover{background:#b7e7eb14}
+.text-realm.notebook-selected .text-folio .section-atlas.atlas-compact{position:relative}
+.text-realm.notebook-selected .text-folio .atlas-compact header{min-height:39px;padding-right:118px}
+.text-realm.notebook-selected .text-folio .atlas-settings-trigger{font-size:13px;min-height:34px;padding:6px 10px;background:#b0d8de0a;color:#d4e3e3}
+.text-realm.notebook-selected .text-folio .atlas-settings-trigger[aria-expanded=true]{background:#b0e1dd20;border-color:#b6e4df8c}
+.text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-controls{gap:16px 18px;padding:0}
+.text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-controls label{font:13px/1.5 'Segoe UI',sans-serif}
+.text-realm.notebook-selected .text-folio .atlas-settings-panel input[type=range]{min-height:24px;margin:0}
+.text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-views,
+.text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-controls>p{grid-column:1/-1}
+.text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-views button{flex:1;font-size:13px;min-height:36px}
+.text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-scale{display:flex;align-items:center;gap:8px}
+.text-realm.notebook-selected .text-folio .atlas-settings-panel select,
+.text-realm.notebook-selected .text-folio .atlas-settings-panel .atlas-center{font-size:12px;min-height:36px}
+.text-realm.notebook-selected .text-folio .section-atlas footer{font-size:13px}
 @media(max-width:900px){
-  .altar-interface .text-realm.notebook-selected{bottom:auto;padding-bottom:0}
+  .altar-interface .text-realm.notebook-selected{top:auto;bottom:auto;padding-bottom:0;margin-top:10px}
+  .text-realm.notebook-selected .text-folio{top:auto}
+  .text-realm.notebook-selected .text-folio .study-topbar>div:first-child{display:flex;flex-wrap:wrap;gap:5px 14px}
+  .text-realm.notebook-selected .text-folio .study-topbar h1{font-size:16px}
   .text-realm.notebook-selected .text-folio .knowledge-side{height:clamp(550px,calc(100dvh - 180px),800px)}
 }

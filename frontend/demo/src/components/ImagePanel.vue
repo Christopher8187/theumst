@@ -1,5 +1,5 @@
 <script setup>
-defineProps({ t:Object,image: Object, node: Object });
+defineProps({ t:Object,image: Object, node: Object, downloadImage: Boolean });
 defineEmits(["close"]);
 </script>
 
@@ -19,7 +19,7 @@ defineEmits(["close"]);
     <footer>
       <span v-if="node">{{ node.label || node.type }}</span>
       <small v-if="image?.metadata?.context">{{ image.metadata.context }}</small>
-      <a v-if="image?.url" :href="image.url" target="_blank" rel="noreferrer">{{ t.openOriginal }} ↗</a>
+      <a v-if="image?.url" :href="image.url" :target="downloadImage?undefined:'_blank'" :download="downloadImage?'book-image-'+image.source_image_id:undefined" rel="noreferrer">{{ downloadImage?t.download:t.openOriginal }} {{downloadImage?'↓':'↗'}}</a>
     </footer>
   </section>
 </template>

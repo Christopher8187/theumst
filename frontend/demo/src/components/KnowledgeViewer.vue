@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { renderMath } from "../math";
 
-const props = defineProps({ t: Object, node: Object, mode: { type: String, default: "text" } });
+const props = defineProps({ t: Object, node: Object, notebook: Boolean, mode: { type: String, default: "text" } });
 const emit = defineEmits(["soon", "open-image"]);
 const statement = computed(() => renderMath(props.node?.statement || ""));
 const working = computed(() => renderMath(props.node?.working || ""));
@@ -29,14 +29,14 @@ function openInlineImage(event) {
       <div class="math-content" v-html="statement" @click="openInlineImage"></div>
     </section>
     <section class="knowledge-section workings-section">
-      <div class="knowledge-section-head"><h2>{{ t.workings }}</h2><button type="button" @click="$emit('soon', 'prompt')">✦ {{ t.prompt }}</button></div>
+      <div class="knowledge-section-head"><h2>{{ t.workings }}</h2><button type="button" @click="$emit('soon', notebook?'sound':'prompt')">{{notebook?'▶':'✦'}} {{ notebook?t.listen:t.prompt }}</button></div>
       <div class="math-content" v-html="working" @click="openInlineImage"></div>
       <div v-if="node.images?.length" class="knowledge-images">
         <button v-for="image in node.images" :key="image.source_image_id" type="button" @click="$emit('open-image', image)">
           ▧ {{ image.semantic_context_name || `${t.bookImage} ${image.source_image_id}` }}
         </button>
       </div>
-      <button class="sound-corner" type="button" :aria-label="t.listen" @click="$emit('soon', 'sound')">▶</button>
+      <button class="sound-corner" type="button" :aria-label="notebook?t.prompt:t.listen" @click="$emit('soon', notebook?'prompt':'sound')">{{notebook?'✦ '+t.prompt:'▶'}}</button>
     </section>
   </article>
   <div v-else class="knowledge-empty">{{ t.selectNode }}</div>

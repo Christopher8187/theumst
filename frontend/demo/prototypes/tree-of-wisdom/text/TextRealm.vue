@@ -23,6 +23,8 @@ function updateNotebookUrl() {
 }
 const bookId = computed(() => props.book.id);
 const copy = computed(() => ({ ...t.value,
+  atlasSettings: lang.value === 'zh' ? '设置' : lang.value === 'ja' ? '設定' : 'Settings',
+  download: lang.value === 'zh' ? '下载' : lang.value === 'ja' ? 'ダウンロード' : 'Download',
   dependencies: lang.value === 'zh' ? '依赖' : lang.value === 'ja' ? '依存関係' : 'Dependencies',
   dependenciesMethod: lang.value === 'zh' ? '当前知识对象直接依赖的知识对象。' : lang.value === 'ja' ? 'この知識オブジェクトが直接依存する知識オブジェクト。' : 'Knowledge objects this object directly depends on.',
   noDependencies: lang.value === 'zh' ? '此知识对象尚未记录依赖关系。' : lang.value === 'ja' ? 'この知識オブジェクトの依存関係は記録されていません。' : 'No dependencies are recorded for this knowledge object.',
@@ -38,7 +40,7 @@ function back() { state.run(() => {
   else emit('back');
 }); }
 function escape(event: KeyboardEvent) {
-  if (event.target instanceof Element && event.target.closest('.notebook-tools')) return;
+  if (event.target instanceof Element && event.target.closest('.notebook-tools, .atlas-settings')) return;
   if (guard.pending.value) return;
   if (showingAllNotes.value || sideMode.value === 'graph') { event.stopPropagation(); event.preventDefault(); back(); }
 }
@@ -49,13 +51,13 @@ onMounted(async () => { updateNotebookUrl(); await nextTick(); title.value?.focu
   <section class="text-realm notebook-study notebook-B notebook-selected" :class="{'all-notes-open':showingAllNotes}" @keydown.esc.capture="escape" :aria-label="showingAllNotes?t.notes:mode==='questions'?t.questions:t.text">
     <nav class="text-topnav" :inert="actionBusy || !!guard.pending.value">
       <button class="text-return" type="button" @click="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h17"/></svg>{{!showingAllNotes && originBookId && book.grimoire_id!==originBookId?t.returnOrigin:t.realmReturn}}</button>
-      <span ref="title" tabindex="-1" class="text-realm-mark"><span aria-hidden="true">{{showingAllNotes?'寫':mode==='questions'?'問':'書'}}</span>{{showingAllNotes?t.notes:mode==='questions'?t.questions:t.text}}</span>
+      <span v-if="showingAllNotes" tabindex="-1" class="text-realm-mark"><span aria-hidden="true">寫</span>{{t.notes}}</span>
       <GrimoireCompletion class="text-completion" :book="sampleBook" compact/>
       <LanguageControl/>
     </nav>
     <div class="text-folio" :inert="actionBusy || !!guard.pending.value">
       <div class="text-spine" aria-hidden="true"><i></i></div>
-      <StudyView v-if="!showingAllNotes" :t="copy" :book="book" :nodes="nodes" :sections="sections"
+      <StudyView v-if="!showingAllNotes" notebook :t="copy" :book="book" :nodes="nodes" :sections="sections"
         :selected-id="selectedId" :selected-node="selectedNode" :mode="mode" :side-mode="sideMode" :can-back="canBack"
         :notes="notes" :graph="graph" graph-status="ready" graph-error=""
         :similar-results="similarResults" :similar-status="similarStatus" :similar-error="similarError"
@@ -67,6 +69,10 @@ onMounted(async () => { updateNotebookUrl(); await nextTick(); title.value?.focu
         @return-origin="state.run(state.returnOrigin)" @move="state.run(state.moveExercise,$event)"
         @done="state.run(state.markDone,$event)" @open-image="state.run(state.openImage,$event)"
         @soon="state.comingSoon($event)">
+        <template #study-heading>
+          <span ref="title" tabindex="-1" class="text-realm-mark"><span aria-hidden="true">{{mode==='questions'?'問':'書'}}</span>{{mode==='questions'?t.questions:t.text}}</span>
+          <h1>{{book.title}}</h1>
+        </template>
         <template #reading-tools>
           <NotebookTools :labels="copy" :side-mode="sideMode" :discovery-kind="discoveryKind" @action="state.run(state.action,$event)"/>
         </template>

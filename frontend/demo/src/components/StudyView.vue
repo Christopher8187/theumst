@@ -11,7 +11,7 @@ const props = defineProps({
   selectedNode: Object,
   mode: String, sideMode: String, notes: Array, similarResults: Array, similarStatus: String,
   similarError: String, discoveryKind: String, originBookId: Number, activeImage: Object,
-  graph: Object, graphStatus: String, graphError: String
+  graph: Object, graphStatus: String, graphError: String, notebook: Boolean
 });
 const emit = defineEmits(["continue", "back-object", "select", "retry-graph", "expand-graph", "soon", "action", "close-side", "save-note", "notes-page", "open-result", "return-origin", "move", "done", "open-image"]);
 const current = computed(() => props.selectedNode
@@ -45,7 +45,7 @@ function closeSidePanel() {
 <template>
   <section class="study-view" @keydown.esc.stop="closeSidePanel">
     <div class="study-topbar">
-      <div><p>{{ mode === 'questions' ? t.questionMode : t.textMode }}</p><h1>{{ book?.title }}</h1></div>
+      <div><slot name="study-heading"><p>{{ mode === 'questions' ? t.questionMode : t.textMode }}</p><h1>{{ book?.title }}</h1></slot></div>
       <div v-if="current?.breadcrumbs?.length" class="breadcrumbs">
         <span v-for="section in current.breadcrumbs" :key="section.section_id"><i>{{ section.number }}</i>{{ section.name }}</span>
       </div>
@@ -59,7 +59,7 @@ function closeSidePanel() {
           <span>{{ Math.max(position + 1, 1) }} / {{ exercises.length }}</span>
           <button :disabled="position >= exercises.length - 1" type="button" @click="$emit('move', 1)">{{ t.next }} →</button>
         </div>
-        <KnowledgeViewer :t="t" :node="current" :mode="mode" @soon="$emit('soon', $event)" @open-image="$emit('open-image', $event)" />
+        <KnowledgeViewer :t="t" :node="current" :mode="mode" :notebook="notebook" @soon="$emit('soon', $event)" @open-image="$emit('open-image', $event)" />
         <div class="study-actions"><slot name="reading-actions" :current="current"><button type="button" :disabled="!canBack" @click="$emit('back-object')">{{ t.back }}</button><button type="button" :disabled="!current" @click="$emit('continue')">{{ t.continue }}</button><button type="button" @click="$emit('action','crystallize')">{{ t.crystallization }}</button>
           <button type="button" @click="$emit('action', 'project')">↗ {{ t.project }}</button>
           <button type="button" :class="{ active: sideMode === 'notes' }" @click="$emit('action', 'notes')">✎ {{ t.notes }}</button>
@@ -72,8 +72,8 @@ function closeSidePanel() {
       <div class="study-side-panel">
         <NotePanel v-if="sideMode === 'notes'" :t="t" :node="current" :notes="notes" :grimoire-id="book.grimoire_id" @close="$emit('close-side')" @save="$emit('save-note', $event)" @notes-page="$emit('notes-page')" />
         <SearchPanel v-else-if="sideMode === 'similar'" :t="t" :results="similarResults" :kind="discoveryKind" :status="similarStatus" :error="similarError" @close="$emit('close-side')" @open="$emit('open-result', $event)" />
-        <ImagePanel :t="t" v-else-if="sideMode === 'image'" :image="activeImage" :node="current" @close="$emit('close-side')" />
-        <SectionAtlas v-else :t="t" :nodes="nodes" :sections="sections" :graph="graph" :selected-id="current?.knowledge_id" @select="$emit('select',$event)" />
+        <ImagePanel :t="t" v-else-if="sideMode === 'image'" :image="activeImage" :node="current" :download-image="notebook" @close="$emit('close-side')" />
+        <SectionAtlas v-else :t="t" :nodes="nodes" :sections="sections" :graph="graph" :selected-id="current?.knowledge_id" :compact-controls="notebook" @select="$emit('select',$event)" />
         <div class="study-side-controls">
           <button v-if="current" type="button" :class="{ done: current.completed }" @click="$emit('done', current)">{{ current.completed ? '✓ ' + t.completed : '○ ' + t.markDone }}</button>
           <button v-if="originBookId && originBookId !== book.grimoire_id" type="button" @click="$emit('return-origin')">← {{ t.returnOrigin }}</button>
