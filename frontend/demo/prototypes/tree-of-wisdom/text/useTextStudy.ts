@@ -22,7 +22,6 @@ interface ReaderState {
   bookId: number;
   selectedId: number;
   mode: StudyMode;
-  history: Position[];
   origin: Position | null;
 }
 interface TextStudySession {
@@ -64,7 +63,7 @@ export function useTextStudy(
     const bookId = initialBookId(), mode = toValue(initialModeRef) || 'text';
     // Re-enter the requested book and realm, as the original Demo does. Only
     // positions, completion and writing survive leaving this reader instance.
-    return reactive<ReaderState>({ bookId, selectedId: savedPosition(bookId, mode), mode, history: [], origin: null });
+    return reactive<ReaderState>({ bookId, selectedId: savedPosition(bookId, mode), mode, origin: null });
   }
   const reader = shallowRef(readerForEntrance());
   const fixture = computed(() => session.fixtures[reader.value.bookId]);
@@ -75,9 +74,7 @@ export function useTextStudy(
   const selectedId = computed(() => reader.value.selectedId);
   const selectedNode = computed(() => nodes.value.find(node => node.knowledge_id === selectedId.value) || null);
   const mode = computed(() => reader.value.mode);
-  const canBack = computed(() => mode.value === 'questions'
-    ? !!adjacentStudyNode(nodes.value, selectedId.value, 'questions', -1)
-    : reader.value.history.length > 0);
+  const canBack = computed(() => !!adjacentStudyNode(nodes.value, selectedId.value, mode.value, -1));
   const canContinue = computed(() => !!adjacentStudyNode(nodes.value, selectedId.value, mode.value, 1));
   const originBookId = computed(() => reader.value.origin?.bookId || initialBookId());
   const sideMode = ref<SideMode>('graph');
@@ -133,10 +130,9 @@ export function useTextStudy(
     reader.value.bookId = position.bookId; reader.value.mode = position.mode; reader.value.selectedId = position.id;
     rememberPosition();
   }
-  function select(id: number | string, recordHistory = true) {
+  function select(id: number | string) {
     const target = nodes.value.find(node => node.knowledge_id === Number(id));
     if (!target || target.knowledge_id === selectedId.value) return;
-    if (recordHistory) reader.value.history.push(currentPosition());
     closeSide(); reader.value.mode = realmForNode(target); reader.value.selectedId = target.knowledge_id; rememberPosition();
   }
   function continueReading() {
@@ -145,9 +141,8 @@ export function useTextStudy(
     else notify(words().endOfGrimoire || 'You have reached the end of this grimoire.');
   }
   function backObject() {
-    if (mode.value === 'questions') { moveExercise(-1); return; }
-    const previous = reader.value.history.pop();
-    if (previous) restore(previous);
+    const previous = adjacentStudyNode(nodes.value, selectedId.value, mode.value, -1);
+    if (previous) select(previous.knowledge_id);
   }
   function action(name: string) {
     if (name === 'notes') { sideMode.value = 'notes'; return; }
@@ -172,7 +167,6 @@ export function useTextStudy(
       const current = nodes.value.findIndex(node => node.knowledge_id === selectedId.value);
       const next = nodes.value.slice(current + 1).find(node => node.type === 'exercise' && !node.completed);
       if (!next) { notify(words().noExerciseAhead || 'There are no unfinished exercises ahead.'); return; }
-      reader.value.history.push(currentPosition());
       closeSide(); reader.value.mode = 'questions'; reader.value.selectedId = next.knowledge_id; rememberPosition();
       return;
     }
@@ -186,14 +180,12 @@ export function useTextStudy(
     if (result.grimoire_id === reader.value.bookId) { closeSide(); select(result.knowledge_id); return; }
     const previous = currentPosition();
     reader.value.origin ||= previous;
-    reader.value.history.push(previous);
     restore({ bookId: result.grimoire_id, id: result.knowledge_id, mode: realmForNode(target) });
   }
   function returnOrigin() {
     const origin = reader.value.origin;
     if (!origin) return;
-    // History can still revisit the excursion after returning. Keep its first
-    // departure available until the reader is left and entered afresh.
+    // Keep the first departure available until the reader is entered afresh.
     restore(origin);
   }
   function moveExercise(delta: number) {

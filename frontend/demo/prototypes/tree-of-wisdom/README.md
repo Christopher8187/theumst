@@ -7,7 +7,7 @@ It explores an interface intended eventually to work inside the game.
 ## Run
 
 From `frontend/demo`, run `npm run dev -- --host 127.0.0.1`.
-Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=24&arrival=0&book=analysis`.
+Open `http://127.0.0.1:5175/demo/?prototype=wisdom&revision=25&arrival=0&book=analysis`.
 For the selected Text notebook, add `view=realms&place=tree&realm=text&notebook=B`.
 The earlier three-way notebook comparison remains at commit `714b160`.
 The local Vite server uses port 5175.
@@ -43,6 +43,7 @@ Revision 21 shares [navigation and status controls, aligns page rules and simpli
 Revision 22 adds [equation spacing and shared routing improvements](round-twenty-two.md), including distinct connection points on crowded cards.
 Revision 23 places [omitted counts inside dotted arrows, improves reading flow and keeps image links inline](round-twenty-three.md).
 Revision 24 shares [progress sizing, the smallest subsection heading and separate Text/Questions navigation](round-twenty-four.md), with faster realm illumination.
+Revision 25 fixes [Text Back and Continue to follow non-exercise reading order](round-twenty-five.md).
 The revision 6 checkpoint is commit `c304345`.
 
 The scene uses the [world-tree panorama](assets/sanctuary-world-tree-distance.png).

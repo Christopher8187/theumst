@@ -48,3 +48,10 @@ and Atlas filtering without renumbering. It covers every non-exercise position
 in both layouts of the frozen Real Analysis sample and checks that filtering loses no routes
 or omitted-position labels. Browser checks cover the actual realm switch,
 URL, shared progress appearance, and the Back/Continue controls.
+
+`node tests/study-reader.mjs` mounts the prototype's actual reader with Vue's
+in-memory renderer and Vite's module loader. It checks Back/Continue after
+Atlas jumps, exercise skipping in both directions, parent realm feedback,
+complete forward/backward traversal, completed objects, end boundaries and
+the pending-note guard. It reproduced Back returning to item 1 after selecting
+item 14, instead of the preceding non-exercise, item 13.
