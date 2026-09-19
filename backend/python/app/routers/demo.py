@@ -26,7 +26,7 @@ from ..services.qdrant import qdrant_service
 
 router = APIRouter(prefix="/api/demo", tags=["web-demo"])
 REVIEW_ROLES = {"admin", "superadmin"}
-DEMO_VERSION = "0.1.0"
+DEMO_VERSION = "0.0.7"
 SIMILAR_MAX_K = 25
 SIMILAR_QUERY_OVERFETCH = 4
 GRAPH_MAX_NODES = 150
@@ -205,6 +205,7 @@ def _book_rows(cur, user_id: int, query: str = "") -> list[dict[str, Any]]:
         """
         SELECT g.grimoire_id, g.isbn, g.version, g.source_key,
                g.source_metadata->>'summary' AS summary,
+               g.source_metadata->'presentation' AS presentation,
                lg.title, lg.publisher,
                (ug.user_id IS NOT NULL) AS summoned,
                ug.summoned_at, ug.last_opened_at,
@@ -217,7 +218,7 @@ def _book_rows(cur, user_id: int, query: str = "") -> list[dict[str, Any]]:
         LEFT JOIN user_grimoire ug
           ON ug.grimoire_id = g.grimoire_id AND ug.user_id = %s
         LEFT JOIN section s ON s.grimoire_id = g.grimoire_id
-        LEFT JOIN knowledge k ON k.section_id = s.section_id
+        LEFT JOIN knowledge k ON k.section_id = s.section_id AND k.is_active
         LEFT JOIN demo_knowledge_progress p
           ON p.knowledge_id = k.knowledge_id AND p.user_id = %s
         WHERE COALESCE(g.source_metadata->>'demo', 'false') = 'true'
@@ -238,6 +239,18 @@ def list_demo_books(request: Request, q: str = ""):
     with transaction() as (_, cur):
         books = _book_rows(cur, user["user_id"], q.strip()[:200])
     return {"books": books}
+
+
+@router.delete("/grimoires/{grimoire_id}")
+def remove_grimoire(grimoire_id: int, request: Request):
+    """Remove collection membership only; checked-off knowledge remains intact."""
+    user = _demo_user(request)
+    with transaction() as (_, cur):
+        cur.execute(
+            "DELETE FROM user_grimoire WHERE user_id = %s AND grimoire_id = %s",
+            (user["user_id"], grimoire_id),
+        )
+    return {"ok": True}
 
 
 @router.get("/books/{grimoire_id}")
@@ -450,7 +463,7 @@ def get_grimoire_knowledge(grimoire_id: int, request: Request):
             """
             SELECT k.knowledge_id, k.section_id, k.type, k.source_key,
                    k.source_metadata->'order' AS source_order,
-                   lk.label,
+                   k.name, COALESCE(NULLIF(btrim(k.name), ''), lk.label) AS label,
                    COALESCE(p.completed, false) AS completed
             FROM knowledge k
             JOIN section s ON s.section_id = k.section_id
@@ -467,7 +480,8 @@ def get_grimoire_knowledge(grimoire_id: int, request: Request):
         )
         nodes = list(cur.fetchall())
         node_ids = [row["knowledge_id"] for row in nodes]
-        for row in nodes:
+        for position, row in enumerate(nodes, 1):
+            row["book_order_rank"] = position
             row["breadcrumbs"] = section_paths.get(row["section_id"], [])
 
         relation_counts: dict[int, int] = {}
@@ -521,7 +535,7 @@ def get_grimoire_knowledge_detail(grimoire_id: int, knowledge_id: int, request: 
             """
             SELECT k.knowledge_id, k.section_id, k.type, k.source_key,
                    k.source_metadata->'order' AS source_order,
-                   lk.label, lk.statement, lk.working, lk.working_summary,
+                   k.name, COALESCE(NULLIF(btrim(k.name), ''), lk.label) AS label, lk.statement, lk.working, lk.working_summary,
                    COALESCE(p.completed, false) AS completed
             FROM knowledge k
             JOIN section s ON s.section_id = k.section_id
@@ -567,7 +581,9 @@ def update_progress(
             FROM knowledge k
             JOIN section s ON s.section_id = k.section_id
             JOIN user_grimoire ug ON ug.grimoire_id = s.grimoire_id
+            JOIN grimoire g ON g.grimoire_id = s.grimoire_id
             WHERE k.knowledge_id = %s AND ug.user_id = %s
+              AND k.is_active AND g.source_metadata->>'demo' = 'true'
             """,
             (knowledge_id, user["user_id"]),
         )
@@ -601,7 +617,9 @@ def update_study_state(
             """
             SELECT 1
             FROM knowledge k JOIN section s ON s.section_id = k.section_id
+            JOIN grimoire g ON g.grimoire_id = s.grimoire_id
             WHERE k.knowledge_id = %s AND s.grimoire_id = %s
+              AND k.is_active AND g.source_metadata->>'demo' = 'true'
             """,
             (payload.knowledge_id, grimoire_id),
         )
@@ -640,7 +658,7 @@ def list_notes(
             f"""
             SELECT n.demo_note_id, n.grimoire_id, n.knowledge_id, n.note_type,
                    n.tag, n.content, n.created_at, n.updated_at,
-                   CASE WHEN g.source_metadata->>'demo'='true' AND COALESCE(k.is_active,true) THEN lk.label END AS knowledge_label,
+                   CASE WHEN g.source_metadata->>'demo'='true' AND COALESCE(k.is_active,true) THEN COALESCE(NULLIF(btrim(k.name),''),lk.label) END AS knowledge_label,
                    CASE WHEN g.source_metadata->>'demo'='true' THEN lg.title END AS book_title,
                    COALESCE(g.source_metadata->>'demo'='true' AND COALESCE(k.is_active,true),false) AS source_available
             FROM demo_note n
@@ -701,7 +719,18 @@ def create_note(payload: DemoNotePayload, request: Request):
 def update_note(note_id: int, payload: DemoNotePayload, request: Request):
     user = _demo_user(request)
     with transaction() as (_, cur):
-        if payload.knowledge_id is not None:
+        cur.execute(
+            "SELECT grimoire_id, knowledge_id FROM demo_note WHERE demo_note_id=%s AND user_id=%s FOR UPDATE",
+            (note_id, user["user_id"]),
+        )
+        owned_note = cur.fetchone()
+        if not owned_note:
+            raise HTTPException(status_code=404, detail="Note not found")
+        same_source = (owned_note["grimoire_id"] == payload.grimoire_id
+                       and owned_note["knowledge_id"] == payload.knowledge_id)
+        # Existing notes stay editable after collection removal or source withdrawal.
+        # Moving a note to another object still requires access to that target.
+        if payload.knowledge_id is not None and not same_source:
             cur.execute(
                 """
                 SELECT s.grimoire_id
@@ -1027,6 +1056,40 @@ def neighbors(knowledge_id: int, request: Request, k: Annotated[int, Query(ge=1,
     return find_neighbors(knowledge_id, k)
 
 
+@router.get("/knowledge/{knowledge_id}/dependencies")
+def dependencies(knowledge_id: int, request: Request):
+    _demo_user(request)
+    with transaction() as (_, cur):
+        cur.execute("""
+            SELECT s.grimoire_id FROM knowledge k
+            JOIN section s ON s.section_id = k.section_id
+            JOIN grimoire g ON g.grimoire_id = s.grimoire_id
+            WHERE k.knowledge_id = %s AND k.is_active
+              AND g.source_metadata->>'demo' = 'true'
+        """, (knowledge_id,))
+        source = cur.fetchone()
+        if not source:
+            raise HTTPException(404, "Knowledge object not found")
+        cur.execute("""
+            SELECT k.knowledge_id, s.grimoire_id, k.type, k.name,
+                   COALESCE(NULLIF(btrim(k.name), ''), lk.label) AS label,
+                   lk.statement, lg.title AS book_title
+            FROM knowledge_graph_edge edge
+            JOIN knowledge k ON k.knowledge_id = edge.source_knowledge_id
+            JOIN section s ON s.section_id = k.section_id
+            JOIN grimoire g ON g.grimoire_id = s.grimoire_id
+            LEFT JOIN language_knowledge lk ON lk.knowledge_id = k.knowledge_id AND lk.language_id = 1
+            LEFT JOIN language_grimoire lg ON lg.grimoire_id = g.grimoire_id AND lg.language_id = 1
+            WHERE edge.grimoire_id = %s AND edge.target_knowledge_id = %s
+              AND edge.relation_type = 'dependency' AND k.is_active
+              AND s.grimoire_id = edge.grimoire_id AND g.source_metadata->>'demo' = 'true'
+            ORDER BY COALESCE((k.source_metadata->>'demo_order')::int, 2147483647),
+                     k.source_metadata->'order' NULLS LAST, k.knowledge_id
+        """, (source["grimoire_id"], knowledge_id))
+        results = list(cur.fetchall())
+    return {"results": results}
+
+
 @router.get("/crystallize/{knowledge_id}")
 def crystallize(knowledge_id: int, request: Request):
     _demo_user(request)
@@ -1040,7 +1103,7 @@ def crystallize(knowledge_id: int, request: Request):
         if not source:
             raise HTTPException(404, 'Knowledge object not found')
         cur.execute("""
-            SELECT k.knowledge_id, s.grimoire_id, lk.label, lk.statement, lg.title AS book_title,
+            SELECT k.knowledge_id, s.grimoire_id, k.name, COALESCE(NULLIF(btrim(k.name), ''), lk.label) AS label, lk.statement, lg.title AS book_title,
                    k.is_default_in_crystal
             FROM knowledge k JOIN section s ON s.section_id=k.section_id
             JOIN grimoire g ON g.grimoire_id=s.grimoire_id

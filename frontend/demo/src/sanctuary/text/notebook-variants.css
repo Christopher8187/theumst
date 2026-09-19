@@ -1,0 +1,188 @@
+/* Revision 13. Three printed notebook layouts from Christopher's photographs.
+   KnowledgeViewer owns content and actions; the leaf is the only reading scroller. */
+.altar-interface .text-realm.notebook-study { bottom: 76px; }
+.text-realm.notebook-study {
+  --paper: #f1efe5;
+  --paper-ink: #303d42;
+  --paper-muted: #64716f;
+  --paper-rule: #74827c66;
+}
+.text-realm.notebook-study .text-folio::before { left: calc(52.5% + 18px); }
+.text-realm.notebook-study .text-folio .knowledge-side {
+  position: relative;
+  padding: 0 27px 17px 32px;
+  color: var(--paper-ink);
+  background: linear-gradient(90deg, #e4e1d5 0, var(--paper) 15px, var(--paper) calc(100% - 20px), #dcded1 100%);
+  box-shadow: inset 0 1px #fffcf0, inset 0 -1px #fbf9ed;
+  color-scheme: light;
+}
+.text-realm.notebook-study .text-folio .knowledge-side * { scrollbar-color: #82948b77 transparent; }
+.text-realm.notebook-study .text-folio .knowledge-viewer {
+  display: block; flex: 1; min-height: 0; overflow: auto;
+  overscroll-behavior: contain; scrollbar-gutter: stable;
+  padding: 24px 8px 28px 0; position: relative; background: none;
+}
+.text-realm.notebook-study .text-folio .knowledge-meta {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 0; height: auto; gap: 0; padding: 0;
+  color: var(--paper-muted); border: 0; font: 11px/1.45 'Segoe UI', sans-serif;
+}
+.text-realm.notebook-study .text-folio .knowledge-meta > span:nth-child(3) {
+  grid-column: 1 / -1; flex: none; min-width: 0; margin: 0; padding: 17px 0 13px;
+  overflow: visible; white-space: normal; color: var(--paper-ink);
+  font: 23px/1.3 Georgia, 'Times New Roman', serif;
+}
+.text-realm.notebook-study .text-folio .knowledge-meta strong { display: none; }
+.text-realm.notebook-study .text-folio .type-chip {
+  padding: 0; border: 0; border-radius: 0; background: none;
+  color: var(--paper-muted); font: 10px/1.5 'Segoe UI', sans-serif;
+  text-transform: uppercase; letter-spacing: .11em;
+}
+.text-realm.notebook-study .text-folio .type-chip.theorem,
+.text-realm.notebook-study .text-folio .type-chip.exercise { color: var(--paper-muted); }
+.text-realm.notebook-study .text-folio .knowledge-meta > span:nth-child(2) {
+  justify-self: end; font: 11px/1.5 'Courier New', monospace; font-variant-numeric: tabular-nums;
+}
+.text-realm.notebook-study .text-folio .knowledge-section {
+  display: block; height: auto; min-height: 0; overflow: visible;
+  padding: 0; margin: 0; border: 0; background: none; scrollbar-gutter: auto;
+}
+.text-realm.notebook-study .text-folio .knowledge-section-head {
+  min-height: 34px; gap: 12px; margin: 0 0 7px; padding: 0;
+}
+.text-realm.notebook-study .text-folio .knowledge-section h2 {
+  color: var(--paper-muted); font: 11px/1.5 'Segoe UI', sans-serif; letter-spacing: .02em;
+}
+.text-realm.notebook-study .text-folio .math-content {
+  color: var(--paper-ink); font: 17px/30px Georgia, 'Times New Roman', serif; overflow-wrap: anywhere;
+}
+.text-realm.notebook-study .text-folio .math-content p { margin: 0 0 15px; }
+.text-realm.notebook-study .text-folio .katex-display { margin: 12px 0; padding: 8px 0; }
+.text-realm.notebook-study .text-folio .knowledge-section-head button,
+.text-realm.notebook-study .text-folio .sound-corner {
+  min-height: 32px; padding: 5px 7px; border: 0; border-radius: 0; background: none;
+  color: #577779; font: 11px/1.5 'Segoe UI', sans-serif;
+}
+.text-realm.notebook-study .text-folio .sound-corner { margin-top: 0; }
+.text-realm.notebook-study .text-folio .knowledge-images { margin: 12px 0; gap: 6px; }
+.text-realm.notebook-study .text-folio .knowledge-images button {
+  min-height: 32px; padding: 5px 8px; color: #486d70; background: none;
+  border: 1px solid var(--paper-rule); border-radius: 1px;
+}
+.text-realm.notebook-study .text-folio .study-actions {
+  flex-shrink: 0; margin: 0; padding-top: 11px; gap: 0 5px;
+  border-top: 3px double var(--paper-rule); position: relative;
+}
+.text-realm.notebook-study .text-folio .study-actions button {
+  min-height: 38px; padding: 6px 5px; border: 1px solid transparent; border-radius: 1px;
+  background: none; color: #506464; font: 11px/1.4 'Segoe UI', sans-serif;
+}
+.text-realm.notebook-study .text-folio .study-actions button:nth-child(2) {
+  background: #345f65; border-color: #345f65; color: #f8f5e9;
+}
+.text-realm.notebook-study .text-folio .study-actions button.active {
+  background: #dce4da; border-color: #7a9690; color: #264d51;
+}
+.text-realm.notebook-study .text-folio .knowledge-side button:hover:not(:disabled) {
+  color: #183f46; background: #dbe4da; border-color: #76958f;
+}
+.text-realm.notebook-study .text-folio .knowledge-side button:focus-visible { outline-color: #6a577c; }
+.text-realm.notebook-study .text-folio .exercise-nav { border-bottom: 1px solid var(--paper-rule); padding-bottom: 6px; }
+.text-realm.notebook-study .text-folio .exercise-nav button,
+.text-realm.notebook-study .text-folio .exercise-nav > span { color: #4a6568; }
+.text-realm.notebook-study .text-folio .knowledge-empty { color: var(--paper-muted); }
+
+/* A. Study sheet: a printed register, then unruled statement and working fields.
+   Photo 1 supplies the shallow metadata cells and the interrupted dotted rules. */
+.text-realm.notebook-A .text-folio .knowledge-meta {
+  border: 1px solid var(--paper-rule); border-inline: 0;
+  grid-template-columns: minmax(0, 1fr) 105px;
+}
+.text-realm.notebook-A .text-folio .type-chip { padding: 7px 10px; }
+.text-realm.notebook-A .text-folio .knowledge-meta > span:nth-child(2) {
+  border-left: 1px solid var(--paper-rule); padding: 7px 10px;
+  justify-self: stretch; text-align: right;
+}
+.text-realm.notebook-A .text-folio .knowledge-meta > span:nth-child(3) {
+  border-top: 1px dotted var(--paper-rule); padding: 12px 10px 14px; font-size: 22px;
+}
+.text-realm.notebook-A .text-folio .statement-section { padding: 9px 10px 17px; }
+.text-realm.notebook-A .text-folio .workings-section { border-top: 1px dashed var(--paper-rule); padding: 9px 10px 0; }
+.text-realm.notebook-A .text-folio .knowledge-section-head { margin-bottom: 9px; }
+
+/* B. Daily notebook: compact memo strip, double rule and lined prose.
+   Photo 2 supplies the linear reading flow. Rules follow the prose baselines. */
+.text-realm.notebook-B .text-folio .knowledge-meta { padding: 0 0 5px; border-bottom: 3px double #65776b8c; }
+.text-realm.notebook-B .text-folio .type-chip {
+  border: 1px solid var(--paper-rule); padding: 2px 7px; justify-self: start;
+}
+.text-realm.notebook-B .text-folio .knowledge-meta > span:nth-child(3) { padding-top: 13px; padding-bottom: 11px; }
+.text-realm.notebook-B .text-folio .knowledge-section { padding-top: 9px; }
+.text-realm.notebook-B .text-folio .knowledge-section-head { margin-bottom: 0; }
+.text-realm.notebook-B .text-folio .math-content {
+  background: repeating-linear-gradient(transparent 0 28px, #788d7938 28px 29px, transparent 29px 30px);
+  padding-bottom: 0;
+}
+.text-realm.notebook-B .text-folio .workings-section { margin-top: 8px; }
+.text-realm.notebook-B .text-folio .workings-section .math-content { padding-bottom: 15px; }
+.text-realm.notebook-B .text-folio .workings-section .math-content::after {
+  content: ''; display: block; height: 30px; pointer-events: none;
+}
+
+/* C. Open frame: one outline around the entry, with the labels printed in its edge.
+   Photos 3 and 4 supply the open frame and the stronger rule before the working. */
+.text-realm.notebook-C .text-folio .knowledge-viewer { padding: 25px 8px 30px 0; }
+.text-realm.notebook-C .text-folio .knowledge-meta {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding: 0 16px;
+  border: 1px solid var(--paper-rule); border-bottom: 0;
+}
+.text-realm.notebook-C .text-folio .type-chip {
+  position: relative; z-index: 1; margin-top: -9px; padding: 0 7px; background: var(--paper); align-self: flex-start;
+}
+.text-realm.notebook-C .text-folio .knowledge-meta > span:nth-child(2) {
+  position: relative; z-index: 1; margin: -9px 0 0 auto; background: var(--paper); padding: 0 7px; align-self: flex-start;
+}
+.text-realm.notebook-C .text-folio .knowledge-meta > span:nth-child(3) {
+  flex-basis: 100%; padding: 4px 0 10px; font-size: 25px;
+}
+.text-realm.notebook-C .text-folio .knowledge-section { padding: 0 16px; border-inline: 1px solid var(--paper-rule); }
+.text-realm.notebook-C .text-folio .statement-section { padding-bottom: 14px; }
+.text-realm.notebook-C .text-folio .statement-section .math-content {
+  background: repeating-linear-gradient(transparent 0 28px, #788d7930 28px 29px, transparent 29px 30px);
+}
+.text-realm.notebook-C .text-folio .workings-section { padding-bottom: 20px; border-bottom: 1px solid var(--paper-rule); }
+.text-realm.notebook-C .text-folio .workings-section .knowledge-section-head {
+  border-top: 1px solid var(--paper-rule); padding-top: 9px; min-height: 43px; margin-bottom: 9px;
+}
+.text-realm.notebook-B .text-folio .katex-display,
+.text-realm.notebook-C .text-folio .katex-display {
+  position: relative; background: var(--paper);
+}
+.text-realm.notebook-study .text-folio .knowledge-section-head button:hover:not(:disabled),
+.text-realm.notebook-study .text-folio .sound-corner:hover:not(:disabled),
+.text-realm.notebook-study .text-folio .exercise-nav button:hover:not(:disabled) {
+  background: none; text-decoration: underline; text-underline-offset: 4px;
+}
+
+@media (min-width: 1450px) {
+  .text-realm.notebook-study .text-folio .knowledge-side { padding-inline: 40px 35px; }
+  .text-realm.notebook-study .text-folio .math-content { font-size: 18px; }
+  .text-realm.notebook-study .text-folio .study-actions button { font-size: 12px; }
+}
+@media (max-width: 1100px) {
+  .text-realm.notebook-study .text-folio .knowledge-side { padding-inline: 22px 18px; }
+  .text-realm.notebook-study .text-folio .math-content { font-size: 16px; }
+}
+@media (max-width: 900px) {
+  .altar-interface .text-realm.notebook-study { bottom: auto; padding-bottom: 65px; }
+  .text-realm.notebook-study .text-folio .knowledge-side { height: clamp(500px, calc(100dvh - 235px), 750px); padding-bottom: 20px; }
+}
+@media (max-width: 540px) {
+  .text-realm.notebook-study .text-folio .knowledge-side { padding-inline: 20px 14px; height: clamp(500px, calc(100dvh - 250px), 750px); }
+  .text-realm.notebook-study .text-folio .knowledge-meta > span:nth-child(3) { font-size: 22px; }
+  .text-realm.notebook-study .text-folio .math-content { font-size: 16px; }
+  .text-realm.notebook-study .text-folio .study-actions button { min-height: 39px; }
+  .text-realm.notebook-study .text-folio .knowledge-section-head button { min-height: 35px; }
+  .text-realm.notebook-C .text-folio .knowledge-meta,
+  .text-realm.notebook-C .text-folio .knowledge-section { padding-inline: 12px; }
+}

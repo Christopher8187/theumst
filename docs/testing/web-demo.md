@@ -46,9 +46,9 @@ Evidence labels: S means built frontend with simulated services; L means real Fa
 ### 6. Completion is shared and immediately visible
 
 - Evidence: `L` required; `S` checks immediate display only.
-- Initial state: the same exercise is visible from Text and Questions and appears in the current Atlas. It starts incomplete.
-- Steps: mark it done in Text; inspect the selected item and Atlas without reloading; switch to Questions; reload and sign in again; toggle it back if the fixture allows cleanup.
-- Observable outcome: the item stays selected. Reader and Atlas completion feedback update immediately. Questions shows the same completion value, and the value survives reload because completion belongs to the knowledge object rather than the realm.
+- Initial state: an exercise in Questions and a non-exercise in Text start incomplete and appear in their respective Atlas views.
+- Steps: mark each done in its realm; inspect reader, Atlas and shared book progress without reloading; switch realms; reload and sign in again; toggle back if the fixture allows cleanup.
+- Observable outcome: the item stays selected. Reader, Atlas and book completion feedback update immediately and survive reload. Completion belongs to the knowledge object rather than the realm.
 
 ### 7. Text and Questions keep separate positions
 
@@ -57,12 +57,12 @@ Evidence labels: S means built frontend with simulated services; L means real Fa
 - Steps: move Text to T2; move Questions to Q2; alternate realms several times; reload the page and start a new signed-in session.
 - Observable outcome: each realm returns to its own last object. Switching realms does not replace the other realm's saved position. Completion remains shared even though positions differ.
 
-### 8. Continue follows the complete book order
+### 8. Continue follows the active realm in complete book order
 
 - Evidence: `S` against a deliberately gapped view, then `L` against the backend's ordered reader response. Use `C` read-only if a suitable ordered book exists.
 - Initial state: the visible Atlas omits several intervening objects and includes completed objects and a section boundary. The full ordered list is known independently of graph edges.
 - Steps: choose Continue from the selected object until crossing the hidden gap and section boundary; use Back; compare visited IDs with the backend order and completion values.
-- Observable outcome: Continue visits exactly one next object each time, including omitted, completed, and next-section objects. It does not mark items done. Back returns through navigation without expanding the entire book. Generated source order is not described as an authored dependency.
+- Observable outcome: Text visits the adjacent non-exercise, and Questions visits the adjacent exercise, including completed objects and objects outside the cropped graph. Back uses the same eligible sequence in reverse. Neither action marks items done, wraps or expands the whole graph. Generated source order is not described as an authored dependency.
 
 ## Worker 3: notes, language, book detail, and contents
 
@@ -145,7 +145,7 @@ Evidence labels: S means built frontend with simulated services; L means real Fa
 - Evidence: `S` with adversarial routing fixtures and `L` against returned relations.
 - Initial state: the graph has at least one pair sharing source order and an authored dependency, converging dependencies, multiple omitted order runs, and routes near headings and borders.
 - Steps: inspect both views and distance extremes; trace the complete visible gold path and every dependency; select each `+N outside view` marker; compare counts with omitted positions.
-- Observable outcome: shared pairs retain separate gold and dependency arrows. Gold forms the complete source-order path across visible runs; dependencies remain separately styled and directed. Routes use distinct ports and do not merge, vanish, or cross cards, headings, markers, or borders. Every count-only label sits beside its own dotted gold arrow, reports exact omitted positions, and does not bulk-expand them.
+- Observable outcome: shared pairs retain separate gold and dependency arrows. Gold forms the complete source-order path across visible runs; dependencies remain separately styled and directed. Routes use distinct ports and do not merge, vanish, or cross cards, headings, markers, or borders. Every count-only label occupies a break in its own dotted gold arrow, reports exact omitted positions, and does not bulk-expand them.
 
 ### 20. Bounded rendering, selection, math, and measured limits
 

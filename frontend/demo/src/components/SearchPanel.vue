@@ -2,7 +2,7 @@
 import { onMounted, ref } from "vue";
 import { renderMath } from "../math";
 defineProps({ t: Object, results: Array, status: String, error: String, kind: String });
-defineEmits(["close", "open"]);
+defineEmits(["close", "open", "retry"]);
 
 const closeButton = ref(null);
 onMounted(() => closeButton.value?.focus());
@@ -25,5 +25,6 @@ onMounted(() => closeButton.value?.focus());
     <p v-else-if="status === 'empty'" class="empty-state" role="status">{{ kind==='dependencies'?t.noDependencies:t.noResults }}</p>
     <p v-else-if="status === 'unavailable'" class="empty-state" role="status">{{ t.similarUnavailable }}</p>
     <p v-else-if="status === 'error'" class="empty-state" role="alert">{{ t.similarError }}</p>
+    <button v-if="status==='error'||status==='unavailable'" type="button" class="discovery-retry" @click="$emit('retry')">{{t.retry}}</button>
   </section>
 </template>

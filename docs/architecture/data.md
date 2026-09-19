@@ -8,9 +8,11 @@ Migration 009 adds `media_create_request`, keyed by editor and client request UU
 
 Books use `grimoire_id`, sections use `section_id`, and source-specific knowledge uses `knowledge_id`. Source keys identify publisher data for updates. A book version is its published edition/version. Crystal membership uses `knowledge_crystal_id`; the preferred instance is marked by `is_default_in_crystal`. Crystallization reads membership directly and filters hidden sources.
 
+Migration 010 adds nullable `knowledge.name` for an object's heading beside its type. The Demo uses this when nonblank and falls back to `language_knowledge.label`. Single-object submission and Whole-book upload accept an optional name of up to 500 characters. Older uploads that omit it preserve an existing name. It is independent of grimoire titles and crystal names.
+
 `user_grimoire` holds a user's summoned books. `demo_knowledge_progress` has one completion row per user/object. `demo_study_state` preserves independent Text and Questions positions. Hiding a book changes reader visibility without deleting these rows. `demo_note` permits multiple attached notes and separate scribbles. Hidden source labels and links are withheld while the user's writing remains readable. Deletion is different and follows existing foreign-key actions.
 
-The complete compact reader list orders active objects by demo override, canonical source-order metadata, then ID. Continue and the gold path use that list without filtering completed objects or exercises. The local display may omit positions but never changes the underlying order.
+The complete compact reader list orders active objects by demo override, canonical source-order metadata, then ID. The gold path uses that complete list. Text navigation skips exercise objects; Questions navigation visits only exercises. Neither skips completed objects. The local display may omit positions but never changes the underlying order.
 
 Two authored relation stores currently exist: legacy `relation` allows one type per ordered object pair and can cross books; graph-sidecar tables allow typed book-scoped edges and multiple types. The sidecar validator rejects directed cycles. The demo graph endpoint's default view generates `book_order_v1` with `authored_dependencies: false` in its projection metadata; it does not establish authored dependencies.
 

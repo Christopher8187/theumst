@@ -38,7 +38,8 @@ def find_neighbors(knowledge_id: int, k: int) -> dict[str, Any]:
         cur.execute("""
             SELECT e.embedding_id::text, e.embedding_model_id, sp.projection_type,
                    sp.language_id, sp.direction, k.knowledge_id, s.grimoire_id,
-                   lk.label, lk.statement, lg.title AS book_title,
+                   COALESCE(NULLIF(btrim(k.name), ''), lk.label) AS label,
+                   lk.statement, lg.title AS book_title,
                    COALESCE(btrim(lk.working), '') <> '' AS has_workings,
                    em.qdrant_collection, em.vector_size, em.distance_metric
             FROM semantic_projection sp

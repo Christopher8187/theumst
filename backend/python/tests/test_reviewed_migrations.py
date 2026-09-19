@@ -22,6 +22,7 @@ def test_reviewed_sources_have_exact_checksums_and_exclude_historical_seeds():
     assert [migration.filename for migration, _ in sources] == [
         "006_knowledge_graph.sql", "007_study_positions.sql", "008_news_subscriptions.sql",
         "009_media_create_requests.sql",
+        "010_knowledge_names.sql",
     ]
     assert "007_research_corpus_access.sql" not in Path(
         reviewed_migrations.__file__

@@ -1,5 +1,5 @@
 const API_BASE = String(
-  import.meta.env.VITE_API_BASE || (location.port === "5175" ? "http://localhost:8000" : "")
+  import.meta.env.VITE_API_BASE || ""
 ).replace(/\/$/, "");
 
 export class DemoApiError extends Error {
@@ -21,7 +21,7 @@ export async function demoFetch(path, options = {}) {
     }
   });
   if (response.status === 401) {
-    location.href = "/login";
+    location.href = location.port === "5175" ? `${location.protocol}//${location.hostname}:5173/login?next=/demo/` : "/login?next=/demo/";
     throw new Error("Authentication required");
   }
   const data = response.status === 204 ? {} : await response.json().catch(() => ({}));

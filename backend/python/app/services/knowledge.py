@@ -315,10 +315,11 @@ def submit_knowledge(payload: KnowledgeSubmission) -> dict[str, Any]:
         crystal_id = int(cur.fetchone()["knowledge_crystal_id"])
         cur.execute(
             """
-            INSERT INTO knowledge (section_id, knowledge_crystal_id, type, is_default_in_crystal)
-            VALUES (%s, %s, %s, %s) RETURNING knowledge_id
+            INSERT INTO knowledge (section_id, knowledge_crystal_id, type, is_default_in_crystal, name)
+            VALUES (%s, %s, %s, %s, %s) RETURNING knowledge_id
             """,
-            (section_id, crystal_id, payload.knowledge.type, payload.knowledge.is_default_in_crystal),
+            (section_id, crystal_id, payload.knowledge.type, payload.knowledge.is_default_in_crystal,
+             payload.knowledge.name),
         )
         knowledge_id = int(cur.fetchone()["knowledge_id"])
         cur.execute(
@@ -375,7 +376,7 @@ def list_knowledge(
     with transaction() as (_, cur):
         cur.execute(
             f"""
-            SELECT k.knowledge_id, k.type, k.is_default_in_crystal,
+            SELECT k.knowledge_id, k.name, k.type, k.is_default_in_crystal,
                    kc.likes, lk.language_id, lk.statement, lk.working,
                    lk.label, lk.working_summary, lk.ref_id,
                    lk.labelled_references, lk.object_reference_labels,
@@ -402,7 +403,7 @@ def get_knowledge(knowledge_id: int, language_id: int, *, include_hidden: bool =
     with transaction() as (_, cur):
         cur.execute(
             """
-            SELECT k.knowledge_id, k.type, k.is_default_in_crystal,
+            SELECT k.knowledge_id, k.name, k.type, k.is_default_in_crystal,
                    kc.likes, lk.language_id, lk.statement, lk.working,
                    lk.label, lk.working_summary, lk.ref_id,
                    lk.labelled_references, lk.object_reference_labels,

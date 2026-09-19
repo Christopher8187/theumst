@@ -5,3 +5,5 @@ Backend startup validates the reviewed schema when `DB_SCHEMA_STARTUP_MODE=disab
 The 0.1.0 study-position migration adds `questions_knowledge_id`. Apply it through the reviewed runner after verifying the selected database backup. Existing Text positions and completion rows remain intact.
 
 The new neighbor route uses stored statement/combined projections with compatible model, collection, language and dimensions. It makes no embedding-provider call. Missing embeddings despite available workings are processing faults. [Testing](../docs/testing.md) records verification boundaries; release-specific outcomes belong in the release evidence rather than accumulating here.
+
+For 0.0.7, migration `010_knowledge_names.sql` adds nullable `knowledge.name`. Existing databases use the reviewed migration runner after a verified PostgreSQL backup and restore check. Do not replay the baseline or numbered seeds. An omitted name on reimport retains the existing name; display falls back to the language label when blank.

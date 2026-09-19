@@ -55,3 +55,7 @@ Atlas jumps, exercise skipping in both directions, parent realm feedback,
 complete forward/backward traversal, completed objects, end boundaries and
 the pending-note guard. It reproduced Back returning to item 1 after selecting
 item 14, instead of the preceding non-exercise, item 13.
+
+`node tests/production-reader.mjs` mounts the production reader with Vue and simulated HTTP. It covers adjacent realm navigation, parent feedback, persistence requests, reloading saved positions, Dependencies, completion, dirty-note departure, unavailable saved positions and empty realms. It does not establish PostgreSQL persistence; `test_demo_007_database.py` exercises that separately against an explicitly disposable database.
+
+`node tests/global-notes.mjs` checks the production global Notes wiring with no visible grimoire and a retained attached note from a hidden source. It exercises the real API adapter, requires only the personal notes endpoint and confirms that the independent view passes the retained writing to the existing Notes desk.

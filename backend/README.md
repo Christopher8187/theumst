@@ -9,3 +9,5 @@ Use [operations](../docs/operations.md) for setup/startup and [RUN.md](RUN.md) f
 The [Real Analysis demo sample](examples/real-analysis-demo/README.md) packages the saved Section Atlas material for Whole-book upload without changing the application or its schema.
 
 [News subscriptions](../docs/news-subscriptions.md) describes explicit email consent, Media announcement preview and publishing, the persistent delivery worker and verified provider suppression. The worker is disabled by default. Account security emails continue through SMTP; announcements use Resend's HTTP API with saved idempotency keys.
+
+The [Sanctuary sample builder](examples/sanctuary-demo/README.md) exports the accepted Real Analysis, Light, Distance & Time, and Symmetry & Transformations books through the same Whole-book upload. Existing Real Analysis source identities remain stable.

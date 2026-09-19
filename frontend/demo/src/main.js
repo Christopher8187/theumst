@@ -7,7 +7,7 @@ async function mount() {
     createApp(TreePrototype).mount("#app");
   } else {
     const [{ default: App }] = await Promise.all([
-      import("./App.vue"), import("./style.css"), import("./release.css"),
+      import("./App.vue"),
     ]);
     createApp(App).mount("#app");
   }

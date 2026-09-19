@@ -1,6 +1,6 @@
 # Operations
 
-Use this guide for LOCAL, COM and CN. Environment-specific domains, storage and permitted books stay in configuration and their owning documents. Preserve authorization already supplied by the task. The combined 0.1.0 task requests COM deployment after verified main publication; unrelated production changes require Christopher's authorization.
+Use this guide for LOCAL, COM and CN. Environment-specific domains, storage and permitted books stay in configuration and their owning documents. Preserve authorization already supplied by the task. The combined 0.0.7 task requests COM deployment after verified main publication; unrelated production changes require Christopher's authorization.
 
 ## Local setup and existing data
 

@@ -99,6 +99,11 @@ REVIEWED_MIGRATIONS = (
             Marker("column", "public.media_create_request.response"),
         ),
     ),
+    ReviewedMigration(
+        key="knowledge_names_v1", filename="010_knowledge_names.sql",
+        sha256="71f1243e6955baf6810cbf484df11d8defe7ce3f7841be7af5b4cc0fa19f4e6a",
+        exclusive_markers=(Marker("column", "public.knowledge.name"),),
+    ),
 )
 
 

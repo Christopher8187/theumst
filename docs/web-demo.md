@@ -4,20 +4,11 @@ This page owns the functional decisions accepted in [Reconcile the Web Demo requ
 
 ## Reading and completion
 
-Text follows the complete available grimoire order. Continue visits one next object, including completed objects, exercises and section transitions. Visiting changes position only. Train selects the next unfinished exercise ahead and stops with an explanation when none remains; it never wraps backward. Keep the familiar reader replacement with the Atlas alongside it.
+Text follows available non-exercise objects in grimoire order. Back and Continue visit adjacent non-exercises, including completed objects and section transitions, without wrapping. Graph selection does not turn Back into browsing history. Text's Atlas omits exercise cards while preserving source numbering and omitted-position counts. Questions uses Back and Continue for adjacent exercises; its Atlas includes every type and selecting a non-exercise opens Text. Visiting changes position only. Train selects the next unfinished exercise ahead and explains when none remains; it never wraps backward.
 
 Mark done saves the object's completion, refreshes visible completion feedback and keeps the object selected. Completion is shared between Text and Questions. Their saved positions are independent. A cross-book excursion preserves the first original book, object and realm through further jumps; Return to original book restores all three.
 
-The local issue 70 notebook prototype now differs from the deployed reader:
-Text's Back and Continue visit the previous and next non-exercise in grimoire
-order, including completed objects, and its Atlas hides exercise cards. Back
-does not follow graph-selection history or return to Questions. Questions
-uses Back and Continue for the previous and next exercise, without wrapping;
-its Atlas includes all types, and selecting a non-exercise opens Text at that
-object. Selection preserves separate realm positions and shared completion.
-The header displays only the smallest containing subsection. These prototype
-decisions are recorded in [round 24](../frontend/demo/prototypes/tree-of-wisdom/round-twenty-four.md)
-and the [round 25 navigation correction](../frontend/demo/prototypes/tree-of-wisdom/round-twenty-five.md).
+The accepted [issue 70 prototype](https://github.com/Christopher8187/product/issues/70), revision 25, is the visual basis for 0.0.7. The production entry uses the same Sanctuary, Orbit, Brief, altar transition, realms book and notebook B components with real API data. The header shows the smallest containing subsection; shared language and completion controls match the realms book. Review, Preview, Advice, Expand and Progress remain unfinished activities.
 
 ## Notes and availability
 
@@ -27,9 +18,13 @@ Hidden books and their objects are excluded from reader lists, details, images, 
 
 If the base grimoire becomes unavailable, withhold its source content when detected and ask the reader to confirm exit to My grimoires. If only the original grimoire becomes unavailable during an excursion, offer that exit plus staying in the available base grimoire. Availability is checked on window focus and periodically; this is detection on revalidation, not server-pushed notification.
 
+Collection removal deletes only `user_grimoire` membership. It leaves completion, saved positions and notes intact. Adding the book again restores access to that personal study state.
+
 ## Discovery and presentation
 
 Find neighbors searches across available books using stored semantic projections. Retrieve top k for each applicable projection, combine distinct candidates, obtain both scores for every complete pair and show the final top k. Absence from one result set is not a zero score. Compatible complete pairs use equal weighting. If exactly one object lacks workings, apply 0.8 to the available statement score; if both lack workings, retain it. Normalize signed cosine scores to [0,1] before the penalty so it cannot improve a negative score. Missing embeddings despite available workings are processing faults.
+
+Dependencies retrieves active objects connected to the selected object by incoming authored `dependency` edges in its available grimoire. Source order, outgoing edges and similarity do not qualify.
 
 Crystallization retrieves actual same-crystal instances, excluding hidden sources even when they are preferred. It is separate from approximate Find neighbors. No general-search fallback choice is introduced.
 

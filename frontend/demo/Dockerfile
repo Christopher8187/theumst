@@ -5,10 +5,10 @@ WORKDIR /app/frontend/demo
 COPY frontend/demo/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY frontend/demo ./
+COPY frontend/shared /app/frontend/shared
 
 FROM base AS dev
-ENV VITE_API_BASE=http://localhost:8000 \
-    VITE_ASSET_BASE=http://localhost:8000
+ENV VITE_API_PROXY_TARGET=http://backend:8000
 EXPOSE 5175
 CMD ["npm", "run", "dev"]
 

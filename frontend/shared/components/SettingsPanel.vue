@@ -105,7 +105,7 @@ const ranges = [
     <div class="settings-footer">
       <button class="quiet-link" @click="emit('privacy')">
         {{ labels.privacy }}</button
-      ><small>Theumst 0.2.2</small>
+      ><small>Theumst 0.0.7</small>
     </div>
   </div>
 </template>

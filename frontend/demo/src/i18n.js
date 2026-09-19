@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 
 const en = {
-  version: "Web Demo Version 0.1.0",
+  version: "Web Demo Version 0.0.7",
   exit: "Exit",
   mainMenu: "Main menu",
   back: "Back",
@@ -95,7 +95,7 @@ const en = {
 
 const zh = {
   ...en,
-  version: "网页演示版本 0.1.0",
+  version: "网页演示版本 0.0.7",
   exit: "退出",
   mainMenu: "主菜单",
   back: "返回",
@@ -188,7 +188,7 @@ const zh = {
 
 const ja = {
   ...en,
-  version: "Web デモ バージョン 0.1.0",
+  version: "Web デモ バージョン 0.0.7",
   exit: "終了",
   mainMenu: "メインメニュー",
   back: "戻る",

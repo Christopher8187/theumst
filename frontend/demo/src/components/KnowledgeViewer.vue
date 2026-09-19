@@ -22,8 +22,8 @@ function openInlineImage(event) {
 <template>
   <article v-if="node" class="knowledge-viewer">
     <div class="knowledge-meta">
-      <span class="type-chip" :class="node.type">{{ node.type }}</span>
-      <span>#{{ node.knowledge_id }}</span>
+      <span class="type-chip" :class="node.type">{{ t['type_'+node.type] || node.type }}</span>
+      <span>#{{ node.book_order_rank ?? node.source_order?.[0] ?? node.knowledge_id }}</span>
       <span v-html="renderMath(node.label || '')"></span>
       <strong :title="mode === 'questions' ? t.questionSymbol : t.bookSymbol">{{ mode === 'questions' ? '?' : '▥' }}</strong>
     </div>

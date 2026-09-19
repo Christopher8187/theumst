@@ -172,6 +172,7 @@ class SectionReference(BaseModel):
 
 
 class KnowledgeObjectInput(BaseModel):
+    name: str | None = Field(default=None, max_length=500)
     language_id: int = Field(default=1, gt=0)
     type: str = Field(min_length=1, max_length=80)
     statement: str = Field(min_length=1)

@@ -27,7 +27,7 @@ import MemberCard from "./components/MemberCard.vue";
 import HomeContent from "./components/HomeContent.vue";
 import NewsContent from "./components/NewsContent.vue";
 import { useDesktopWindows } from "./composables/useDesktopWindows.js";
-import { consumeDesktopEntry } from "./composables/desktopEntry.js";
+import { consumeDesktopEntry, demoReturnUrl } from "./composables/desktopEntry.js";
 import { readPreferences, savePreferences } from "./composables/preferences.js";
 import { desktopText, roleName } from "./desktopText.js";
 import "./desktop.css";
@@ -215,6 +215,11 @@ async function submitAuth(event: Event, action: string) {
     if (!user.value) throw Error(labels.value.accountError);
     close("login");
     close("signup");
+    const demoDestination = demoReturnUrl(requestedDestination.value, location.href);
+    if (demoDestination) {
+      location.assign(demoDestination);
+      return;
+    }
     if (
       requestedDestination.value.startsWith("/dashboard/") &&
       !requestedDestination.value.includes("/profile")

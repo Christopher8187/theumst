@@ -20,7 +20,7 @@ The scene Home shortcut turns to 5 degrees; the diamond turns to 185 degrees. Ea
 
 The approved illustration uses a mild shader projection and drifting light. It is not a modeled 3D room. The artwork is drawn before the canvas becomes visible, avoiding an initial change of framing. Browsers without WebGL receive the still illustration. Shared Three.js source retains its MIT license. The [shared component guide](../../frontend/shared/README.md) describes responsibilities and events.
 
-The demo caches compact book order while fetching the selected object's detail separately. Persisted completion belongs to knowledge-object IDs. Text and Questions have independent PostgreSQL positions. The current side panel, Atlas distance controls and Back history are temporary UI state. An excursion records the original book, object and realm so returning restores the original study context.
+The demo caches compact book order while fetching the selected object's detail separately. Persisted completion belongs to knowledge-object IDs. Text and Questions have independent PostgreSQL positions. The current side panel and Atlas distance controls are temporary UI state. Back and Continue derive adjacent eligible objects from full book order. An excursion records the original book, object and realm so returning restores the original study context.
 
 The note editor owns the current draft. A shared navigation guard defers leaving or switching an edited note until Save and continue, Discard and continue, or Keep editing is chosen. A failed save retains the draft and pending destination.
 

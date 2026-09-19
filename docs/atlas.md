@@ -4,7 +4,7 @@ The accepted [Section Atlas resolution](https://github.com/Christopher8187/produ
 
 There are exactly two views. Reading rows packs smallest-section groups across alternating rows, restarting within each larger subsection. Hierarchy places groups in generally downward dependency layers. Both layouts place the enclosing direct subsections using the same selected view. Smallest sections have soft fills; direct subsections below the whole-book root have curved borders. Preserve full nested ancestry in the reader.
 
-Gold arrows represent the complete reader order. Solid gold joins truly consecutive available positions; dotted gold spans omitted positions. A count-only `+N outside view` label sits beside its own dotted arrow, avoiding cards, headings, arrows, other labels and borders. Counts describe omitted available positions, never hidden source material. Labels do not expand intervals. Continue visits one next object and recenters; Back restores the previous visit. Navigation leaves completion unchanged.
+Gold arrows represent the complete reader order. Solid gold joins truly consecutive available positions; dotted gold spans omitted positions. A count-only `+N` label occupies a break in its own dotted arrow. Its accessible label explains the omitted positions. Counts describe omitted available positions, never hidden source material. Labels do not expand intervals. Text Back and Continue visit adjacent non-exercises, including completed objects. Questions visits adjacent exercises. Both recenter without wrapping. Navigation leaves completion unchanged.
 
 Dependency arrows remain separate, including when their endpoints match gold arrows. Their ports and segments remain distinct. Dependency input must be explicitly authored; the generated `book_order_v1` response is not such input. The reader requests the graph endpoint's `view=atlas` response, which supplies explicit `dependency` edges across the supported slider ranges. With no authored dependency data, retain ordered navigation and state that dependency data is unavailable. A truncated response displays the arrow-limit notice. [Data architecture](architecture/data.md) owns the input bounds, stores and later integration decision.
 
@@ -12,9 +12,9 @@ The layout ranks strongly connected section groups without deleting object relat
 
 The 0.1.0 limits are 24 objects and 72 arrows. Chrome 152 checks covered 8/19, 16/43 and 24/70 object/arrow combinations. A dense case with 72 supplied dependency edges rendered 23 objects and 72 total arrows, including 22 order arrows. It displayed the arrow-limit notice and measured 60.1 ms through layout and 67.3 ms through the second painted frame. At 1440, 768 and 390 CSS pixels the page had no horizontal overflow; the Atlas retained its own scrollable viewport. These fixture measurements support the selected bounds, not a universal latency guarantee. Do not raise them without further measurements. Math must render safely. See [testing](testing.md) and [browser objectives](testing/web-demo.md).
 
-Activate an outside-view count with pointer, Enter or Space to report the omitted range of book positions. This leaves the view unchanged; Continue still visits one next object. Nested groups restart their own rows and preserve the section hierarchy.
+Activate an outside-view count with pointer, Enter or Space to report the omitted range of book positions. This leaves the view unchanged; Continue still visits the next eligible object in the active realm. Nested groups restart their own rows and preserve the section hierarchy.
 
-The local notebook prototype opts into `density: "compact"`. This reduces
+The production notebook opts into `density: "compact"`. This reduces
 group and card spacing, header padding and routing clearances while retaining
 160×52 cards with object numbers beside titles and the same selection,
 grouping and relationship rules. It uses
@@ -25,10 +25,9 @@ hover title. Compact reading rows pack each group's actual width with a
 vertical and horizontal arrows straight. Long dependencies that bypass cards
 in the same column leave from the side. Routing discourages parallel runs
 within eight drawing units of another arrow or group boundary. Perpendicular
-boundary crossings remain available. The ordinary Demo keeps its regular
-spacing and labels.
+boundary crossings remain available. Historical regular spacing remains available to layout checks.
 
-In the local notebook, Text excludes exercise cards before applying the
+In the production notebook, Text excludes exercise cards before applying the
 visible-object limit. The model still receives the complete ordered list, so
 object numbers, dependency distances and gold omitted-position counts retain
 their original meaning. Questions permits all working types within the same

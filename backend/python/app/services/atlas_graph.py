@@ -13,7 +13,7 @@ EDGES_PER_NODE = 4
 # types, legacy cross-book relations and generated order never enter this view.
 _BOOK = """
 WITH visible AS (
-    SELECT k.knowledge_id, k.type,
+    SELECT k.knowledge_id, k.type, k.name,
            row_number() OVER (
                ORDER BY COALESCE((k.source_metadata->>'demo_order')::int, 2147483647),
                         k.source_metadata->'order' NULLS LAST, k.knowledge_id
@@ -96,7 +96,7 @@ def fetch_atlas_graph(cur, *, grimoire_id: int, focus: str | int,
     params.update(selected=sorted(selected), language=language_id, limit=limit)
     cur.execute(_BOOK + """
         SELECT node.knowledge_id, node.type, node.book_order_rank,
-               COALESCE(lk.label, lk.statement, node.knowledge_id::text) AS label,
+               COALESCE(NULLIF(btrim(node.name), ''), lk.label, lk.statement, node.knowledge_id::text) AS label,
                COALESCE(explicit.graph_role, 'fragment') AS graph_role,
                explicit.stable_knowledge_id
         FROM visible node

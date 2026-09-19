@@ -525,10 +525,13 @@ def _upsert_objects(
         current = existing.get(identity)
         crystal_id = current["knowledge_crystal_id"] if current else row["knowledge_crystal_id"]
         obj = row["source"]
+        name = obj.get("name")
+        if name is not None and (not isinstance(name, str) or len(name) > 500):
+            raise HTTPException(status_code=422, detail="object.name must be text of at most 500 characters")
         knowledge_rows.append((
             row["section_id"], crystal_id, row["working_type"],
             bool(obj.get("is_default_in_crystal", True)), row["source_key"],
-            _json(obj.get("source_metadata") or {}),
+            _json(obj.get("source_metadata") or {}), name,
         ))
         crystal_likes.append((crystal_id, row["likes"]))
 
@@ -537,17 +540,18 @@ def _upsert_objects(
         """
         INSERT INTO knowledge (
             section_id, knowledge_crystal_id, type, is_default_in_crystal,
-            source_key, source_metadata, is_active
+            source_key, source_metadata, name, is_active
         ) VALUES %s
         ON CONFLICT (section_id, source_key) WHERE source_key IS NOT NULL DO UPDATE SET
             type = EXCLUDED.type,
             is_default_in_crystal = EXCLUDED.is_default_in_crystal,
             source_metadata = EXCLUDED.source_metadata,
+            name = COALESCE(EXCLUDED.name, knowledge.name),
             is_active = true
         RETURNING knowledge_id, section_id, source_key
         """,
         knowledge_rows,
-        template="(%s, %s, %s, %s, %s, %s::jsonb, true)",
+        template="(%s, %s, %s, %s, %s, %s::jsonb, %s, true)",
         page_size=DATABASE_BATCH_SIZE,
         fetch=True,
     )

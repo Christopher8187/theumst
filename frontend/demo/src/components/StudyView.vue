@@ -13,10 +13,10 @@ const props = defineProps({
   similarError: String, discoveryKind: String, originBookId: Number, activeImage: Object,
   graph: Object, graphStatus: String, graphError: String, notebook: Boolean
 });
-const emit = defineEmits(["continue", "back-object", "select", "retry-graph", "expand-graph", "soon", "action", "close-side", "save-note", "notes-page", "open-result", "return-origin", "move", "done", "open-image"]);
+const emit = defineEmits(["continue", "back-object", "select", "retry-graph", "retry-discovery", "expand-graph", "soon", "action", "close-side", "save-note", "notes-page", "open-result", "return-origin", "move", "done", "open-image"]);
 const current = computed(() => props.selectedNode
   || props.nodes.find(node => node.knowledge_id === props.selectedId)
-  || props.nodes[0]);
+  || (props.notebook ? null : props.nodes[0]));
 const locationSections = computed(() => props.notebook
   ? current.value?.breadcrumbs?.slice(-1) || []
   : current.value?.breadcrumbs || []);
@@ -81,9 +81,12 @@ function closeSidePanel() {
 
       <div class="study-side-panel">
         <NotePanel v-if="sideMode === 'notes'" :t="t" :node="current" :notes="notes" :grimoire-id="book.grimoire_id" @close="$emit('close-side')" @save="$emit('save-note', $event)" @notes-page="$emit('notes-page')" />
-        <SearchPanel v-else-if="sideMode === 'similar'" :t="t" :results="similarResults" :kind="discoveryKind" :status="similarStatus" :error="similarError" @close="$emit('close-side')" @open="$emit('open-result', $event)" />
+        <SearchPanel v-else-if="sideMode === 'similar'" :t="t" :results="similarResults" :kind="discoveryKind" :status="similarStatus" :error="similarError" @close="$emit('close-side')" @open="$emit('open-result', $event)" @retry="$emit('retry-discovery')" />
         <ImagePanel :t="t" v-else-if="sideMode === 'image'" :image="activeImage" :node="current" :download-image="notebook" @close="$emit('close-side')" />
-        <SectionAtlas v-else :t="t" :nodes="nodes" :sections="sections" :graph="graph" :selected-id="current?.knowledge_id" :compact-controls="notebook" :excluded-types="notebook && mode === 'text' ? ['exercise'] : []" @select="$emit('select',$event)" />
+        <template v-else>
+        <div v-if="graphStatus==='error'||graphStatus==='unavailable'" class="atlas-service-notice" role="status">{{graphError || t.actionFailed}} <button type="button" @click="$emit('retry-graph')">{{t.retry}}</button></div>
+        <SectionAtlas :t="t" :nodes="nodes" :sections="sections" :graph="graph" :selected-id="current?.knowledge_id" :compact-controls="notebook" :excluded-types="notebook && mode === 'text' ? ['exercise'] : []" @select="$emit('select',$event)" />
+        </template>
         <div v-if="!notebook || (originBookId && originBookId !== book.grimoire_id)" class="study-side-controls">
           <button v-if="current && !notebook" type="button" :class="{ done: current.completed }" @click="$emit('done', current)">{{ current.completed ? '✓ ' + t.completed : '○ ' + t.markDone }}</button>
           <button v-if="originBookId && originBookId !== book.grimoire_id" type="button" @click="$emit('return-origin')">← {{ t.returnOrigin }}</button>
@@ -94,5 +97,6 @@ function closeSidePanel() {
 </template>
 
 <style scoped>
+.atlas-service-notice{padding:8px 12px;border:1px solid #c9aa8270;color:#efdbb5;font-size:12px}.atlas-service-notice button{color:inherit;background:transparent;border:1px solid currentColor;padding:4px 8px;margin-left:8px}
 .study-location,.study-context{display:contents}
 </style>
