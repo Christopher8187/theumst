@@ -14,7 +14,7 @@ Use `docker compose --env-file .env -f compose.local.yml ps` to inspect and `up 
 
 ## Fresh COM provisioning
 
-The replacement COM target is 167.71.20.50, not the destroyed 165.227.23.136. The Parent Repo `docs/theumst-droplet-deployment-handoff.md` records the verified SSH key/host, DNS and initial resources. Normal application root remains `/var/www/theumst.com`. Bootstrap through root, then verify the retained `chris` deployment account and sudo access.
+The COM target is theumst-lon1 at 209.97.130.228 in DigitalOcean's LON1 region. It replaced the New York droplet at 167.71.20.50 on 1 November 2026, and the earlier 165.227.23.136 is destroyed. The Parent Repo `docs/theumst-droplet-deployment-handoff.md` records the verified SSH key/host, DNS, storage and resources. Normal application root remains `/var/www/theumst.com`. Bootstrap through root, then verify the retained `chris` deployment account and sudo access.
 
 Christopher selected a fresh database on 10 September 2026. Preserve recovered Spaces objects; they do not restore PostgreSQL or Qdrant. Install Docker Engine/Compose using the official Ubuntu repository, Nginx and Certbot. Allow 22/80/443, keep the internal proxy loopback-only, and expose no database/vector port publicly. The small server uses swap; record actual memory, disk and response behavior before declaring capacity sufficient.
 
