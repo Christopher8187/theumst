@@ -104,6 +104,14 @@ REVIEWED_MIGRATIONS = (
         sha256="71f1243e6955baf6810cbf484df11d8defe7ce3f7841be7af5b4cc0fa19f4e6a",
         exclusive_markers=(Marker("column", "public.knowledge.name"),),
     ),
+    ReviewedMigration(
+        key="crystal_source_keys_v1", filename="011_crystal_source_keys.sql",
+        sha256="47071af559cdd98d9858200f137af204cbbd31d6c537d51e41902f84b7ad265b",
+        exclusive_markers=(
+            Marker("column", "public.knowledge_crystal.source_key"),
+            Marker("relation", "public.knowledge_crystal_source_key_unique"),
+        ),
+    ),
 )
 
 

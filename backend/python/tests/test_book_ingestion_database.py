@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 import pytest
+from fastapi import HTTPException
 
 from app.database import connect
 from app.services.book_ingestion import (
@@ -65,6 +66,58 @@ def test_batched_book_rows_and_embeddings_round_trip_then_rollback():
             assert len(objects) == 2
             assert len(points) == 2
             assert all(len(point["vector"]) == 3 for point in points)
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def _crystals(cursor, grimoire_id: int) -> dict[str, tuple[int, bool]]:
+    cursor.execute(
+        """
+        SELECT k.source_key, k.knowledge_crystal_id, k.is_default_in_crystal
+        FROM knowledge k JOIN section s ON s.section_id = k.section_id
+        WHERE s.grimoire_id = %s
+        """,
+        (grimoire_id,),
+    )
+    return {row["source_key"]: (row["knowledge_crystal_id"], row["is_default_in_crystal"]) for row in cursor.fetchall()}
+
+
+def test_crystal_source_keys_share_a_crystal_and_regroup_on_reimport_then_rollback():
+    connection = connect()
+    try:
+        with connection.cursor() as cursor:
+            grimoire_id, language_id = _upsert_book(cursor, {
+                "source_key": "__crystal_key_test__", "title": "Crystal key test", "language_id": 1,
+            })
+            sections = _upsert_sections(cursor, grimoire_id, language_id, [
+                {"source_key": "section:1", "section_number": "1", "section_name": "One"},
+            ])
+
+            def upload(groups: dict[str, str | None]) -> dict[str, tuple[int, bool]]:
+                _upsert_objects(
+                    cursor, grimoire_id=grimoire_id, language_id=language_id, sections=sections,
+                    objects=[
+                        {"source_key": key, "section_source_key": "section:1", "type": "theorem",
+                         "statement": key, "crystal_source_key": crystal,
+                         "is_default_in_crystal": key == "object:1"}
+                        for key, crystal in groups.items()
+                    ],
+                )
+                return _crystals(cursor, grimoire_id)
+
+            first = upload({"object:1": "__crystal__:a", "object:2": "__crystal__:a", "object:3": None})
+            assert first["object:1"][0] == first["object:2"][0] != first["object:3"][0]
+            assert first["object:1"][1] and not first["object:2"][1]
+
+            # Republishing moves object:2 to its own keyed crystal and keeps object:3's unkeyed one.
+            second = upload({"object:1": "__crystal__:a", "object:2": "__crystal__:b", "object:3": None})
+            assert second["object:1"][0] == first["object:1"][0]
+            assert second["object:2"][0] not in {first["object:1"][0], first["object:3"][0]}
+            assert second["object:3"][0] == first["object:3"][0]
+
+            with pytest.raises(HTTPException, match="crystal_source_key"):
+                upload({"object:1": "  "})
     finally:
         connection.rollback()
         connection.close()

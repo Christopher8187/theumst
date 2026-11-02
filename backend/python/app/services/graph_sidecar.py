@@ -17,6 +17,10 @@ GRAPH_CONTRACT_VERSION = 1
 GRAPH_SIDECAR_FORMAT = "theumst-knowledge-graph+json"
 GRAPH_ROLES = frozenset({"backbone", "support", "assessment", "fragment", "crosslink"})
 SUPPORT_ASSESSMENT_TYPES = frozenset({"exercise", "jas"})
+# Dependency cycles are accepted and listed in the receipt: the Parent Repo context map's Dependency
+# hierarchy gives them a low penalty and says they may sometimes be reasonable, and the Atlas layout
+# condenses strongly connected groups. Every other relation type must stay acyclic.
+CYCLIC_RELATION_TYPES = frozenset({"dependency"})
 MAX_GRAPH_NODES = 500_000
 MAX_GRAPH_RELATIONS = 2_000_000
 MAX_STABLE_ID_LENGTH = 255
@@ -52,6 +56,7 @@ class GraphValidationReceipt:
     orphan_references: tuple[str, ...]
     cycle_components: tuple[tuple[str, ...], ...]
     errors: tuple[str, ...]
+    allowed_cycle_components: tuple[tuple[str, ...], ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -66,6 +71,7 @@ class GraphValidationReceipt:
             "duplicate_relations": [list(item) for item in self.duplicate_relations],
             "orphan_references": list(self.orphan_references),
             "cycle_components": [list(component) for component in self.cycle_components],
+            "allowed_cycle_components": [list(component) for component in self.allowed_cycle_components],
             "errors": list(self.errors),
         }
 
@@ -311,9 +317,14 @@ def validate_graph_sidecar(
 
     for reference in sorted(orphan_references):
         errors.append(f"Relation references unknown knowledge_id {reference!r}")
-    cycles = _cycle_components(seen_ids, relations)
+    cycles = _cycle_components(
+        seen_ids, [relation for relation in relations if relation.relation_type not in CYCLIC_RELATION_TYPES]
+    )
     for component in cycles:
         errors.append(f"Directed relation cycle contains: {', '.join(component)}")
+    allowed_cycles = _cycle_components(
+        seen_ids, [relation for relation in relations if relation.relation_type in CYCLIC_RELATION_TYPES]
+    )
 
     nodes.sort(key=lambda node: node.knowledge_id)
     relations.sort(
@@ -351,6 +362,7 @@ def validate_graph_sidecar(
         orphan_references=tuple(sorted(orphan_references)),
         cycle_components=cycles,
         errors=unique_errors,
+        allowed_cycle_components=allowed_cycles,
     )
     if not valid:
         raise GraphSidecarValidationError(receipt)

@@ -474,12 +474,18 @@ def _upsert_objects(
         if identity in seen:
             raise HTTPException(status_code=422, detail=f"Duplicate object source_key {source_key!r} in section {section_key!r}")
         seen.add(identity)
+        crystal_key = obj.get("crystal_source_key")
+        if crystal_key is not None:
+            if not isinstance(crystal_key, str) or not crystal_key.strip() or len(crystal_key.strip()) > 255:
+                raise HTTPException(status_code=422, detail="object.crystal_source_key must be text of 1 to 255 characters")
+            crystal_key = crystal_key.strip()
         prepared.append({
             "source": obj,
             "source_key": source_key,
             "section_id": section_id,
             "working_type": str(obj.get("type") or "just a statement"),
             "likes": max(0, int(obj.get("likes") or 0)),
+            "crystal_source_key": crystal_key,
         })
 
     cur.execute(
@@ -498,7 +504,27 @@ def _upsert_objects(
         }
         for row in cur.fetchall()
     }
-    new_rows = [row for row in prepared if (row["section_id"], row["source_key"]) not in existing]
+    # Objects naming a crystal_source_key share that crystal, on this upload and later ones;
+    # other new objects each get a crystal of their own, and other existing objects keep theirs.
+    crystal_keys = sorted({row["crystal_source_key"] for row in prepared if row["crystal_source_key"]})
+    crystal_by_key: dict[str, int] = {}
+    if crystal_keys:
+        keyed = execute_values(
+            cur,
+            """
+            INSERT INTO knowledge_crystal (source_key) VALUES %s
+            ON CONFLICT (source_key) WHERE source_key IS NOT NULL DO UPDATE SET source_key = EXCLUDED.source_key
+            RETURNING knowledge_crystal_id, source_key
+            """,
+            [(key,) for key in crystal_keys],
+            page_size=DATABASE_BATCH_SIZE,
+            fetch=True,
+        )
+        crystal_by_key = {str(row["source_key"]): int(row["knowledge_crystal_id"]) for row in keyed}
+    new_rows = [
+        row for row in prepared
+        if (row["section_id"], row["source_key"]) not in existing and not row["crystal_source_key"]
+    ]
     if new_rows:
         cur.execute(
             """
@@ -519,11 +545,14 @@ def _upsert_objects(
         )
 
     knowledge_rows: list[tuple[Any, ...]] = []
-    crystal_likes: list[tuple[int, int]] = []
+    crystal_likes: dict[int, int] = {}
     for row in prepared:
         identity = (row["section_id"], row["source_key"])
         current = existing.get(identity)
-        crystal_id = current["knowledge_crystal_id"] if current else row["knowledge_crystal_id"]
+        if row["crystal_source_key"]:
+            crystal_id = crystal_by_key[row["crystal_source_key"]]
+        else:
+            crystal_id = current["knowledge_crystal_id"] if current else row["knowledge_crystal_id"]
         obj = row["source"]
         name = obj.get("name")
         if name is not None and (not isinstance(name, str) or len(name) > 500):
@@ -533,7 +562,7 @@ def _upsert_objects(
             bool(obj.get("is_default_in_crystal", True)), row["source_key"],
             _json(obj.get("source_metadata") or {}), name,
         ))
-        crystal_likes.append((crystal_id, row["likes"]))
+        crystal_likes[crystal_id] = max(crystal_likes.get(crystal_id, 0), row["likes"])
 
     returned = execute_values(
         cur,
@@ -543,6 +572,7 @@ def _upsert_objects(
             source_key, source_metadata, name, is_active
         ) VALUES %s
         ON CONFLICT (section_id, source_key) WHERE source_key IS NOT NULL DO UPDATE SET
+            knowledge_crystal_id = EXCLUDED.knowledge_crystal_id,
             type = EXCLUDED.type,
             is_default_in_crystal = EXCLUDED.is_default_in_crystal,
             source_metadata = EXCLUDED.source_metadata,
@@ -567,7 +597,7 @@ def _upsert_objects(
         FROM (VALUES %s) AS values(knowledge_crystal_id, likes)
         WHERE crystal.knowledge_crystal_id = values.knowledge_crystal_id
         """,
-        crystal_likes,
+        list(crystal_likes.items()),
         page_size=DATABASE_BATCH_SIZE,
     )
 

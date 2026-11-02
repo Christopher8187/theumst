@@ -140,6 +140,48 @@ def test_directed_cycles_are_rejected_as_sorted_components():
     )
 
 
+def test_dependency_cycles_are_accepted_and_listed_in_the_receipt():
+    sidecar = valid_sidecar(relations=[
+        {
+            "source_knowledge_id": "book:exercise:one",
+            "target_knowledge_id": "book:definition:group",
+            "relation_type": "dependency",
+        },
+        {
+            "source_knowledge_id": "book:definition:group",
+            "target_knowledge_id": "book:exercise:one",
+            "relation_type": "dependency",
+        },
+    ])
+
+    receipt = validate_graph_sidecar(sidecar, objects()).receipt
+
+    assert receipt.valid and receipt.capability == "semantic_relations"
+    assert receipt.cycle_components == ()
+    assert receipt.allowed_cycle_components == (("book:definition:group", "book:exercise:one"),)
+    assert receipt.as_dict()["allowed_cycle_components"] == [["book:definition:group", "book:exercise:one"]]
+
+
+def test_a_cycle_that_needs_a_dependency_edge_is_accepted():
+    sidecar = valid_sidecar(relations=[
+        {
+            "source_knowledge_id": "book:exercise:one",
+            "target_knowledge_id": "book:definition:group",
+            "relation_type": "dependency",
+        },
+        {
+            "source_knowledge_id": "book:definition:group",
+            "target_knowledge_id": "book:exercise:one",
+            "relation_type": "depends_on",
+        },
+    ])
+
+    # Other types are checked without dependency edges, and dependency edges alone form no cycle here.
+    receipt = validate_graph_sidecar(sidecar, objects()).receipt
+
+    assert receipt.cycle_components == () and receipt.allowed_cycle_components == ()
+
+
 @pytest.mark.parametrize("object_key", ["exercise:one", "jas:hint"])
 def test_exercise_and_jas_cannot_be_backbone(object_key: str):
     sidecar = valid_sidecar()
