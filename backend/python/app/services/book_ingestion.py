@@ -935,6 +935,23 @@ def _queue_embeddings(
     return points
 
 
+def _image_object_keys(image: dict[str, Any], objects: dict[str, dict[str, Any]]) -> list[str]:
+    """Every object showing an image, each once: object_source_key first, then object_source_keys.
+
+    An unknown object_source_key is ignored, as before; object_source_keys must name uploaded objects.
+    """
+    listed = image.get("object_source_keys")
+    if listed is None:
+        listed = []
+    if not isinstance(listed, list) or not all(isinstance(key, str) for key in listed):
+        raise HTTPException(status_code=422, detail="image.object_source_keys must be an array of object source keys")
+    unknown = [key for key in listed if key not in objects]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown image object {unknown[0]!r}")
+    first = str(image.get("object_source_key") or "")
+    return list(dict.fromkeys(([first] if first in objects else []) + listed))
+
+
 def _store_images(
     *,
     bundle: ArchiveBundle,
@@ -952,13 +969,14 @@ def _store_images(
         key = f"books/{grimoire_id}/images/{source_id}.{suffix}"
         storage.write_bytes(key, data)
         section_id = sections.get(str(image.get("section_source_key") or ""))
-        object_context = objects.get(str(image.get("object_source_key") or ""))
+        knowledge_ids = [objects[object_key]["knowledge_id"] for object_key in _image_object_keys(image, objects)]
         return index, {
             "source_image_id": source_id,
             "storage_key": key,
             "url": storage.public_url(key),
             "section_id": section_id,
-            "knowledge_id": object_context["knowledge_id"] if object_context else None,
+            "knowledge_id": knowledge_ids[0] if knowledge_ids else None,
+            "knowledge_ids": knowledge_ids,
             "semantic_context_name": image.get("semantic_context_name"),
             "metadata": image.get("metadata") or {},
         }
@@ -967,6 +985,7 @@ def _store_images(
         archive_path = _required_text(image.get("archive_path"), "image.archive_path")
         if archive_path not in bundle.members:
             raise HTTPException(status_code=422, detail=f"Missing image file {archive_path!r}")
+        _image_object_keys(image, objects)
 
     stored: dict[int, dict[str, Any]] = {}
     pending: set[Future] = set()
@@ -1002,35 +1021,59 @@ def _set_embedding_status(points: list[dict[str, Any]], status: str, error: str 
         )
 
 
-def _finalize_images(images: list[dict[str, Any]], grimoire_id: int) -> None:
+def _write_image_rows(cur, images: list[dict[str, Any]], grimoire_id: int) -> int:
+    """Upsert the book's image rows and replace their object links; return the number of links."""
     if not images:
-        return
-    with transaction() as (_, cur):
+        return 0
+    rows = execute_values(
+        cur,
+        """
+        INSERT INTO book_image (
+            grimoire_id, section_id, knowledge_id, source_image_id,
+            semantic_context_name, storage_key, url, metadata
+        ) VALUES %s
+        ON CONFLICT (grimoire_id, source_image_id) DO UPDATE SET
+            section_id = EXCLUDED.section_id,
+            knowledge_id = EXCLUDED.knowledge_id,
+            semantic_context_name = EXCLUDED.semantic_context_name,
+            storage_key = EXCLUDED.storage_key,
+            url = EXCLUDED.url,
+            metadata = EXCLUDED.metadata,
+            is_active = true,
+            updated_at = now()
+        RETURNING book_image_id, source_image_id
+        """,
+        [(
+            grimoire_id, image["section_id"], image["knowledge_id"],
+            image["source_image_id"], image["semantic_context_name"],
+            image["storage_key"], image["url"], _json(image["metadata"]),
+        ) for image in images],
+        template="(%s, %s, %s, %s, %s, %s, %s, %s::jsonb)",
+        page_size=DATABASE_BATCH_SIZE,
+        fetch=True,
+    )
+    image_ids = {str(row["source_image_id"]): int(row["book_image_id"]) for row in rows}
+    cur.execute("DELETE FROM book_image_knowledge WHERE book_image_id = ANY(%s)", (list(image_ids.values()),))
+    links = list(dict.fromkeys(
+        (image_ids[str(image["source_image_id"])], knowledge_id)
+        for image in images
+        for knowledge_id in image.get("knowledge_ids") or ([image["knowledge_id"]] if image["knowledge_id"] else [])
+    ))
+    if links:
         execute_values(
             cur,
-            """
-            INSERT INTO book_image (
-                grimoire_id, section_id, knowledge_id, source_image_id,
-                semantic_context_name, storage_key, url, metadata
-            ) VALUES %s
-            ON CONFLICT (grimoire_id, source_image_id) DO UPDATE SET
-                section_id = EXCLUDED.section_id,
-                knowledge_id = EXCLUDED.knowledge_id,
-                semantic_context_name = EXCLUDED.semantic_context_name,
-                storage_key = EXCLUDED.storage_key,
-                url = EXCLUDED.url,
-                metadata = EXCLUDED.metadata,
-                is_active = true,
-                updated_at = now()
-            """,
-            [(
-                grimoire_id, image["section_id"], image["knowledge_id"],
-                image["source_image_id"], image["semantic_context_name"],
-                image["storage_key"], image["url"], _json(image["metadata"]),
-            ) for image in images],
-            template="(%s, %s, %s, %s, %s, %s, %s, %s::jsonb)",
+            "INSERT INTO book_image_knowledge (book_image_id, knowledge_id) VALUES %s",
+            links,
             page_size=DATABASE_BATCH_SIZE,
         )
+    return len(links)
+
+
+def _finalize_images(images: list[dict[str, Any]], grimoire_id: int) -> int:
+    if not images:
+        return 0
+    with transaction() as (_, cur):
+        return _write_image_rows(cur, images, grimoire_id)
 
 
 async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
@@ -1118,7 +1161,7 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
             sections=sections,
             objects=objects,
         )
-        _finalize_images(stored_images, grimoire_id)
+        image_link_count = _finalize_images(stored_images, grimoire_id)
     finally:
         bundle.close()
 
@@ -1130,6 +1173,7 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
         "object_count": len(objects),
         "embedding_count": embedding_count,
         "image_count": len(stored_images),
+        "image_link_count": image_link_count,
         "knowledge_graph": graph_receipt.as_dict() if graph_receipt is not None else {
             "capability": graph_capability,
             "receipt_id": None,

@@ -435,7 +435,12 @@ def get_knowledge(knowledge_id: int, language_id: int, *, include_hidden: bool =
                            'metadata', bi.metadata
                        ) ORDER BY bi.book_image_id)
                        FROM book_image bi
-                       WHERE bi.knowledge_id = k.knowledge_id AND bi.is_active
+                       WHERE bi.is_active AND bi.book_image_id IN (
+                           SELECT own.book_image_id FROM book_image own WHERE own.knowledge_id = k.knowledge_id
+                           UNION
+                           SELECT link.book_image_id FROM book_image_knowledge link
+                           WHERE link.knowledge_id = k.knowledge_id
+                       )
                    ), '[]'::jsonb) AS images
             FROM knowledge k
             JOIN knowledge_crystal kc ON kc.knowledge_crystal_id = k.knowledge_crystal_id

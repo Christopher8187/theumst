@@ -112,6 +112,14 @@ REVIEWED_MIGRATIONS = (
             Marker("relation", "public.knowledge_crystal_source_key_unique"),
         ),
     ),
+    ReviewedMigration(
+        key="book_image_objects_v1", filename="012_book_image_objects.sql",
+        sha256="273b433149ae346aba6ab64140c66abe21841de397579829454d5acd70b2742a",
+        exclusive_markers=(
+            Marker("relation", "public.book_image_knowledge"),
+            Marker("relation", "public.book_image_knowledge_object_idx"),
+        ),
+    ),
 )
 
 

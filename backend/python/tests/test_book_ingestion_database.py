@@ -6,11 +6,14 @@ import pytest
 from fastapi import HTTPException
 
 from app.database import connect
+from app.routers.demo import _object_images
 from app.services.book_ingestion import (
+    _image_object_keys,
     _queue_embeddings,
     _upsert_book,
     _upsert_objects,
     _upsert_sections,
+    _write_image_rows,
 )
 
 
@@ -118,6 +121,60 @@ def test_crystal_source_keys_share_a_crystal_and_regroup_on_reimport_then_rollba
 
             with pytest.raises(HTTPException, match="crystal_source_key"):
                 upload({"object:1": "  "})
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_a_shared_image_reaches_every_object_and_relinks_on_reimport_then_rollback():
+    connection = connect()
+    try:
+        with connection.cursor() as cursor:
+            grimoire_id, language_id = _upsert_book(cursor, {
+                "source_key": "__shared_image_test__", "title": "Shared image test", "language_id": 1,
+            })
+            sections = _upsert_sections(cursor, grimoire_id, language_id, [
+                {"source_key": "section:1", "section_number": "1", "section_name": "One"},
+            ])
+            objects = _upsert_objects(
+                cursor, grimoire_id=grimoire_id, language_id=language_id, sections=sections,
+                objects=[
+                    {"source_key": key, "section_source_key": "section:1", "type": "theorem", "statement": key}
+                    for key in ("theorem", "support", "other")
+                ],
+            )
+
+            def upload(*keys: str) -> int:
+                image = {
+                    "source_image_id": "figure", "storage_key": "books/test/figure.png", "url": "/figure.png",
+                    "section_id": sections["section:1"], "semantic_context_name": "A figure", "metadata": {},
+                    "object_source_key": keys[0], "object_source_keys": list(keys),
+                }
+                ids = [objects[key]["knowledge_id"] for key in _image_object_keys(image, objects)]
+                return _write_image_rows(cursor, [dict(image, knowledge_id=ids[0], knowledge_ids=ids)], grimoire_id)
+
+            def shown(key: str) -> list[str]:
+                return [row["source_image_id"] for row in _object_images(cursor, objects[key]["knowledge_id"])]
+
+            assert upload("theorem", "support") == 2
+            assert (shown("theorem"), shown("support"), shown("other")) == (["figure"], ["figure"], [])
+
+            # Republishing with one object relinks the image to that object alone.
+            assert upload("theorem") == 1
+            assert (shown("theorem"), shown("support")) == (["figure"], [])
+
+            # A row stored before migration 012 has no links and still reaches its object.
+            cursor.execute(
+                """
+                INSERT INTO book_image (grimoire_id, knowledge_id, source_image_id, storage_key, url)
+                VALUES (%s, %s, 'legacy', 'books/test/legacy.png', '/legacy.png')
+                """,
+                (grimoire_id, objects["other"]["knowledge_id"]),
+            )
+            assert shown("other") == ["legacy"]
+
+            with pytest.raises(HTTPException, match="Unknown image object"):
+                _image_object_keys({"object_source_keys": ["missing"]}, objects)
     finally:
         connection.rollback()
         connection.close()

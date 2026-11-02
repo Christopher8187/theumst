@@ -34,6 +34,24 @@ GRAPH_MAX_DEPTH = 2
 GRAPH_CACHE_SECONDS = 300
 
 
+def _object_images(cur, knowledge_id: int) -> list[dict[str, Any]]:
+    """Active images an object shows: those naming it as their object, and those linked to it."""
+    cur.execute(
+        """
+        SELECT source_image_id, semantic_context_name, storage_key, url, metadata
+        FROM book_image
+        WHERE is_active AND book_image_id IN (
+            SELECT book_image_id FROM book_image WHERE knowledge_id = %s
+            UNION
+            SELECT book_image_id FROM book_image_knowledge WHERE knowledge_id = %s
+        )
+        ORDER BY book_image_id
+        """,
+        (knowledge_id, knowledge_id),
+    )
+    return list(cur.fetchall())
+
+
 def _governed_image_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Prefer validated application image routes when a stored key is available."""
     governed: list[dict[str, Any]] = []
@@ -554,16 +572,7 @@ def get_grimoire_knowledge_detail(grimoire_id: int, knowledge_id: int, request: 
         node = cur.fetchone()
         if not node:
             raise HTTPException(status_code=404, detail="Demo knowledge object not found")
-        cur.execute(
-            """
-            SELECT source_image_id, semantic_context_name, storage_key, url, metadata
-            FROM book_image
-            WHERE knowledge_id = %s AND is_active
-            ORDER BY book_image_id
-            """,
-            (knowledge_id,),
-        )
-        node["images"] = _governed_image_rows(list(cur.fetchall()))
+        node["images"] = _governed_image_rows(_object_images(cur, knowledge_id))
     return {"knowledge": node}
 
 
