@@ -30,6 +30,7 @@ def test_qdrant_collection_search_and_upsert_use_rest_contract():
         qdrant_collection="test-collection",
         qdrant_vector_size=3,
         qdrant_distance="cosine",
+        qdrant_vectors_on_disk=False,
     )
     client = httpx.Client(
         base_url=settings.qdrant_url,
