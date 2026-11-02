@@ -2,7 +2,9 @@
 
 Both normal Compose paths set schema startup to disabled. Application startup checks readiness; it does not provision an empty database. Historical SQL replay contains demo seeds and is restricted to explicit local initialization.
 
-The remote update preserves PostgreSQL/Qdrant containers and volumes. It retains the previous source tree as `<REMOTE_ROOT>.previous` and refuses another upload while that path exists. It does not prove that a database backup is restorable merely by accepting a 64-character digest.
+The remote update preserves PostgreSQL/Qdrant containers and volumes. It retains the previous source tree as `<REMOTE_ROOT>.previous` and refuses another upload while that path exists. Move that tree under `/var/backups/theumst` once the release is verified. It does not prove that a database backup is restorable merely by accepting a 64-character digest.
+
+The packager uploads the working tree, and the Windows checkout has CRLF line endings in 39 Linux-side files, the Dockerfile and Python sources among them. Deploy from Windows out of an exact `git -c core.autocrlf=false archive` export of the tag, with `RELEASE_REVISION` and a copy of the local `.env` added. Large uploads from the Windows PC sometimes fail with a connection reset. The script then stops before COM changes, and a retry works.
 
 COM runs on theumst-lon1, Droplet 614781178, Ubuntu 24.04 at 209.97.130.228 in London. It began on 1 November 2026 as a live snapshot of the New York droplet theumst-com, 167.71.20.50, and kept its release, data, certificate and settings. DNS for theumst.com and www.theumst.com points there. SSH uses chris, the chris-theumst-com.pem key and passwordless sudo. Both 167.71.20.50 and 165.227.23.136 are destroyed.
 
