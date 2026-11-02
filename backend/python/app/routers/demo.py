@@ -34,21 +34,35 @@ GRAPH_MAX_DEPTH = 2
 GRAPH_CACHE_SECONDS = 300
 
 
-def _object_images(cur, knowledge_id: int) -> list[dict[str, Any]]:
-    """Active images an object shows: those naming it as their object, and those linked to it."""
-    cur.execute(
-        """
-        SELECT source_image_id, semantic_context_name, storage_key, url, metadata
-        FROM book_image
-        WHERE is_active AND book_image_id IN (
-            SELECT book_image_id FROM book_image WHERE knowledge_id = %s
-            UNION
-            SELECT book_image_id FROM book_image_knowledge WHERE knowledge_id = %s
+def _object_images(cur, knowledge_id: int, link_type: str = "figure") -> list[dict[str, Any]]:
+    """Active images linked to an object: the figures it shows, including one an upload before migration 012
+    named in book_image.knowledge_id, or with link_type 'page' the scans of the pages it appeared on, in page order."""
+    if link_type == "figure":
+        cur.execute(
+            """
+            SELECT source_image_id, semantic_context_name, storage_key, url, metadata
+            FROM book_image
+            WHERE is_active AND book_image_id IN (
+                SELECT book_image_id FROM book_image WHERE knowledge_id = %s
+                UNION
+                SELECT book_image_id FROM book_image_knowledge WHERE knowledge_id = %s AND link_type = 'figure'
+            )
+            ORDER BY book_image_id
+            """,
+            (knowledge_id, knowledge_id),
         )
-        ORDER BY book_image_id
-        """,
-        (knowledge_id, knowledge_id),
-    )
+    else:
+        cur.execute(
+            """
+            SELECT bi.source_image_id, bi.semantic_context_name, bi.storage_key, bi.url, bi.metadata
+            FROM book_image bi
+            JOIN book_image_knowledge link ON link.book_image_id = bi.book_image_id
+            WHERE bi.is_active AND link.knowledge_id = %s AND link.link_type = %s
+            ORDER BY CASE WHEN jsonb_typeof(bi.metadata->'page') = 'number' THEN (bi.metadata->>'page')::numeric END
+                     NULLS LAST, bi.book_image_id
+            """,
+            (knowledge_id, link_type),
+        )
     return list(cur.fetchall())
 
 
@@ -573,6 +587,7 @@ def get_grimoire_knowledge_detail(grimoire_id: int, knowledge_id: int, request: 
         if not node:
             raise HTTPException(status_code=404, detail="Demo knowledge object not found")
         node["images"] = _governed_image_rows(_object_images(cur, knowledge_id))
+        node["pages"] = _governed_image_rows(_object_images(cur, knowledge_id, "page"))
     return {"knowledge": node}
 
 

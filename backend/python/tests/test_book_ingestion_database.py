@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from app.database import connect
 from app.routers.demo import _object_images
 from app.services.book_ingestion import (
+    _image_link_type,
     _image_object_keys,
     _queue_embeddings,
     _upsert_book,
@@ -126,7 +127,7 @@ def test_crystal_source_keys_share_a_crystal_and_regroup_on_reimport_then_rollba
         connection.close()
 
 
-def test_a_shared_image_reaches_every_object_and_relinks_on_reimport_then_rollback():
+def test_figures_and_page_scans_reach_every_linked_object_and_relink_on_reimport_then_rollback():
     connection = connect()
     try:
         with connection.cursor() as cursor:
@@ -144,26 +145,37 @@ def test_a_shared_image_reaches_every_object_and_relinks_on_reimport_then_rollba
                 ],
             )
 
-            def upload(*keys: str) -> int:
-                image = {
-                    "source_image_id": "figure", "storage_key": "books/test/figure.png", "url": "/figure.png",
-                    "section_id": sections["section:1"], "semantic_context_name": "A figure", "metadata": {},
-                    "object_source_key": keys[0], "object_source_keys": list(keys),
+            def image(source_image_id: str, link_type: str, *keys: str, page: int | None = None) -> dict:
+                entry = {
+                    "source_image_id": source_image_id, "storage_key": f"books/test/{source_image_id}.png",
+                    "url": f"/{source_image_id}.png", "section_id": sections["section:1"],
+                    "semantic_context_name": source_image_id, "metadata": {"page": page} if page else {},
+                    "object_source_key": keys[0], "object_source_keys": list(keys), "link_type": link_type,
                 }
-                ids = [objects[key]["knowledge_id"] for key in _image_object_keys(image, objects)]
-                return _write_image_rows(cursor, [dict(image, knowledge_id=ids[0], knowledge_ids=ids)], grimoire_id)
+                ids = [objects[key]["knowledge_id"] for key in _image_object_keys(entry, objects)]
+                kind = _image_link_type(entry)
+                return dict(entry, knowledge_id=ids[0] if kind == "figure" else None, knowledge_ids=ids)
 
-            def shown(key: str) -> list[str]:
-                return [row["source_image_id"] for row in _object_images(cursor, objects[key]["knowledge_id"])]
+            def shown(key: str, link_type: str = "figure") -> list[str]:
+                return [row["source_image_id"] for row in _object_images(cursor, objects[key]["knowledge_id"], link_type)]
 
-            assert upload("theorem", "support") == 2
+            counts = _write_image_rows(cursor, [
+                image("figure", "figure", "theorem", "support"),
+                image("page-14", "page", "support", "theorem", page=14),
+                image("page-13", "page", "theorem", page=13),
+            ], grimoire_id)
+            assert counts == {"figure": 2, "page": 3}
             assert (shown("theorem"), shown("support"), shown("other")) == (["figure"], ["figure"], [])
+            assert (shown("theorem", "page"), shown("support", "page")) == (["page-13", "page-14"], ["page-14"])
+            cursor.execute("SELECT knowledge_id FROM book_image WHERE source_image_id = 'page-14'")
+            assert cursor.fetchone()["knowledge_id"] is None
 
-            # Republishing with one object relinks the image to that object alone.
-            assert upload("theorem") == 1
+            # Republishing relinks each image to the objects it lists now.
+            counts = _write_image_rows(cursor, [image("figure", "figure", "theorem")], grimoire_id)
+            assert counts == {"figure": 1, "page": 0}
             assert (shown("theorem"), shown("support")) == (["figure"], [])
 
-            # A row stored before migration 012 has no links and still reaches its object.
+            # A row stored before migration 012 has no links and still reaches its object as a figure.
             cursor.execute(
                 """
                 INSERT INTO book_image (grimoire_id, knowledge_id, source_image_id, storage_key, url)
@@ -171,10 +183,12 @@ def test_a_shared_image_reaches_every_object_and_relinks_on_reimport_then_rollba
                 """,
                 (grimoire_id, objects["other"]["knowledge_id"]),
             )
-            assert shown("other") == ["legacy"]
+            assert (shown("other"), shown("other", "page")) == (["legacy"], [])
 
             with pytest.raises(HTTPException, match="Unknown image object"):
                 _image_object_keys({"object_source_keys": ["missing"]}, objects)
+            with pytest.raises(HTTPException, match="link_type"):
+                _image_link_type({"link_type": "cover"})
     finally:
         connection.rollback()
         connection.close()

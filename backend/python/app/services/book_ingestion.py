@@ -935,6 +935,17 @@ def _queue_embeddings(
     return points
 
 
+IMAGE_LINK_TYPES = ("figure", "page")
+
+
+def _image_link_type(image: dict[str, Any]) -> str:
+    """'figure' when the objects show the image, 'page' when it is a scan of a page they appeared on."""
+    link_type = image.get("link_type") or "figure"
+    if link_type not in IMAGE_LINK_TYPES:
+        raise HTTPException(status_code=422, detail="image.link_type must be figure or page")
+    return link_type
+
+
 def _image_object_keys(image: dict[str, Any], objects: dict[str, dict[str, Any]]) -> list[str]:
     """Every object showing an image, each once: object_source_key first, then object_source_keys.
 
@@ -970,13 +981,16 @@ def _store_images(
         storage.write_bytes(key, data)
         section_id = sections.get(str(image.get("section_source_key") or ""))
         knowledge_ids = [objects[object_key]["knowledge_id"] for object_key in _image_object_keys(image, objects)]
+        link_type = _image_link_type(image)
         return index, {
             "source_image_id": source_id,
             "storage_key": key,
             "url": storage.public_url(key),
             "section_id": section_id,
-            "knowledge_id": knowledge_ids[0] if knowledge_ids else None,
+            # A page scan names no object here, so a reader that knows only this column never shows it as a figure.
+            "knowledge_id": knowledge_ids[0] if knowledge_ids and link_type == "figure" else None,
             "knowledge_ids": knowledge_ids,
+            "link_type": link_type,
             "semantic_context_name": image.get("semantic_context_name"),
             "metadata": image.get("metadata") or {},
         }
@@ -986,6 +1000,7 @@ def _store_images(
         if archive_path not in bundle.members:
             raise HTTPException(status_code=422, detail=f"Missing image file {archive_path!r}")
         _image_object_keys(image, objects)
+        _image_link_type(image)
 
     stored: dict[int, dict[str, Any]] = {}
     pending: set[Future] = set()
@@ -1021,10 +1036,11 @@ def _set_embedding_status(points: list[dict[str, Any]], status: str, error: str 
         )
 
 
-def _write_image_rows(cur, images: list[dict[str, Any]], grimoire_id: int) -> int:
-    """Upsert the book's image rows and replace their object links; return the number of links."""
+def _write_image_rows(cur, images: list[dict[str, Any]], grimoire_id: int) -> dict[str, int]:
+    """Upsert the book's image rows and replace their object links; return the number of links of each type."""
+    counts = dict.fromkeys(IMAGE_LINK_TYPES, 0)
     if not images:
-        return 0
+        return counts
     rows = execute_values(
         cur,
         """
@@ -1055,23 +1071,25 @@ def _write_image_rows(cur, images: list[dict[str, Any]], grimoire_id: int) -> in
     image_ids = {str(row["source_image_id"]): int(row["book_image_id"]) for row in rows}
     cur.execute("DELETE FROM book_image_knowledge WHERE book_image_id = ANY(%s)", (list(image_ids.values()),))
     links = list(dict.fromkeys(
-        (image_ids[str(image["source_image_id"])], knowledge_id)
+        (image_ids[str(image["source_image_id"])], knowledge_id, image.get("link_type") or "figure")
         for image in images
         for knowledge_id in image.get("knowledge_ids") or ([image["knowledge_id"]] if image["knowledge_id"] else [])
     ))
     if links:
         execute_values(
             cur,
-            "INSERT INTO book_image_knowledge (book_image_id, knowledge_id) VALUES %s",
+            "INSERT INTO book_image_knowledge (book_image_id, knowledge_id, link_type) VALUES %s",
             links,
             page_size=DATABASE_BATCH_SIZE,
         )
-    return len(links)
+    for _, _, link_type in links:
+        counts[link_type] += 1
+    return counts
 
 
-def _finalize_images(images: list[dict[str, Any]], grimoire_id: int) -> int:
+def _finalize_images(images: list[dict[str, Any]], grimoire_id: int) -> dict[str, int]:
     if not images:
-        return 0
+        return dict.fromkeys(IMAGE_LINK_TYPES, 0)
     with transaction() as (_, cur):
         return _write_image_rows(cur, images, grimoire_id)
 
@@ -1161,7 +1179,7 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
             sections=sections,
             objects=objects,
         )
-        image_link_count = _finalize_images(stored_images, grimoire_id)
+        link_counts = _finalize_images(stored_images, grimoire_id)
     finally:
         bundle.close()
 
@@ -1173,7 +1191,8 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
         "object_count": len(objects),
         "embedding_count": embedding_count,
         "image_count": len(stored_images),
-        "image_link_count": image_link_count,
+        "image_link_count": link_counts["figure"],
+        "page_link_count": link_counts["page"],
         "knowledge_graph": graph_receipt.as_dict() if graph_receipt is not None else {
             "capability": graph_capability,
             "receipt_id": None,

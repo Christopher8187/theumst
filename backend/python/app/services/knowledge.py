@@ -439,9 +439,23 @@ def get_knowledge(knowledge_id: int, language_id: int, *, include_hidden: bool =
                            SELECT own.book_image_id FROM book_image own WHERE own.knowledge_id = k.knowledge_id
                            UNION
                            SELECT link.book_image_id FROM book_image_knowledge link
-                           WHERE link.knowledge_id = k.knowledge_id
+                           WHERE link.knowledge_id = k.knowledge_id AND link.link_type = 'figure'
                        )
-                   ), '[]'::jsonb) AS images
+                   ), '[]'::jsonb) AS images,
+                   COALESCE((
+                       SELECT jsonb_agg(jsonb_build_object(
+                           'book_image_id', bi.book_image_id,
+                           'source_image_id', bi.source_image_id,
+                           'semantic_context_name', bi.semantic_context_name,
+                           'storage_key', bi.storage_key,
+                           'url', bi.url,
+                           'metadata', bi.metadata
+                       ) ORDER BY CASE WHEN jsonb_typeof(bi.metadata->'page') = 'number'
+                                       THEN (bi.metadata->>'page')::numeric END NULLS LAST, bi.book_image_id)
+                       FROM book_image bi
+                       JOIN book_image_knowledge link ON link.book_image_id = bi.book_image_id
+                       WHERE bi.is_active AND link.knowledge_id = k.knowledge_id AND link.link_type = 'page'
+                   ), '[]'::jsonb) AS pages
             FROM knowledge k
             JOIN knowledge_crystal kc ON kc.knowledge_crystal_id = k.knowledge_crystal_id
             JOIN language_knowledge lk ON lk.knowledge_id = k.knowledge_id AND lk.language_id = %s

@@ -114,9 +114,10 @@ REVIEWED_MIGRATIONS = (
     ),
     ReviewedMigration(
         key="book_image_objects_v1", filename="012_book_image_objects.sql",
-        sha256="273b433149ae346aba6ab64140c66abe21841de397579829454d5acd70b2742a",
+        sha256="e85e4d9360c094cafd528b94316cf8dfdb1868c890579e9afd090ddeea23780a",
         exclusive_markers=(
             Marker("relation", "public.book_image_knowledge"),
+            Marker("column", "public.book_image_knowledge.link_type"),
             Marker("relation", "public.book_image_knowledge_object_idx"),
         ),
     ),
