@@ -105,12 +105,29 @@ def test_the_last_request_of_the_minute_is_accepted(monkeypatch):
     assert result["rate_remaining"] == 0
 
 
-def test_a_tier_without_allowance_is_refused_before_counting(monkeypatch):
+def test_a_tier_without_allowance_is_refused_with_retry_after_before_counting(monkeypatch):
     cursor = Cursor(regular_key(requests_per_minute=0))
     with pytest.raises(HTTPException) as refused:
         authenticate(monkeypatch, cursor, kind="book")
     assert refused.value.status_code == 429
+    assert refused.value.headers == {"Retry-After": "60"}
     assert not cursor.sql_containing("api_rate_window")
+    assert not cursor.sql_containing("api_usage_daily")
+
+
+def test_a_route_that_refuses_master_keys_does_so_before_counting(monkeypatch):
+    cursor = Cursor(master_key())
+    with pytest.raises(HTTPException) as refused:
+        authenticate(monkeypatch, cursor, kind="character", master_allowed=False)
+    assert refused.value.status_code == 403
+    assert not cursor.sql_containing("api_usage_daily")
+    assert not cursor.sql_containing("last_used_at")
+
+
+def test_regular_keys_pass_a_route_that_refuses_master_keys(monkeypatch):
+    cursor = Cursor(regular_key(), {"request_count": 1, "retry_after": 60})
+    result = authenticate(monkeypatch, cursor, kind="character", master_allowed=False)
+    assert result["key_type"] == "regular"
 
 
 def test_master_key_is_unlimited_but_its_usage_is_recorded(monkeypatch):

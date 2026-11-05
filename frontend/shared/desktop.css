@@ -46,23 +46,6 @@
 .login-card .login-news {
   margin: 2px 0;
 }
-.login-card .default-key {
-  display: grid;
-  gap: 9px;
-  margin-bottom: 15px;
-}
-.login-card .default-key code {
-  padding: 10px 11px;
-  border: 1px solid var(--line);
-  background: var(--paper-bright);
-  font: 12px/1.5 var(--mono);
-  overflow-wrap: anywhere;
-  user-select: all;
-}
-.login-card .default-key button {
-  justify-self: start;
-  min-width: 130px;
-}
 .login-card .secondary-action,
 .login-card .text-action {
   font: 11px/1.6 var(--mono);

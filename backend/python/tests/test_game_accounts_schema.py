@@ -33,7 +33,7 @@ def column_lines(block: str) -> dict[str, str]:
     columns: dict[str, str] = {}
     for raw in block.splitlines():
         line = raw.strip()
-        if not line or line.startswith(("--", "PRIMARY KEY", "UNIQUE", "CHECK", "FOREIGN KEY")):
+        if not line or line.startswith(("--", "PRIMARY KEY", "UNIQUE", "CHECK", "FOREIGN KEY", "CONSTRAINT")):
             continue
         name = line.split()[0].strip('"')
         columns[name] = line
@@ -49,7 +49,7 @@ FRESH_SHAPES = {
         "created_at", "last_played_at", "lease_api_key_id", "lease_expires_at",
     ],
     "character_data": ["character_data_id", "level", "data", "save_version", "revision", "updated_at"],
-    "sign_in_attempt": ["sign_in_attempt_id", "username_hash", "address", "succeeded", "attempted_at"],
+    "sign_in_attempt": ["sign_in_attempt_id", "user_id", "username_hash", "address", "succeeded", "attempted_at"],
 }
 
 
@@ -225,3 +225,15 @@ def test_markers_cover_each_reshaped_table():
     ):
         assert expected in names
     assert not GAME_ACCOUNTS.shared_markers
+
+
+def test_sign_in_attempts_name_either_an_account_or_an_unknown_username():
+    for sql in (create_table(SCHEMA, "sign_in_attempt"), create_table(MIGRATION, "sign_in_attempt")):
+        assert 'user_id int REFERENCES "user"(user_id) ON DELETE CASCADE' in sql
+        assert "username_hash text CHECK (username_hash ~ '^[0-9a-f]{64}$')" in sql
+        assert "CONSTRAINT sign_in_attempt_subject_check CHECK ((user_id IS NULL) <> (username_hash IS NULL))" in sql
+    for index in (
+        "sign_in_attempt_user_idx\n    ON sign_in_attempt (user_id, attempted_at) WHERE user_id IS NOT NULL",
+        "sign_in_attempt_username_idx\n    ON sign_in_attempt (username_hash, attempted_at) WHERE username_hash IS NOT NULL",
+    ):
+        assert index in SCHEMA and index in MIGRATION

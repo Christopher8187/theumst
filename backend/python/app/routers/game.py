@@ -2,8 +2,9 @@
 
 The game signs in with a username and password and receives its own key, named
 "UMST · <computer>" with client 'umst'. Every other call sends that key, or any
-active key of the same account, in X-API-Key or Authorization: Bearer, and
-counts as the 'character' kind of the key's per-minute allowance.
+other active regular key of the same account, in X-API-Key or Authorization:
+Bearer, and counts as the 'character' kind of the key's per-minute allowance.
+Master keys are refused.
 
 A character is open on one computer at a time: opening it takes a lease held by
 the opening key for LEASE_SECONDS, renewed by heartbeats and saves. Each save
@@ -29,7 +30,7 @@ from ..database import transaction
 from ..dependencies import authenticate_api_key
 from ..security import hash_password, verify_password
 from ..services import sign_in_attempts
-from ..services.api_keys import create_regular_key
+from ..services.api_keys import GAME_CLIENT, create_regular_key, revoke_game_keys
 
 
 LEASE_SECONDS = 120
@@ -38,7 +39,6 @@ NAME_MAX_CHARACTERS = 50
 COMPUTER_MAX_CHARACTERS = 100
 SAVE_MAX_BYTES = 64 * 1024
 SUMMARY_MAX_BYTES = 2 * 1024
-GAME_CLIENT = "umst"
 _INT_MAX = 2_147_483_647
 _LEASE = timedelta(seconds=LEASE_SECONDS)
 
@@ -120,6 +120,12 @@ def install_error_handlers(application: FastAPI) -> None:
     application.add_exception_handler(RequestValidationError, _validation_error_response)
 
 
+def _invalid(detail: str, field: str | None = None) -> GameError:
+    """422 invalid_request; `errors` names the field when there is one."""
+    errors = [{"field": field, "message": detail}] if field else []
+    return GameError(422, "invalid_request", detail, errors=errors)
+
+
 # Check constraints the database enforces after the request's own checks.
 _CONSTRAINT_ERRORS = {
     "character_data_data_check": (413, "save_too_large", "The save is larger than 64 KiB", {"limit_bytes": SAVE_MAX_BYTES}),
@@ -138,22 +144,37 @@ def _stored_error(exc: Exception) -> GameError | None:
             return GameError(status, error_code, detail, **extra)
     if code.startswith("22"):
         # For example a "\u0000" in a string, which PostgreSQL's jsonb refuses.
-        return GameError(422, "invalid_request", "The save or summary cannot be stored as JSON")
+        return _invalid("The save or summary cannot be stored as JSON")
     return None
 
 
 def _game_key(request: Request) -> dict[str, Any]:
     try:
-        return authenticate_api_key(request, kind="character")
+        return authenticate_api_key(request, kind="character", master_allowed=False)
     except HTTPException as exc:
         headers = dict(exc.headers or {})
         if exc.status_code == 429:
             retry = headers.get("Retry-After")
             raise GameError(429, "rate_limited", str(exc.detail), headers=headers,
                             retry_after=int(retry) if retry else None) from None
-        if exc.status_code == 401:
-            raise GameError(401, "invalid_key", str(exc.detail), headers=headers) from None
-        raise GameError(exc.status_code, "forbidden", str(exc.detail), headers=headers) from None
+        if exc.status_code == 403:
+            raise GameError(403, "master_key_not_allowed", "Use a regular key of this account, not a master key",
+                            headers=headers) from None
+        raise GameError(exc.status_code, "invalid_key", str(exc.detail), headers=headers) from None
+
+
+def _live_key(cur, key_id: int) -> None:
+    """Hold the key against revocation for this transaction, or refuse a revoked one.
+
+    The key row is locked before any character row, the order every path that
+    revokes a key follows.
+    """
+    cur.execute(
+        "SELECT api_key_id FROM api_key WHERE api_key_id = %s AND revoked_at IS NULL FOR SHARE",
+        (key_id,),
+    )
+    if cur.fetchone() is None:
+        raise GameError(401, "invalid_key", "This API key was revoked")
 
 
 def _not_found() -> GameError:
@@ -197,7 +218,7 @@ def _computer(value: str) -> str:
     computer = "".join(character for character in _plain(value) if not _has_control(character))
     computer = computer[:COMPUTER_MAX_CHARACTERS].strip()
     if not computer:
-        raise GameError(422, "invalid_request", "Send the computer's name")
+        raise _invalid("Send the computer's name", "computer")
     return computer
 
 
@@ -211,7 +232,7 @@ def _json_text(value: dict[str, Any], *, limit: int, code: str, what: str) -> st
         size = len(text.encode("utf-8"))
     except ValueError:
         # NaN and Infinity are not JSON, and a lone surrogate ("\ud800") cannot be encoded.
-        raise GameError(422, "invalid_request", f"The {what} is not valid JSON") from None
+        raise _invalid(f"The {what} is not valid JSON", what) from None
     if size > limit:
         raise GameError(413, code, f"The {what} is {size} bytes; the limit is {limit}", limit_bytes=limit)
     return text
@@ -225,15 +246,14 @@ def _decoy_hash() -> str:
 
 
 def _key_info(key: dict[str, Any]) -> dict[str, Any]:
-    regular = key.get("key_type") != "master"
     return {
         "api_key_id": key["api_key_id"],
         "name": key["name"],
         "key_prefix": key["key_prefix"],
         "key_type": key["key_type"],
         "client": key.get("client"),
-        "tier": key.get("level_name") if regular else None,
-        "requests_per_minute": key.get("requests_per_minute") if regular else None,
+        "tier": key.get("level_name"),
+        "requests_per_minute": key.get("requests_per_minute"),
     }
 
 
@@ -312,31 +332,32 @@ def _require_lease(row: dict[str, Any], key_id: int) -> None:
 def sign_in(body: SignInBody, request: Request):
     """Check the password and make this computer's game key."""
     computer = _computer(body.computer)
-    subject = sign_in_attempts.username_hash(body.username)
+    key_name = f"UMST · {computer}"
     address = sign_in_attempts.public_address(request)
-    wait = 0
     account = None
+    wait = 0
     correct = False
     issued = None
     with transaction() as (_, cur):
-        wait = sign_in_attempts.retry_after(cur, subject, address)
+        account = sign_in_attempts.find_account(cur, body.username)
+        user_id = account["user_id"]
+        subject = {
+            "user_id": user_id,
+            "username_hash": None if user_id is not None else account["username_hash"],
+            "address": address,
+        }
+        sign_in_attempts.lock(cur, **subject)
+        wait = sign_in_attempts.retry_after(cur, **subject)
         if not wait:
-            cur.execute(
-                """
-                SELECT user_id, username, password_hash, email_verified_at
-                FROM "user"
-                WHERE lower(username) = lower(%s)
-                """,
-                (body.username.strip(),),
-            )
-            account = cur.fetchone()
-            if account:
+            if user_id is not None:
                 correct = verify_password(body.password, account["password_hash"])
             else:
                 verify_password(body.password, _decoy_hash())
-            sign_in_attempts.record(cur, subject, address, succeeded=correct)
+            sign_in_attempts.record(cur, **subject, succeeded=correct)
             if correct and account["email_verified_at"] is not None:
-                issued = create_regular_key(cur, int(account["user_id"]), f"UMST · {computer}", client=GAME_CLIENT)
+                # One key per computer: the one this computer had before goes.
+                revoke_game_keys(cur, int(user_id), name=key_name)
+                issued = create_regular_key(cur, int(user_id), key_name, client=GAME_CLIENT)
     # The attempt is committed before any refusal below.
     if wait:
         raise GameError(
@@ -362,6 +383,8 @@ def sign_out(request: Request):
     """Close what this key has open and revoke it when it is a game key."""
     key = _game_key(request)
     with transaction() as (_, cur):
+        # Lock the key before the characters, as every revoking path does.
+        cur.execute("SELECT api_key_id FROM api_key WHERE api_key_id = %s FOR UPDATE", (key["api_key_id"],))
         cur.execute(
             """
             UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL
@@ -413,8 +436,9 @@ def create_character(body: CharacterCreateBody, request: Request):
     summary_text = _json_text(body.summary or {}, limit=SUMMARY_MAX_BYTES, code="summary_too_large", what="summary")
     try:
         with transaction() as (_, cur):
-            # The account lock keeps two creations from both passing the limit.
-            cur.execute('SELECT user_id FROM "user" WHERE user_id = %s FOR UPDATE', (key["user_id"],))
+            _live_key(cur, key["api_key_id"])
+            # One creation per account at a time, so two cannot both pass the limit.
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext('theumst.characters'), %s)", (key["user_id"],))
             cur.execute('SELECT count(*) AS characters FROM "character" WHERE user_id = %s', (key["user_id"],))
             if int(cur.fetchone()["characters"]) >= MAX_CHARACTERS:
                 raise GameError(409, "full", f"An account has at most {MAX_CHARACTERS} characters", limit=MAX_CHARACTERS)
@@ -450,6 +474,7 @@ def open_character(character_id: int, request: Request):
     """Take the lease and return the save; the same key may reopen its own."""
     key = _game_key(request)
     with transaction() as (_, cur):
+        _live_key(cur, key["api_key_id"])
         row = _locked_character(cur, character_id, key["user_id"], with_save=True)
         if row is None:
             raise _not_found()
@@ -471,6 +496,7 @@ def heartbeat(character_id: int, request: Request):
     """Renew this key's lease."""
     key = _game_key(request)
     with transaction() as (_, cur):
+        _live_key(cur, key["api_key_id"])
         row = _locked_character(cur, character_id, key["user_id"])
         if row is None:
             raise _not_found()
@@ -484,6 +510,7 @@ def close_character(character_id: int, request: Request):
     """Release this key's lease; anything else is left as it is."""
     key = _game_key(request)
     with transaction() as (_, cur):
+        _live_key(cur, key["api_key_id"])
         row = _locked_character(cur, character_id, key["user_id"])
         if row is None:
             raise _not_found()
@@ -507,6 +534,7 @@ def save_character(character_id: int, body: CharacterSaveBody, request: Request)
     )
     try:
         with transaction() as (_, cur):
+            _live_key(cur, key["api_key_id"])
             row = _locked_character(cur, character_id, key["user_id"])
             if row is None:
                 raise _not_found()
@@ -557,6 +585,7 @@ def delete_character(character_id: int, body: CharacterDeleteBody, request: Requ
     key = _game_key(request)
     typed = _plain(body.name)
     with transaction() as (_, cur):
+        _live_key(cur, key["api_key_id"])
         row = _locked_character(cur, character_id, key["user_id"])
         if row is None:
             raise _not_found()

@@ -293,18 +293,16 @@ test.describe("S: shared desktop regression", () => {
     });
   }
 
-  test("confirming an email shows the Default key once with a copy button", async ({ page }) => {
+  test("confirming an email points to API Keys and never shows a key", async ({ page }) => {
     await simulatedServices(page, { signedIn: false });
-    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-    const key = { api_key_id: 30, name: "Default", key: "umst_read_simulated-default-key", key_prefix: "umst_read_simula" };
-    await page.route("**/auth/email-verification/confirm", route => route.fulfill({ json: { ok: true, redirect: "/login?verified=success", default_key: key } }));
+    // Even an answer carrying a key must not put it on this token-only page.
+    const key = "umst_read_simulated-default-key";
+    await page.route("**/auth/email-verification/confirm", route => route.fulfill({ json: { ok: true, redirect: "/login?verified=success", default_key: { key } } }));
     await page.goto("/verify-email?token=synthetic-verify-token");
     const verification = windowFor(page, "verifyEmail");
     await expect(verification.locator(".login-status.is-success")).toBeVisible();
-    await expect(verification.locator(".default-key code")).toHaveText(key.key);
-    await verification.locator(".default-key button").click();
-    await expect(verification.locator(".default-key button")).toHaveText("Copied");
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(key.key);
+    await expect(verification.getByText("Sign in and open API Keys on the dashboard")).toBeVisible();
+    await expect(verification).not.toContainText(key);
     await expect(page).toHaveURL("/");
   });
 

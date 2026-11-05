@@ -1,8 +1,7 @@
-"""The Default key: made on email confirmation, or when an account without one
-first opens its API Keys page. Scripted cursors; no PostgreSQL."""
+"""The Default key, made when an account without one opens its signed-in API
+Keys page, and the revocation of the game's keys. Scripted cursors; no PostgreSQL."""
 from __future__ import annotations
 
-import json
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -164,30 +163,15 @@ def test_revoking_another_accounts_key_frees_nothing(keys_client):
     assert not cursor.sql('UPDATE "character"')
 
 
-def test_confirming_an_email_makes_the_default_key_and_returns_its_text_once(monkeypatch):
-    cursor = ScriptedCursor(
-        {"email_verification_token_id": 3, "user_id": 7},
-        {"user_id": 7}, None, STANDARD, {"api_key_id": 30},
-    )
+def test_confirming_an_email_makes_no_key(monkeypatch):
+    # The link works without a session; a key in its answer would reach a mail
+    # scanner or anyone the email was forwarded to.
+    cursor = ScriptedCursor({"email_verification_token_id": 3, "user_id": 7})
     monkeypatch.setattr(auth, "transaction", transaction_for(cursor))
-    response = auth.confirm_email_verification(EmailVerificationRequest(token="t" * 40))
-    assert response.headers["cache-control"] == "no-store"
-    body = json.loads(response.body)
-    assert body["ok"] is True and body["redirect"] == "/login?verified=success"
-    assert body["default_key"]["name"] == "Default" and body["default_key"]["key"].startswith("umst_read_")
-    order = [text for text, _ in cursor.executions]
-    verified = next(index for index, text in enumerate(order) if 'SET email_verified_at = now()' in text)
-    made = next(index for index, text in enumerate(order) if "INSERT INTO api_key" in text)
-    assert verified < made
-
-
-def test_confirming_still_works_when_the_key_cannot_be_made(monkeypatch):
-    cursor = ScriptedCursor({"email_verification_token_id": 3, "user_id": 7}, {"user_id": 7}, None, None)
-    monkeypatch.setattr(auth, "transaction", transaction_for(cursor))
-    response = auth.confirm_email_verification(EmailVerificationRequest(token="t" * 40))
-    body = json.loads(response.body)
-    assert body["ok"] is True and body["default_key"] is None
-    assert cursor.sql('SET email_verified_at = now()')
+    body = auth.confirm_email_verification(EmailVerificationRequest(token="t" * 40))
+    assert body == {"ok": True, "redirect": "/login?verified=success"}
+    assert cursor.sql("SET email_verified_at = now()")
+    assert not cursor.sql("api_key") and not cursor.sql("api_rate")
 
 
 def test_a_used_or_expired_link_makes_no_key(monkeypatch):
@@ -197,3 +181,22 @@ def test_a_used_or_expired_link_makes_no_key(monkeypatch):
         auth.confirm_email_verification(EmailVerificationRequest(token="t" * 40))
     assert refused.value.status_code == 400
     assert not cursor.sql("api_key")
+
+
+def test_revoking_every_game_key_frees_their_characters():
+    cursor = ScriptedCursor([{"api_key_id": 41}, {"api_key_id": 43}])
+    assert key_service.revoke_game_keys(cursor, 7) == [41, 43]
+    revoke_sql, revoke_params = cursor.executions[0]
+    assert revoke_sql.startswith("UPDATE api_key SET revoked_at = now()")
+    assert "client = %s AND revoked_at IS NULL" in revoke_sql and "name" not in revoke_sql
+    assert revoke_params == (7, "umst")
+    release_sql, release_params = cursor.executions[1]
+    assert 'UPDATE "character" SET lease_api_key_id = NULL' in release_sql
+    assert "lease_api_key_id = ANY(%s)" in release_sql and release_params == ([41, 43],)
+
+
+def test_revoking_one_computers_game_key_names_it():
+    cursor = ScriptedCursor([])
+    assert key_service.revoke_game_keys(cursor, 7, name="UMST · PC") == []
+    assert cursor.executions[0][1] == (7, "umst", "UMST · PC")
+    assert len(cursor.executions) == 1  # nothing revoked, nothing to free

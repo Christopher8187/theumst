@@ -80,6 +80,7 @@ def _raw_api_key(request: Request) -> str:
 # Book reads (/api/v1) and the game's calls (/api/game) are counted apart, so a
 # long game session never uses up a key's book allowance.
 API_REQUEST_KINDS = ("book", "character")
+RATE_WINDOW_SECONDS = 60
 
 
 def authenticate_api_key(
@@ -87,14 +88,16 @@ def authenticate_api_key(
     *,
     kind: str,
     master_required: bool = False,
+    master_allowed: bool = True,
 ) -> dict[str, Any]:
     """Resolve an active key and count this request as `kind`.
 
     A regular key may make its tier's requests_per_minute requests of each kind
-    in a one-minute window; beyond that it gets 429 with Retry-After in
-    seconds. Master keys have no limit. Every accepted request, master keys
-    included, adds one to api_usage_daily for the key, UTC day and kind; a
-    refused request rolls back and is counted nowhere.
+    in a one-minute window; beyond that, or on a tier without allowance, it gets
+    429 with Retry-After in seconds. Master keys have no limit; a route that
+    does not take them refuses them with 403 before anything is counted. Every
+    accepted request, master keys included, adds one to api_usage_daily for the
+    key, UTC day and kind; a refused request rolls back and is counted nowhere.
     """
     if kind not in API_REQUEST_KINDS:
         raise ValueError(f"Unknown API request kind: {kind}")
@@ -121,11 +124,17 @@ def authenticate_api_key(
             raise HTTPException(status_code=401, detail="Invalid or revoked API key")
         if master_required and key["key_type"] != "master":
             raise HTTPException(status_code=403, detail="A master API key is required")
+        if not master_allowed and key["key_type"] == "master":
+            raise HTTPException(status_code=403, detail="Master keys are not accepted here")
 
         if key["key_type"] != "master":
             limit = int(key.get("requests_per_minute") or 0)
             if limit <= 0:
-                raise HTTPException(status_code=429, detail="This API key has no active rate allowance")
+                raise HTTPException(
+                    status_code=429,
+                    detail="This API key has no active rate allowance",
+                    headers={"Retry-After": str(RATE_WINDOW_SECONDS)},
+                )
             cur.execute(
                 """
                 INSERT INTO api_rate_window (api_key_id, kind, window_started_at, request_count)

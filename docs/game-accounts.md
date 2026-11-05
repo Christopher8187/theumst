@@ -4,11 +4,11 @@ UMST signs in to theumst.com with a username and password, then keeps its charac
 
 ## Keys and limits
 
-`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active key of the account works, so a key pasted into the game's settings works too. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`.
+`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Signing in again on the same computer revokes that computer's earlier game key first. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active regular key of the account works, so a key pasted into the game's settings works too; master keys are refused. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`. A password reset revokes all the account's game keys.
 
-A regular key gets its tier's `requests_per_minute` (600 for `standard`) for each kind of request in a one-minute window. Calls under `/api/game` count as `character`; calls under `/api/v1` count as `book`. Past the limit the answer is 429 with `Retry-After` in seconds. Master keys have no limit. `api_usage_daily` counts every accepted request by key, UTC day and kind, master keys included. A refused request counts nowhere.
+A regular key gets its tier's `requests_per_minute` (600 for `standard`) for each kind of request in a one-minute window. Calls under `/api/game` count as `character`; calls under `/api/v1` count as `book`. Past the limit the answer is 429 with `Retry-After` in seconds; a tier without allowance answers 429 with `Retry-After: 60`. Master keys have no limit on `/api/v1`. `api_usage_daily` counts every accepted request by key, UTC day and kind, master keys included. A refused request counts nowhere.
 
-Confirming an email address makes a regular `standard` key named `Default` and returns its full text once as `default_key`; the confirmation page shows it with a copy button. Accounts confirmed before 0.0.10 get theirs when the API Keys page first opens: `POST /api/api-keys/default` answers 201 with the key, or `{"created": false}`. Any key named `Default` without a client counts, revoked ones too, so revoking it never brings another.
+The Default key comes only from the signed-in API Keys page. When an account without one opens it, `POST /api/api-keys/default` makes a regular `standard` key named `Default` and answers 201 with its full text, once; otherwise it answers 200 `{"created": false}`. Confirming an email makes no key, because its link works without a session and could reach a mail scanner or anyone the email is forwarded to. Any key named `Default` without a client counts, revoked ones too, so revoking it never brings another.
 
 ## Endpoints
 
@@ -34,7 +34,7 @@ The sign-in `key`, and `/me`'s without `key`:
  "key_type": "regular", "client": "umst", "tier": "standard", "requests_per_minute": 600}
 ```
 
-A master key has `tier` and `requests_per_minute` null. A character:
+A key made on the dashboard has `client` null. A character:
 
 ```json
 {"character_id": 12, "name": "Aria", "sex": "female", "summary": {"rank": {"key": "...", "args": []}, "day": 3},
@@ -46,34 +46,39 @@ The list carries no saves. `sex` is `female` or `male`. `summary` is a JSON obje
 
 ## Leases and revisions
 
-Opening takes a 120-second lease for the key and returns the save and its `revision`. A heartbeat or save renews the lease; close releases it, as do sign-out and revoking the key. While the lease lives, another key's open, heartbeat, save or delete gets `open_elsewhere`. A key's lapsed lease stays its own until another key opens the character, so a computer that slept carries on. A save must name the current revision, and its answer gives the next one. While idle, the game should heartbeat about every 30 seconds.
+Opening takes a 120-second lease for the key and returns the save and its `revision`. A heartbeat or save renews the lease. Close releases it, and so does anything that revokes the key: sign-out, the dashboard, a new sign-in on the same computer and a password reset. While the lease lives, another key's open, heartbeat, save or delete gets `open_elsewhere`. A key's lapsed lease stays its own until another key opens the character, so a computer that slept carries on. A save must name the current revision, and its answer gives the next one. While idle, the game should heartbeat about every 30 seconds.
+
+Each character call checks inside its own transaction that the key is still active, and holds it until the transaction ends.
 
 ## Errors
 
 Errors answer `{"code", "detail"}` and the listed fields.
 
-| Status | Code | When |
-| --- | --- | --- |
-| 401 | `wrong_credentials` | sign-in: unknown username or wrong password |
-| 403 | `email_unverified` | sign-in: right password, email not confirmed |
-| 429 | `too_many_attempts` | sign-in slowed; `retry_after` and `Retry-After` |
-| 401 | `invalid_key` | key missing, unknown or revoked, or its account unconfirmed |
-| 429 | `rate_limited` | key over its minute; `retry_after` and `Retry-After` |
-| 404 | `not_found` | no such character on this account |
-| 409 | `full` | a seventh character; `limit` |
-| 409 | `open_elsewhere` | another key holds a live lease; `seconds_left` |
-| 409 | `not_open` | heartbeat or save without this key's lease; open it again |
-| 409 | `stale` | save from an older revision; `revision` is the current one |
-| 409 | `name_mismatch` | delete: the typed name differs |
-| 413 | `save_too_large`, `summary_too_large` | over 64 KiB or 2 KiB; `limit_bytes` |
-| 422 | `invalid_name` | name empty, over 50 characters or with control characters |
-| 422 | `invalid_request` | malformed body, NaN or Infinity; `errors` lists `{field, message}` |
+| Status | Code | Calls | When |
+| --- | --- | --- | --- |
+| 401 | `wrong_credentials` | sign-in | unknown username or wrong password |
+| 403 | `email_unverified` | sign-in | right password, email not confirmed |
+| 429 | `too_many_attempts` | sign-in | too many wrong passwords; `retry_after` and `Retry-After` |
+| 401 | `invalid_key` | all others | key missing, unknown or revoked, revoked during the call, or its account unconfirmed |
+| 403 | `master_key_not_allowed` | all others | a master key |
+| 429 | `rate_limited` | all others | key over its minute, or a tier without allowance; `retry_after` and `Retry-After` |
+| 404 | `not_found` | open, heartbeat, close, save, delete | no such character on this account |
+| 409 | `full` | make | a seventh character; `limit` |
+| 409 | `open_elsewhere` | open, heartbeat, save, delete | another key holds a live lease; `seconds_left` |
+| 409 | `not_open` | heartbeat, save | this key has no lease; open the character again |
+| 409 | `stale` | save | made from an older revision; `revision` is the current one |
+| 409 | `name_mismatch` | delete | the typed name differs |
+| 413 | `save_too_large`, `summary_too_large` | make, save | over 64 KiB or 2 KiB; `limit_bytes` |
+| 422 | `invalid_name` | make | name empty, over 50 characters or with control characters |
+| 422 | `invalid_request` | any | malformed body or path, NaN or Infinity, a blank computer name; `errors` lists `{field, message}`, empty when no field is to blame |
+
+Other answers come from outside the game API. On COM the internal proxy refuses a body over 128 KiB with 413 and an HTML page. An unknown path answers 404 `{"detail": "API route not found"}`, a wrong method 405 `{"detail": "Method Not Allowed"}`, and a server failure 500.
 
 ## Slowing wrong passwords
 
-`sign_in_attempt` keeps each game sign-in for a day: the SHA-256 of the casefolded username, the client's public address, and whether the password was right. A username may fail 10 times in 15 minutes after its last right password, and an address 30 times in 15 minutes. Past either, sign-in answers `too_many_attempts` without checking the password. An unknown username costs the same password check as a known one. Website login at `/auth/login` has no such limit yet.
+Sign-in first looks the account up as `lower(username) = lower(btrim(typed))` in PostgreSQL. `sign_in_attempt` keeps each attempt for a day: the account's `user_id` when one matches, otherwise the SHA-256 of `lower(btrim(typed))`, computed by the same query; the client's public address; and whether the password was right. An account may fail 10 times in 15 minutes after its own last right password, so a look-alike account cannot reset another's count. An unknown username may fail 10 times in 15 minutes, and an address 30 times. Past either limit, sign-in answers `too_many_attempts` without checking the password. An unknown username costs the same password check as a known one. Advisory locks on the account or username, then on the address, are held from counting to recording, so parallel attempts cannot all pass. Website login at `/auth/login` has no such limit yet.
 
-Uvicorn reads the client from `X-Forwarded-For` only when the connecting proxy is in `FORWARDED_ALLOW_IPS`, which `compose.deploy.yml` sets to Docker's private ranges. The address limit skips private and loopback addresses, so without that setting only the username limit applies, instead of one limit locking everyone out together.
+Uvicorn reads the client from `X-Forwarded-For` only when the connecting proxy is in `FORWARDED_ALLOW_IPS`, which `compose.deploy.yml` sets to Docker's private ranges. The address limit skips private and loopback addresses, so without that setting only the account limit applies, instead of one limit locking everyone out together.
 
 ## Checking migration 013
 
@@ -97,4 +102,4 @@ SELECT (SELECT count(*) FROM "user") AS users, (SELECT count(*) FROM "character"
        (SELECT count(*) FROM character_data) AS saves;
 ```
 
-The `api_rate_window` primary key is `(api_key_id, kind)`. `"character"` has no unique constraint on `name`, and `class_id` and `sex` accept null. `character_data.data` and `save_version` have no default.
+The `api_rate_window` primary key is `(api_key_id, kind)`. `"character"` has no unique constraint on `name`, and `class_id` and `sex` accept null. `character_data.data` and `save_version` have no default. `sign_in_attempt` has `sign_in_attempt_subject_check`, which requires exactly one of `user_id` and `username_hash`.

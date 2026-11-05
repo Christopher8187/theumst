@@ -1,17 +1,19 @@
-"""Slow repeated wrong passwords at the game's sign-in, per username and per address.
+"""Slow repeated wrong passwords at the game's sign-in, per account and per address.
 
-Each attempt is kept for a day as the SHA-256 of the casefolded username (never
-the typed text), the client's address when it is a public one, and whether the
-password was right. A username may fail MAX_FAILURES_PER_USERNAME times in
-WINDOW since its last right password; an address may fail
-MAX_FAILURES_PER_ADDRESS times in WINDOW whatever the usernames.
+A sign-in first looks the account up. Attempts on an account are counted by its
+user_id, so only that account's own right password resets its count. Attempts
+on a username no account has are counted by the SHA-256 of the username as the
+lookup normalises it, lower(btrim(...)) in PostgreSQL. The client's public
+address is counted too. Rows are kept for a day.
+
+The subject's and the address's advisory locks are held from counting to
+recording, so parallel attempts cannot all pass the limit.
 """
 from __future__ import annotations
 
 import ipaddress
 from datetime import timedelta
-
-from ..security import hash_secret
+from typing import Any
 
 
 WINDOW = timedelta(minutes=15)
@@ -19,24 +21,37 @@ MAX_FAILURES_PER_USERNAME = 10
 MAX_FAILURES_PER_ADDRESS = 30
 KEEP = timedelta(days=1)
 
-_USERNAME_FAILURES = """
-    SELECT count(*) AS failures,
-           COALESCE(ceil(extract(epoch FROM min(attempted_at) + %(window)s - now()))::int, 0)
-               AS wait_seconds
+_FIND_ACCOUNT = """
+    SELECT encode(sha256(convert_to(lower(btrim(%(username)s)), 'UTF8')), 'hex') AS username_hash,
+           u.user_id, u.username, u.password_hash, u.email_verified_at
+    FROM (SELECT 1) AS typed
+    LEFT JOIN "user" u ON lower(u.username) = lower(btrim(%(username)s))
+"""
+
+_WAIT = "COALESCE(ceil(extract(epoch FROM min(attempted_at) + %(window)s - now()))::int, 0) AS wait_seconds"
+
+_ACCOUNT_FAILURES = f"""
+    SELECT count(*) AS failures, {_WAIT}
     FROM sign_in_attempt
-    WHERE username_hash = %(subject)s
+    WHERE user_id = %(user_id)s
       AND NOT succeeded
       AND attempted_at > now() - %(window)s
       AND attempted_at > COALESCE(
           (SELECT max(attempted_at) FROM sign_in_attempt
-           WHERE username_hash = %(subject)s AND succeeded),
+           WHERE user_id = %(user_id)s AND succeeded),
           '-infinity'::timestamptz)
 """
 
-_ADDRESS_FAILURES = """
-    SELECT count(*) AS failures,
-           COALESCE(ceil(extract(epoch FROM min(attempted_at) + %(window)s - now()))::int, 0)
-               AS wait_seconds
+_USERNAME_FAILURES = f"""
+    SELECT count(*) AS failures, {_WAIT}
+    FROM sign_in_attempt
+    WHERE username_hash = %(username_hash)s
+      AND NOT succeeded
+      AND attempted_at > now() - %(window)s
+"""
+
+_ADDRESS_FAILURES = f"""
+    SELECT count(*) AS failures, {_WAIT}
     FROM sign_in_attempt
     WHERE address = %(address)s
       AND NOT succeeded
@@ -44,8 +59,11 @@ _ADDRESS_FAILURES = """
 """
 
 
-def username_hash(username: str) -> str:
-    return hash_secret(username.strip().casefold())
+def find_account(cur, username: str) -> dict[str, Any]:
+    """The account the typed username names, if any, and the SHA-256 of the
+    username as the lookup normalises it. Always one row."""
+    cur.execute(_FIND_ACCOUNT, {"username": username})
+    return cur.fetchone()
 
 
 def public_address(request) -> str | None:
@@ -64,10 +82,29 @@ def public_address(request) -> str | None:
     return str(address) if address.is_global else None
 
 
-def retry_after(cur, subject_hash: str, address: str | None) -> int:
+def lock(cur, *, user_id: int | None, username_hash: str | None, address: str | None) -> None:
+    """Wait for other attempts on the same account or username, then address."""
+    if user_id is not None:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext('theumst.sign-in.account'), %s)", (user_id,))
+    else:
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('theumst.sign-in.username'), hashtext(%s))",
+            (username_hash,),
+        )
+    if address:
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('theumst.sign-in.address'), hashtext(%s))",
+            (address,),
+        )
+
+
+def retry_after(cur, *, user_id: int | None, username_hash: str | None, address: str | None) -> int:
     """Seconds before another attempt may be made, or 0 when one may be made now."""
     waits = []
-    cur.execute(_USERNAME_FAILURES, {"subject": subject_hash, "window": WINDOW})
+    if user_id is not None:
+        cur.execute(_ACCOUNT_FAILURES, {"user_id": user_id, "window": WINDOW})
+    else:
+        cur.execute(_USERNAME_FAILURES, {"username_hash": username_hash, "window": WINDOW})
     row = cur.fetchone()
     if int(row["failures"]) >= MAX_FAILURES_PER_USERNAME:
         waits.append(int(row["wait_seconds"]))
@@ -79,10 +116,13 @@ def retry_after(cur, subject_hash: str, address: str | None) -> int:
     return max(1, *waits) if waits else 0
 
 
-def record(cur, subject_hash: str, address: str | None, *, succeeded: bool) -> None:
+def record(cur, *, user_id: int | None, username_hash: str | None, address: str | None, succeeded: bool) -> None:
     """Keep this attempt and forget those older than a day."""
     cur.execute("DELETE FROM sign_in_attempt WHERE attempted_at < now() - %s", (KEEP,))
     cur.execute(
-        "INSERT INTO sign_in_attempt (username_hash, address, succeeded) VALUES (%s, %s, %s)",
-        (subject_hash, address, succeeded),
+        """
+        INSERT INTO sign_in_attempt (user_id, username_hash, address, succeeded)
+        VALUES (%s, %s, %s, %s)
+        """,
+        (user_id, None if user_id is not None else username_hash, address, succeeded),
     )

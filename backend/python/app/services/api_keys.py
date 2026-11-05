@@ -12,6 +12,8 @@ from ..security import new_api_key
 
 DEFAULT_KEY_NAME = "Default"
 STANDARD_TIER = "standard"
+# api_key.client of the keys UMST's sign-in makes.
+GAME_CLIENT = "umst"
 
 
 class StandardTierMissing(RuntimeError):
@@ -68,3 +70,40 @@ def ensure_default_key(cur, user_id: int) -> dict[str, Any] | None:
     if cur.fetchone():
         return None
     return create_regular_key(cur, user_id, DEFAULT_KEY_NAME)
+
+
+def revoke_game_keys(cur, user_id: int, *, name: str | None = None) -> list[int]:
+    """Revoke the account's active game keys, or only the one named `name`, and
+    free the characters they had open. Returns the revoked keys' ids.
+
+    The key rows are locked before the characters, the order every path that
+    revokes a key or opens a character follows.
+    """
+    if name is None:
+        cur.execute(
+            """
+            UPDATE api_key SET revoked_at = now()
+            WHERE user_id = %s AND client = %s AND revoked_at IS NULL
+            RETURNING api_key_id
+            """,
+            (user_id, GAME_CLIENT),
+        )
+    else:
+        cur.execute(
+            """
+            UPDATE api_key SET revoked_at = now()
+            WHERE user_id = %s AND client = %s AND revoked_at IS NULL AND name = %s
+            RETURNING api_key_id
+            """,
+            (user_id, GAME_CLIENT, name),
+        )
+    revoked = [int(row["api_key_id"]) for row in cur.fetchall()]
+    if revoked:
+        cur.execute(
+            """
+            UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL
+            WHERE lease_api_key_id = ANY(%s)
+            """,
+            (revoked,),
+        )
+    return revoked

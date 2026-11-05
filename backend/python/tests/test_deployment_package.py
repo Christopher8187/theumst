@@ -85,6 +85,17 @@ def test_backend_trusts_forwarded_addresses_only_from_the_internal_proxies():
         assert "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;" in text
 
 
+def test_the_internal_proxy_limits_game_bodies_to_128_kib():
+    internal = (ROOT / "config/nginx.docker.conf").read_text(encoding="utf-8")
+    game = internal.split("location /api/game/ {", 1)[1].split("}", 1)[0]
+    rest = internal.split("    location / {", 1)[1].split("}", 1)[0]
+    assert "client_max_body_size 128k;" in game
+    # Proxied exactly as the rest of the API is.
+    assert [line.strip() for line in game.splitlines() if line.strip().startswith("proxy_")] == [
+        line.strip() for line in rest.splitlines() if line.strip().startswith("proxy_")
+    ]
+
+
 def test_master_book_ingestion_has_a_route_scoped_one_gibibyte_limit():
     host = (ROOT / "config/nginx.server.com.conf").read_text(encoding="utf-8")
     internal = (ROOT / "config/nginx.docker.conf").read_text(encoding="utf-8")

@@ -123,7 +123,7 @@ REVIEWED_MIGRATIONS = (
     ),
     ReviewedMigration(
         key="game_accounts_v1", filename="013_game_accounts.sql",
-        sha256="3e2e5b66babacd541b2c8ee27138533bad889426d9c87d40ddfe208c51fb6cde",
+        sha256="5d4950efc545bbbefbf381ac68f58a13aac52bb505488e70a736297e7aaac7c7",
         exclusive_markers=(
             Marker("column", "public.api_rate.requests_per_minute"),
             Marker("column", "public.api_rate_window.kind"),
@@ -144,6 +144,8 @@ REVIEWED_MIGRATIONS = (
             Marker("column", "public.character_data.revision"),
             Marker("column", "public.character_data.updated_at"),
             Marker("relation", "public.sign_in_attempt"),
+            Marker("column", "public.sign_in_attempt.user_id"),
+            Marker("relation", "public.sign_in_attempt_user_idx"),
             Marker("relation", "public.sign_in_attempt_username_idx"),
             Marker("relation", "public.sign_in_attempt_address_idx"),
             Marker("relation", "public.sign_in_attempt_time_idx"),

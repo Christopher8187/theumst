@@ -27,6 +27,8 @@ OTHER_KEY_ID = 99
 USER_ID = 7
 NOW = datetime(2026, 11, 5, 10, 0, 0, tzinfo=timezone.utc)
 PUBLIC_ADDRESS = "81.2.69.142"
+TYPED_HASH = "a" * 64  # what PostgreSQL computes for an unknown username
+LIVE_KEY = {"api_key_id": KEY_ID}
 
 
 class ScriptedCursor:
@@ -53,8 +55,16 @@ class ScriptedCursor:
     def sql(self, fragment):
         return [(text, params) for text, params in self.executions if fragment in text]
 
+    def index(self, fragment):
+        return next(position for position, (text, _) in enumerate(self.executions) if fragment in text)
+
     def writes(self):
         return [text for text, _ in self.executions if text.startswith(("UPDATE", "INSERT", "DELETE"))]
+
+
+def checked(*results, **options):
+    """A character transaction: the key is re-checked first."""
+    return ScriptedCursor(LIVE_KEY, *results, **options)
 
 
 def game_key(**overrides):
@@ -86,7 +96,7 @@ def with_save(row):
 
 @pytest.fixture
 def api(monkeypatch):
-    state = SimpleNamespace(cursors=[], used=[], kinds=[], key=game_key(), verified=[])
+    state = SimpleNamespace(cursors=[], used=[], kinds=[], master_allowed=[], key=game_key())
 
     @contextmanager
     def fake_transaction():
@@ -99,8 +109,9 @@ def api(monkeypatch):
             raise
         cursor.outcome = "committed"
 
-    def fake_authenticate(request, *, kind, master_required=False):
+    def fake_authenticate(request, *, kind, master_required=False, master_allowed=True):
         state.kinds.append(kind)
+        state.master_allowed.append(master_allowed)
         if isinstance(state.key, Exception):
             raise state.key
         return dict(state.key)
@@ -129,16 +140,22 @@ def assert_game_error(response, status, code):
     assert body["code"] == code
     assert isinstance(body["detail"], str) and body["detail"]
     assert response.headers["cache-control"] == "no-store"
+    if code == "invalid_request":
+        assert isinstance(body["errors"], list)
     return body
 
 
 # --- sign-in ------------------------------------------------------------------
 
-def account_row(password="right-password", *, confirmed=True):
+def account_row(password="right-password", *, confirmed=True, user_id=USER_ID):
     return {
-        "user_id": USER_ID, "username": "Christopher", "password_hash": hash_password(password),
-        "email_verified_at": NOW if confirmed else None,
+        "username_hash": "b" * 64, "user_id": user_id, "username": "Christopher",
+        "password_hash": hash_password(password), "email_verified_at": NOW if confirmed else None,
     }
+
+
+def no_account():
+    return {"username_hash": TYPED_HASH, "user_id": None, "username": None, "password_hash": None, "email_verified_at": None}
 
 
 def no_failures():
@@ -156,7 +173,7 @@ def sign_in(client, **overrides):
 
 
 def test_sign_in_makes_a_standard_game_key_named_for_the_computer(api):
-    cursor = ScriptedCursor(no_failures(), account_row(), standard_rate(), {"api_key_id": 41})
+    cursor = ScriptedCursor(account_row(), no_failures(), [], standard_rate(), {"api_key_id": 42})
     api.cursors.append(cursor)
     response = sign_in(api.client, computer="  DESKTOP-1 ")
     assert response.status_code == 200, response.text
@@ -164,7 +181,7 @@ def test_sign_in_makes_a_standard_game_key_named_for_the_computer(api):
     body = response.json()
     assert body["user_id"] == USER_ID and body["username"] == "Christopher"
     key = body["key"]
-    assert key["name"] == "UMST · DESKTOP-1"
+    assert key["name"] == "UMST · DESKTOP-1" and key["api_key_id"] == 42
     assert key["client"] == "umst" and key["key_type"] == "regular"
     assert key["tier"] == "standard" and key["requests_per_minute"] == 600
     assert key["key"].startswith("umst_read_") and key["key_prefix"] == key["key"][:16]
@@ -172,74 +189,129 @@ def test_sign_in_makes_a_standard_game_key_named_for_the_computer(api):
     assert insert_params[0] == USER_ID and insert_params[2] == "UMST · DESKTOP-1"
     assert insert_params[-1] == "umst"
     assert key["key"] not in str(insert_params)  # only the hash and prefix are stored
-    assert cursor.sql("INSERT INTO sign_in_attempt")[0][1][2] is True
-    assert cursor.sql('lower(username) = lower(%s)')[0][1] == ("christopher",)
+    assert cursor.sql("INSERT INTO sign_in_attempt")[0][1] == (USER_ID, None, None, True)
     assert cursor.outcome == "committed"
     assert api.kinds == []  # signing in uses the password, not a key
 
 
+def test_the_account_is_looked_up_first_and_normalised_in_postgresql(api):
+    cursor = ScriptedCursor(account_row("another-password"), no_failures())
+    api.cursors.append(cursor)
+    sign_in(api.client, username="  Christopher ")
+    find_sql, find_params = cursor.executions[0]
+    assert find_params == {"username": "  Christopher "}  # sent as typed
+    assert "lower(u.username) = lower(btrim(%(username)s))" in find_sql
+    assert "encode(sha256(convert_to(lower(btrim(%(username)s)), 'UTF8')), 'hex')" in find_sql
+
+
+def test_attempts_on_an_account_are_locked_and_counted_by_its_user_id(api):
+    cursor = ScriptedCursor(account_row("another-password"), no_failures())
+    api.cursors.append(cursor)
+    assert_game_error(sign_in(api.client), 401, "wrong_credentials")
+    lock_at = cursor.index("pg_advisory_xact_lock(hashtext('theumst.sign-in.account')")
+    count_at = cursor.index("FROM sign_in_attempt WHERE user_id = %(user_id)s")
+    assert cursor.executions[lock_at][1] == (USER_ID,)
+    assert lock_at < count_at
+    count_sql, count_params = cursor.executions[count_at]
+    assert count_params == {"user_id": USER_ID, "window": timedelta(minutes=15)}
+    # Only this account's own right password resets its count.
+    assert "WHERE user_id = %(user_id)s AND succeeded" in count_sql
+    assert "username_hash" not in count_sql
+
+
+def test_a_look_alike_account_counts_apart_from_its_victim(api):
+    # "chriſtopher" and "christopher" casefold alike but are different accounts.
+    for user_id in (USER_ID, 8):
+        cursor = ScriptedCursor(account_row("another-password", user_id=user_id), no_failures())
+        api.cursors.append(cursor)
+        assert_game_error(sign_in(api.client), 401, "wrong_credentials")
+        assert cursor.sql("WHERE user_id = %(user_id)s")[0][1]["user_id"] == user_id
+        assert cursor.sql("INSERT INTO sign_in_attempt")[0][1][:2] == (user_id, None)
+
+
 def test_wrong_password_is_401_and_the_failed_attempt_is_kept(api):
-    cursor = ScriptedCursor(no_failures(), account_row("another-password"))
+    cursor = ScriptedCursor(account_row("another-password"), no_failures())
     api.cursors.append(cursor)
     body = assert_game_error(sign_in(api.client), 401, "wrong_credentials")
     assert "password" in body["detail"].lower()
-    attempt = cursor.sql("INSERT INTO sign_in_attempt")[0][1]
-    assert attempt == (sign_in_attempts.username_hash("christopher"), None, False)
+    assert cursor.sql("INSERT INTO sign_in_attempt")[0][1] == (USER_ID, None, None, False)
     assert cursor.sql("DELETE FROM sign_in_attempt WHERE attempted_at < now() - %s")
-    assert not cursor.sql("INSERT INTO api_key")
+    assert not cursor.sql("INSERT INTO api_key") and not cursor.sql("UPDATE api_key")
     # Committed before the refusal, so the failure counts toward the limit.
     assert cursor.outcome == "committed"
 
 
-def test_unknown_username_spends_a_password_check_and_answers_like_a_wrong_password(api, monkeypatch):
-    checked = []
+def test_an_unknown_username_is_counted_by_its_normalised_hash_and_spends_a_password_check(api, monkeypatch):
+    checked_hashes = []
     real_verify = game.verify_password
 
     def recording_verify(password, hashed):
-        checked.append(hashed)
+        checked_hashes.append(hashed)
         return real_verify(password, hashed)
 
     monkeypatch.setattr(game, "verify_password", recording_verify)
-    cursor = ScriptedCursor(no_failures(), None)
+    cursor = ScriptedCursor(no_account(), no_failures())
     api.cursors.append(cursor)
     assert_game_error(sign_in(api.client, username="nobody"), 401, "wrong_credentials")
-    assert checked == [game._decoy_hash()]
-    assert cursor.sql("INSERT INTO sign_in_attempt")[0][1][2] is False
+    assert checked_hashes == [game._decoy_hash()]
+    _, lock_params = cursor.sql("pg_advisory_xact_lock(hashtext('theumst.sign-in.username')")[0]
+    assert lock_params == (TYPED_HASH,)
+    _, count_params = cursor.sql("WHERE username_hash = %(username_hash)s")[0]
+    assert count_params == {"username_hash": TYPED_HASH, "window": timedelta(minutes=15)}
+    assert cursor.sql("INSERT INTO sign_in_attempt")[0][1] == (None, TYPED_HASH, None, False)
 
 
 def test_unconfirmed_email_is_403_email_unverified_and_makes_no_key(api):
-    cursor = ScriptedCursor(no_failures(), account_row(confirmed=False))
+    cursor = ScriptedCursor(account_row(confirmed=False), no_failures())
     api.cursors.append(cursor)
     assert_game_error(sign_in(api.client), 403, "email_unverified")
-    assert not cursor.sql("INSERT INTO api_key")
-    assert cursor.sql("INSERT INTO sign_in_attempt")[0][1][2] is True
+    assert not cursor.sql("INSERT INTO api_key") and not cursor.sql("UPDATE api_key")
+    assert cursor.sql("INSERT INTO sign_in_attempt")[0][1][3] is True
 
 
-def test_too_many_wrong_passwords_for_a_username_is_429_with_retry_after(api):
-    cursor = ScriptedCursor({"failures": 10, "wait_seconds": 312})
+def test_signing_in_again_on_a_computer_replaces_its_earlier_key(api):
+    cursor = ScriptedCursor(account_row(), no_failures(), [{"api_key_id": 40}], standard_rate(), {"api_key_id": 42})
+    api.cursors.append(cursor)
+    assert sign_in(api.client).status_code == 200
+    revoke_at = cursor.index("UPDATE api_key SET revoked_at = now()")
+    release_at = cursor.index('UPDATE "character" SET lease_api_key_id = NULL')
+    insert_at = cursor.index("INSERT INTO api_key")
+    assert revoke_at < release_at < insert_at
+    revoke_sql, revoke_params = cursor.executions[revoke_at]
+    assert "AND name = %s" in revoke_sql and revoke_params == (USER_ID, "umst", "UMST · DESKTOP-1")
+    assert cursor.executions[release_at][1] == ([40],)
+
+
+def test_too_many_wrong_passwords_for_an_account_is_429_with_retry_after(api):
+    cursor = ScriptedCursor(account_row(), {"failures": 10, "wait_seconds": 312})
     api.cursors.append(cursor)
     response = sign_in(api.client)
     body = assert_game_error(response, 429, "too_many_attempts")
     assert body["retry_after"] == 312
     assert response.headers["retry-after"] == "312"
-    # Refused before the password is looked at; the refusal itself is not an attempt.
-    assert not cursor.sql('FROM "user"')
+    # Refused before the password is checked; the refusal itself is not an attempt.
     assert not cursor.sql("INSERT INTO sign_in_attempt")
+    assert not cursor.sql("INSERT INTO api_key")
 
 
 def test_too_many_wrong_passwords_from_one_public_address_is_429(api):
-    cursor = ScriptedCursor(no_failures(), {"failures": 30, "wait_seconds": 45})
+    cursor = ScriptedCursor(account_row(), no_failures(), {"failures": 30, "wait_seconds": 45})
     api.cursors.append(cursor)
     response = sign_in(api.public_client)
     assert assert_game_error(response, 429, "too_many_attempts")["retry_after"] == 45
+    account_lock = cursor.index("hashtext('theumst.sign-in.account')")
+    address_lock = cursor.index("hashtext('theumst.sign-in.address')")
+    first_count = cursor.index("FROM sign_in_attempt WHERE")
+    assert account_lock < address_lock < first_count
+    assert cursor.executions[address_lock][1] == (PUBLIC_ADDRESS,)
     assert cursor.sql("WHERE address = %(address)s")[0][1]["address"] == PUBLIC_ADDRESS
 
 
 def test_a_public_address_is_recorded_with_the_attempt(api):
-    cursor = ScriptedCursor(no_failures(), no_failures(), account_row("another-password"))
+    cursor = ScriptedCursor(account_row("another-password"), no_failures(), no_failures())
     api.cursors.append(cursor)
     assert_game_error(sign_in(api.public_client), 401, "wrong_credentials")
-    assert cursor.sql("INSERT INTO sign_in_attempt")[0][1][1] == PUBLIC_ADDRESS
+    assert cursor.sql("INSERT INTO sign_in_attempt")[0][1] == (USER_ID, None, PUBLIC_ADDRESS, False)
 
 
 @pytest.mark.parametrize(
@@ -269,12 +341,13 @@ def test_lone_surrogates_are_refused_before_hashing_or_storing(api):
         content=b'{"name": "Aria", "sex": "female", "save": {"note": "\\ud800"}, "save_version": 1}',
         headers={"Content-Type": "application/json"},
     )
-    assert_game_error(saved, 422, "invalid_request")
+    assert assert_game_error(saved, 422, "invalid_request")["errors"][0]["field"] == "save"
     assert api.used == []
 
 
-def test_a_blank_computer_name_is_refused(api):
-    assert_game_error(sign_in(api.client, computer="   "), 422, "invalid_request")
+def test_a_blank_computer_name_is_refused_naming_the_field(api):
+    body = assert_game_error(sign_in(api.client, computer="   "), 422, "invalid_request")
+    assert body["errors"] == [{"field": "computer", "message": "Send the computer's name"}]
     assert api.used == []
 
 
@@ -292,12 +365,6 @@ def test_validation_elsewhere_keeps_fastapis_shape(api):
 
 
 # --- the throttle service -------------------------------------------------------
-
-def test_username_hash_ignores_case_and_surrounding_space_and_hides_the_name():
-    assert sign_in_attempts.username_hash("  Christopher ") == sign_in_attempts.username_hash("christopher")
-    assert "christopher" not in sign_in_attempts.username_hash("Christopher")
-    assert len(sign_in_attempts.username_hash("x")) == 64
-
 
 @pytest.mark.parametrize(
     ("host", "expected"),
@@ -318,24 +385,33 @@ def test_only_public_addresses_are_throttled_as_addresses(host, expected):
 
 def test_retry_after_is_zero_below_both_limits():
     cursor = ScriptedCursor({"failures": 9, "wait_seconds": 100}, {"failures": 29, "wait_seconds": 100})
-    assert sign_in_attempts.retry_after(cursor, "a" * 64, PUBLIC_ADDRESS) == 0
-    username_sql, username_params = cursor.executions[0]
-    assert "NOT succeeded" in username_sql and "AND succeeded" in username_sql
-    assert username_params == {"subject": "a" * 64, "window": timedelta(minutes=15)}
+    assert sign_in_attempts.retry_after(cursor, user_id=USER_ID, username_hash=None, address=PUBLIC_ADDRESS) == 0
+    assert len(cursor.executions) == 2
 
 
 def test_retry_after_waits_for_the_longer_of_the_two_limits():
     cursor = ScriptedCursor({"failures": 10, "wait_seconds": 30}, {"failures": 31, "wait_seconds": 200})
-    assert sign_in_attempts.retry_after(cursor, "a" * 64, PUBLIC_ADDRESS) == 200
+    assert sign_in_attempts.retry_after(cursor, user_id=USER_ID, username_hash=None, address=PUBLIC_ADDRESS) == 200
 
 
 def test_retry_after_skips_the_address_when_there_is_none():
     cursor = ScriptedCursor({"failures": 0, "wait_seconds": 0})
-    assert sign_in_attempts.retry_after(cursor, "a" * 64, None) == 0
+    assert sign_in_attempts.retry_after(cursor, user_id=None, username_hash=TYPED_HASH, address=None) == 0
     assert len(cursor.executions) == 1
 
 
-def test_limits_are_ten_per_username_and_thirty_per_address_in_fifteen_minutes():
+def test_locks_are_taken_account_first_then_address():
+    cursor = ScriptedCursor()
+    sign_in_attempts.lock(cursor, user_id=USER_ID, username_hash=None, address=PUBLIC_ADDRESS)
+    assert [params for _, params in cursor.executions] == [(USER_ID,), (PUBLIC_ADDRESS,)]
+    cursor = ScriptedCursor()
+    sign_in_attempts.lock(cursor, user_id=None, username_hash=TYPED_HASH, address=None)
+    assert cursor.executions == [
+        ("SELECT pg_advisory_xact_lock(hashtext('theumst.sign-in.username'), hashtext(%s))", (TYPED_HASH,)),
+    ]
+
+
+def test_limits_are_ten_per_account_and_thirty_per_address_in_fifteen_minutes():
     assert sign_in_attempts.MAX_FAILURES_PER_USERNAME == 10
     assert sign_in_attempts.MAX_FAILURES_PER_ADDRESS == 30
     assert sign_in_attempts.WINDOW == timedelta(minutes=15)
@@ -356,12 +432,12 @@ def test_me_returns_the_account_and_key_and_counts_as_a_character_call(api):
         },
     }
     assert api.kinds == ["character"]
+    assert api.master_allowed == [False]
 
 
-def test_me_with_a_master_key_has_no_tier(api):
-    api.key = game_key(key_type="master", client=None, level_name=None, requests_per_minute=None)
-    key = api.client.get("/api/game/me").json()["key"]
-    assert key["tier"] is None and key["requests_per_minute"] is None
+def test_a_master_key_is_403_master_key_not_allowed(api):
+    api.key = HTTPException(status_code=403, detail="Master keys are not accepted here")
+    assert_game_error(api.client.get("/api/game/me"), 403, "master_key_not_allowed")
 
 
 def test_an_invalid_key_is_401_invalid_key(api):
@@ -381,6 +457,8 @@ def test_sign_out_revokes_only_a_game_key_and_frees_what_it_had_open(api):
     api.cursors.append(cursor)
     response = api.client.post("/api/game/sign-out")
     assert response.json() == {"revoked": True, "released_characters": 1}
+    lock_sql, lock_params = cursor.executions[0]
+    assert lock_sql == "SELECT api_key_id FROM api_key WHERE api_key_id = %s FOR UPDATE" and lock_params == (KEY_ID,)
     _, release_params = cursor.sql('UPDATE "character" SET lease_api_key_id = NULL')[0]
     assert release_params == (KEY_ID,)
     revoke_sql, revoke_params = cursor.sql("UPDATE api_key SET revoked_at = now()")[0]
@@ -427,6 +505,30 @@ def test_the_list_shows_who_has_each_character_open_without_any_save(api):
     assert api.kinds == ["character"]
 
 
+# --- the key is re-checked inside each character transaction ------------------------
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("POST", "/api/game/characters", {"name": "Aria", "sex": "female", "save": {}, "save_version": 1}),
+        ("POST", "/api/game/characters/12/open", None),
+        ("POST", "/api/game/characters/12/heartbeat", None),
+        ("POST", "/api/game/characters/12/close", None),
+        ("PUT", "/api/game/characters/12/data", {"save": {}, "save_version": 1, "revision": 1}),
+        ("DELETE", "/api/game/characters/12", {"name": "Aria"}),
+    ],
+)
+def test_a_key_revoked_since_it_was_checked_is_refused_inside_the_transaction(api, method, path, body):
+    cursor = ScriptedCursor(None)
+    api.cursors.append(cursor)
+    assert_game_error(api.client.request(method, path, json=body), 401, "invalid_key")
+    check_sql, check_params = cursor.executions[0]
+    assert check_sql == "SELECT api_key_id FROM api_key WHERE api_key_id = %s AND revoked_at IS NULL FOR SHARE"
+    assert check_params == (KEY_ID,)
+    assert len(cursor.executions) == 1
+    assert cursor.outcome == "rolled back"
+
+
 # --- making a character -------------------------------------------------------------
 
 def new_character(**overrides):
@@ -448,7 +550,7 @@ def made_row():
 
 
 def test_making_a_character_stores_its_save_and_summary(api):
-    cursor = ScriptedCursor({"characters": 5}, {"character_data_id": 77, "revision": 1}, made_row())
+    cursor = checked({"characters": 5}, {"character_data_id": 77, "revision": 1}, made_row())
     api.cursors.append(cursor)
     response = api.client.post("/api/game/characters", json=new_character())
     assert response.status_code == 201, response.text
@@ -456,8 +558,9 @@ def test_making_a_character_stores_its_save_and_summary(api):
     assert body["revision"] == 1
     assert body["character"]["name"] == "Aria" and body["character"]["last_played_at"] is None
     assert body["character"]["created_at"] == "2026-11-05T10:00:00Z"
-    lock_sql, lock_params = cursor.executions[0]
-    assert 'FROM "user" WHERE user_id = %s FOR UPDATE' in lock_sql and lock_params == (USER_ID,)
+    lock_sql, lock_params = cursor.executions[1]
+    assert lock_sql == "SELECT pg_advisory_xact_lock(hashtext('theumst.characters'), %s)" and lock_params == (USER_ID,)
+    assert cursor.index("pg_advisory_xact_lock") < cursor.index('SELECT count(*) AS characters')
     data_sql, data_params = cursor.sql("INSERT INTO character_data")[0]
     assert "%s::jsonb" in data_sql
     assert data_params == ('{"level": 1, "name": "Aria"}', 3)
@@ -469,7 +572,7 @@ def test_making_a_character_stores_its_save_and_summary(api):
 
 
 def test_a_character_without_a_summary_gets_an_empty_one(api):
-    cursor = ScriptedCursor({"characters": 0}, {"character_data_id": 77, "revision": 1}, made_row())
+    cursor = checked({"characters": 0}, {"character_data_id": 77, "revision": 1}, made_row())
     api.cursors.append(cursor)
     body = new_character()
     del body["summary"]
@@ -478,7 +581,7 @@ def test_a_character_without_a_summary_gets_an_empty_one(api):
 
 
 def test_a_seventh_character_is_409_full(api):
-    cursor = ScriptedCursor({"characters": 6})
+    cursor = checked({"characters": 6})
     api.cursors.append(cursor)
     body = assert_game_error(api.client.post("/api/game/characters", json=new_character()), 409, "full")
     assert body["limit"] == 6
@@ -511,7 +614,7 @@ def test_a_summary_over_2_kib_is_413(api):
 
 def test_a_save_just_within_64_kib_is_sent_on(api):
     # {"blob": "..."} adds 12 bytes around the string.
-    api.cursors.append(ScriptedCursor({"characters": 0}, {"character_data_id": 77, "revision": 1}, made_row()))
+    api.cursors.append(checked({"characters": 0}, {"character_data_id": 77, "revision": 1}, made_row()))
     response = api.client.post("/api/game/characters", json=new_character(save={"blob": "x" * (65536 - 12)}))
     assert response.status_code == 201
 
@@ -531,7 +634,8 @@ def test_a_save_with_nan_is_refused_as_invalid_json(api):
         content=b'{"name": "Aria", "sex": "female", "save": {"hp": NaN}, "save_version": 1}',
         headers={"Content-Type": "application/json"},
     )
-    assert_game_error(response, 422, "invalid_request")
+    body = assert_game_error(response, 422, "invalid_request")
+    assert body["errors"] == [{"field": "save", "message": "The save is not valid JSON"}]
     assert api.used == []
 
 
@@ -543,7 +647,7 @@ class SaveCheckViolation(psycopg2.Error):
 
 def test_the_databases_size_check_is_answered_as_413(api):
     failure = SaveCheckViolation("new row violates check constraint")
-    api.cursors.append(ScriptedCursor({"characters": 0}, fail_on=("INSERT INTO character_data", failure)))
+    api.cursors.append(checked({"characters": 0}, fail_on=("INSERT INTO character_data", failure)))
     response = api.client.post("/api/game/characters", json=new_character())
     assert assert_game_error(response, 413, "save_too_large")["limit_bytes"] == 65536
 
@@ -560,7 +664,8 @@ def test_stored_errors_map_check_constraints(constraint, status, code):
     error = game._stored_error(SimpleNamespace(pgcode="23514", diag=SimpleNamespace(constraint_name=constraint)))
     assert (error.status_code, error.code) == (status, code)
     assert game._stored_error(SimpleNamespace(pgcode="23514", diag=SimpleNamespace(constraint_name="other"))) is None
-    assert game._stored_error(SimpleNamespace(pgcode="22P05", diag=None)).code == "invalid_request"
+    unstorable = game._stored_error(SimpleNamespace(pgcode="22P05", diag=None))
+    assert unstorable.code == "invalid_request" and unstorable.extra == {"errors": []}
     assert game._stored_error(SimpleNamespace(pgcode="40001", diag=None)) is None
 
 
@@ -571,7 +676,7 @@ def lease_row():
 
 
 def test_opening_takes_the_lease_and_returns_the_save_and_revision(api):
-    cursor = ScriptedCursor(with_save(character_row()), lease_row())
+    cursor = checked(with_save(character_row()), lease_row())
     api.cursors.append(cursor)
     response = api.client.post("/api/game/characters/12/open")
     assert response.status_code == 200, response.text
@@ -581,7 +686,7 @@ def test_opening_takes_the_lease_and_returns_the_save_and_revision(api):
     assert body["lease_seconds"] == 120 and body["lease_expires_at"] == "2026-11-05T10:02:00Z"
     assert body["updated_at"] == "2026-11-05T09:00:00Z"
     assert body["character"]["character_id"] == 12 and body["character"]["open_elsewhere"] is False
-    select_sql, select_params = cursor.executions[0]
+    select_sql, select_params = cursor.executions[1]
     assert "FOR UPDATE" in select_sql and "d.data" in select_sql
     assert select_params == (12, USER_ID)
     _, lease_params = cursor.sql('UPDATE "character" SET lease_api_key_id = %s')[0]
@@ -590,7 +695,7 @@ def test_opening_takes_the_lease_and_returns_the_save_and_revision(api):
 
 
 def test_another_computers_live_lease_is_409_open_elsewhere_with_seconds_left(api):
-    cursor = ScriptedCursor(with_save(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=87)))
+    cursor = checked(with_save(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=87)))
     api.cursors.append(cursor)
     body = assert_game_error(api.client.post("/api/game/characters/12/open"), 409, "open_elsewhere")
     assert body["seconds_left"] == 87
@@ -598,12 +703,12 @@ def test_another_computers_live_lease_is_409_open_elsewhere_with_seconds_left(ap
 
 
 def test_the_same_key_may_reopen_its_own_lease(api):
-    api.cursors.append(ScriptedCursor(with_save(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=60)), lease_row()))
+    api.cursors.append(checked(with_save(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=60)), lease_row()))
     assert api.client.post("/api/game/characters/12/open").status_code == 200
 
 
 def test_a_lapsed_lease_of_another_computer_can_be_taken(api):
-    api.cursors.append(ScriptedCursor(with_save(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=False)), lease_row()))
+    api.cursors.append(checked(with_save(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=False)), lease_row()))
     assert api.client.post("/api/game/characters/12/open").status_code == 200
 
 
@@ -618,38 +723,38 @@ def test_a_lapsed_lease_of_another_computer_can_be_taken(api):
     ],
 )
 def test_another_accounts_or_a_missing_character_is_404(api, method, path, body):
-    cursor = ScriptedCursor(None)
+    cursor = checked(None)
     api.cursors.append(cursor)
     assert_game_error(api.client.request(method, path, json=body), 404, "not_found")
-    assert cursor.executions[0][1] == (12, USER_ID)
+    assert cursor.sql("WHERE c.character_id = %s AND c.user_id = %s")[0][1] == (12, USER_ID)
 
 
 def test_a_heartbeat_renews_this_keys_lease(api):
-    cursor = ScriptedCursor(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=20), lease_row())
+    cursor = checked(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=20), lease_row())
     api.cursors.append(cursor)
     response = api.client.post("/api/game/characters/12/heartbeat")
     assert response.json() == {"lease_seconds": 120, "lease_expires_at": "2026-11-05T10:02:00Z"}
-    assert "d.data" not in cursor.executions[0][0]
+    assert "d.data" not in cursor.executions[1][0]
 
 
 def test_a_heartbeat_after_a_lapse_nobody_used_still_renews(api):
-    api.cursors.append(ScriptedCursor(character_row(lease_api_key_id=KEY_ID, lease_live=False), lease_row()))
+    api.cursors.append(checked(character_row(lease_api_key_id=KEY_ID, lease_live=False), lease_row()))
     assert api.client.post("/api/game/characters/12/heartbeat").status_code == 200
 
 
 def test_a_heartbeat_without_the_lease_is_409(api):
-    api.cursors.append(ScriptedCursor(character_row()))
+    api.cursors.append(checked(character_row()))
     assert_game_error(api.client.post("/api/game/characters/12/heartbeat"), 409, "not_open")
-    api.cursors.append(ScriptedCursor(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=5)))
+    api.cursors.append(checked(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=5)))
     assert assert_game_error(api.client.post("/api/game/characters/12/heartbeat"), 409, "open_elsewhere")["seconds_left"] == 5
 
 
 def test_closing_releases_only_this_keys_lease(api):
-    mine = ScriptedCursor(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=50))
+    mine = checked(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=50))
     api.cursors.append(mine)
     assert api.client.post("/api/game/characters/12/close").json() == {"released": True}
     assert mine.sql("SET lease_api_key_id = NULL, lease_expires_at = NULL")[0][1] == (12,)
-    theirs = ScriptedCursor(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=50))
+    theirs = checked(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=50))
     api.cursors.append(theirs)
     assert api.client.post("/api/game/characters/12/close").json() == {"released": False}
     assert not theirs.writes()
@@ -664,7 +769,7 @@ def save_body(**overrides):
 
 
 def test_a_save_raises_the_revision_sets_last_played_and_renews_the_lease(api):
-    cursor = ScriptedCursor(
+    cursor = checked(
         character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=40),
         {"revision": 6, "updated_at": NOW},
         {"last_played_at": NOW, "lease_expires_at": NOW + timedelta(seconds=120)},
@@ -686,7 +791,7 @@ def test_a_save_raises_the_revision_sets_last_played_and_renews_the_lease(api):
 
 
 def test_a_save_without_a_summary_keeps_the_stored_one(api):
-    cursor = ScriptedCursor(
+    cursor = checked(
         character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=40),
         {"revision": 6, "updated_at": NOW},
         {"last_played_at": NOW, "lease_expires_at": NOW},
@@ -699,7 +804,7 @@ def test_a_save_without_a_summary_keeps_the_stored_one(api):
 
 
 def test_a_save_from_an_older_revision_is_409_stale_with_the_current_one(api):
-    cursor = ScriptedCursor(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=40, revision=6))
+    cursor = checked(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=40, revision=6))
     api.cursors.append(cursor)
     body = assert_game_error(api.client.put("/api/game/characters/12/data", json=save_body(revision=5)), 409, "stale")
     assert body["revision"] == 6
@@ -707,14 +812,14 @@ def test_a_save_from_an_older_revision_is_409_stale_with_the_current_one(api):
 
 
 def test_a_save_needs_the_lease(api):
-    api.cursors.append(ScriptedCursor(character_row()))
+    api.cursors.append(checked(character_row()))
     assert_game_error(api.client.put("/api/game/characters/12/data", json=save_body()), 409, "not_open")
-    api.cursors.append(ScriptedCursor(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=9)))
+    api.cursors.append(checked(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=9)))
     assert_game_error(api.client.put("/api/game/characters/12/data", json=save_body()), 409, "open_elsewhere")
 
 
 def test_a_save_with_this_keys_lapsed_lease_is_kept(api):
-    api.cursors.append(ScriptedCursor(
+    api.cursors.append(checked(
         character_row(lease_api_key_id=KEY_ID, lease_live=False),
         {"revision": 6, "updated_at": NOW},
         {"last_played_at": NOW, "lease_expires_at": NOW},
@@ -736,7 +841,7 @@ def test_malformed_saves_are_422(api, overrides):
 # --- deleting ----------------------------------------------------------------------
 
 def test_deleting_needs_the_name_typed_exactly(api):
-    cursor = ScriptedCursor(character_row())
+    cursor = checked(character_row())
     api.cursors.append(cursor)
     response = api.client.request("DELETE", "/api/game/characters/12", json={"name": "aria"})
     assert_game_error(response, 409, "name_mismatch")
@@ -744,7 +849,7 @@ def test_deleting_needs_the_name_typed_exactly(api):
 
 
 def test_deleting_is_refused_while_another_computer_has_it_open(api):
-    cursor = ScriptedCursor(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=30))
+    cursor = checked(character_row(lease_api_key_id=OTHER_KEY_ID, lease_live=True, lease_seconds_left=30))
     api.cursors.append(cursor)
     response = api.client.request("DELETE", "/api/game/characters/12", json={"name": "Aria"})
     assert assert_game_error(response, 409, "open_elsewhere")["seconds_left"] == 30
@@ -752,7 +857,7 @@ def test_deleting_is_refused_while_another_computer_has_it_open(api):
 
 
 def test_deleting_removes_the_character_and_its_save(api):
-    cursor = ScriptedCursor(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=30))
+    cursor = checked(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=30))
     api.cursors.append(cursor)
     response = api.client.request("DELETE", "/api/game/characters/12", json={"name": "  Aria "})
     assert response.json() == {"deleted": True, "character_id": 12}
@@ -765,12 +870,13 @@ def test_deleting_without_a_name_is_422(api):
     assert_game_error(api.client.request("DELETE", "/api/game/characters/12"), 422, "invalid_request")
 
 
-def test_every_key_route_counts_as_a_character_call(api):
+def test_every_key_route_counts_as_a_character_call_and_refuses_master_keys(api):
     api.cursors.extend([
         ScriptedCursor([]),
-        ScriptedCursor(character_row()),
+        checked(character_row()),
     ])
     api.client.get("/api/game/characters")
     api.client.post("/api/game/characters/12/close")
     api.client.get("/api/game/me")
     assert api.kinds == ["character", "character", "character"]
+    assert api.master_allowed == [False, False, False]
