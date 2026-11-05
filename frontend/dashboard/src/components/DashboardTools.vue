@@ -25,7 +25,7 @@ function scrollToEditor() {
   nextTick(() => editor.value?.scrollTo({ top: 0, behavior: "instant" }));
 }
 const {
-    route, output, outputError, keys, profileLoaded, loadingError, accessPoints,
+    route, output, outputError, keys, newKey, profileLoaded, loadingError, accessPoints,
     storagePath, storageMode, storageItems, storageText, storageName, folderName, storageMessage, storageError,
     qdrantQuery, qdrantVector, qdrantFilters, qdrantLimit, qdrantResult, qdrantError,
     superUser, superMessage, superError, superSql, superSqlResult, superSqlError,
@@ -75,6 +75,7 @@ const tools = computed(() => [
         :keys="keys"
         :output="output"
         :output-error="outputError"
+        :new-key="newKey"
         @create="createKey"
         @upgrade="upgradeKey"
         @revoke="revokeKey"

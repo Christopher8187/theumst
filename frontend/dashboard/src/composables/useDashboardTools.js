@@ -9,6 +9,7 @@ export function useDashboardTools({ initialRoute, onRouteChange, onSessionExpire
   const output = ref("");
   const outputError = ref(false);
   const keys = ref([]);
+  const newKey = ref(null);
   const profile = ref({
     username: "", email: "", alias: "", description: "",
     authority_type: "", access_points: []
@@ -141,6 +142,11 @@ export function useDashboardTools({ initialRoute, onRouteChange, onSessionExpire
   }
 
   async function loadKeys() {
+    // An account without a Default key gets one the first time this page
+    // opens; the answer carries its full text this once.
+    const made = requireLogin(await apiFetch("/api/api-keys/default", { method: "POST" }));
+    if (made.status === 401) return;
+    if (made.status === 201) newKey.value = { ...(await made.json()).key, isDefault: true };
     const res = requireLogin(await apiFetch("/api/api-keys"));
     if (!res.ok) return;
     keys.value = (await res.json()).keys;
@@ -164,7 +170,8 @@ export function useDashboardTools({ initialRoute, onRouteChange, onSessionExpire
       outputError.value = true;
       return;
     }
-    output.value = `${t.value.newKey} ${response.key}`;
+    newKey.value = { name: response.name, key: response.key, isDefault: false };
+    output.value = "";
     outputError.value = false;
     event.target.reset();
     loadKeys();
@@ -493,7 +500,7 @@ export function useDashboardTools({ initialRoute, onRouteChange, onSessionExpire
   onMounted(loadProfile);
 
   return {
-      route, output, outputError, keys, profileLoaded, loadingError, accessPoints,
+      route, output, outputError, keys, newKey, profileLoaded, loadingError, accessPoints,
       storagePath, storageMode, storageItems, storageText, storageName, folderName, storageMessage, storageError,
       qdrantQuery, qdrantVector, qdrantFilters, qdrantLimit, qdrantResult, qdrantError,
       superUser, superMessage, superError, superSql, superSqlResult, superSqlError,

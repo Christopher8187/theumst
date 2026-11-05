@@ -6,7 +6,7 @@ const preferencesKey = "theumst.magical-lofi.preferences.v1";
 const windowFor = (page, name) => page.locator(`.window[data-page="${name}"]`);
 const dockFor = (page, name) => page.locator(`.dock-item[data-page="${name}"]`);
 
-async function simulatedServices(page, { signedIn = true, subscribed = false, demoEnter = false, posts = [] } = {}) {
+async function simulatedServices(page, { signedIn = true, subscribed = false, demoEnter = false, posts = [], defaultKey = null } = {}) {
   let authenticated = signedIn;
   let news = subscribed;
   const loginRequests = [];
@@ -37,6 +37,11 @@ async function simulatedServices(page, { signedIn = true, subscribed = false, de
     }
     if (path === "/api/news") return route.fulfill({ json: { posts } });
     if (path.startsWith("/api/news/")) return route.fulfill({ json: { post: posts.find(post => post.slug === path.slice(10)) } });
+    if (path === "/api/api-keys/default" && request.method() === "POST") {
+      const made = defaultKey;
+      defaultKey = null;
+      return made ? route.fulfill({ status: 201, json: { created: true, key: made } }) : route.fulfill({ json: { created: false } });
+    }
     if (path === "/api/api-keys") return route.fulfill({ json: { keys: [] } });
     if (path === "/api/demo/access") return route.fulfill({ json: { can_enter: demoEnter, can_review: false, account_type: "user", request: null } });
     unexpected.push(`${request.method()} ${path}`);
@@ -287,6 +292,31 @@ test.describe("S: shared desktop regression", () => {
       await expect(page).toHaveURL("/");
     });
   }
+
+  test("confirming an email shows the Default key once with a copy button", async ({ page }) => {
+    await simulatedServices(page, { signedIn: false });
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    const key = { api_key_id: 30, name: "Default", key: "umst_read_simulated-default-key", key_prefix: "umst_read_simula" };
+    await page.route("**/auth/email-verification/confirm", route => route.fulfill({ json: { ok: true, redirect: "/login?verified=success", default_key: key } }));
+    await page.goto("/verify-email?token=synthetic-verify-token");
+    const verification = windowFor(page, "verifyEmail");
+    await expect(verification.locator(".login-status.is-success")).toBeVisible();
+    await expect(verification.locator(".default-key code")).toHaveText(key.key);
+    await verification.locator(".default-key button").click();
+    await expect(verification.locator(".default-key button")).toHaveText("Copied");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(key.key);
+    await expect(page).toHaveURL("/");
+  });
+
+  test("the API Keys page shows a newly made Default key once", async ({ page }) => {
+    const key = { api_key_id: 30, name: "Default", key: "umst_read_simulated-default-key", key_prefix: "umst_read_simula" };
+    const service = await simulatedServices(page, { defaultKey: key });
+    await page.goto("/dashboard/api-keys/");
+    const dashboard = windowFor(page, "dashboard");
+    await expect(dashboard.locator(".new-key code")).toHaveText(key.key, { timeout: 15000 });
+    await expect(dashboard.locator(".new-key button")).toBeVisible();
+    expect(service.unexpected).toEqual([]);
+  });
 
   test("signup verification opens inside the desktop without a document navigation", async ({ page }) => {
     await simulatedServices(page, { signedIn: false });

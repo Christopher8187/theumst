@@ -202,6 +202,7 @@ test("an ordinary account cannot open a privileged tool through an initial or ch
     requests.push(path);
     if (path === "/api/me") return json({ user: { access_points: ["profile", "api-keys"] } });
     if (path === "/api/demo/access") return json({ can_review: false });
+    if (path === "/api/api-keys/default") return json({ created: false });
     if (path === "/api/api-keys") return json({ keys: [] });
     throw new Error(`Unexpected privileged request: ${path}`);
   };
@@ -227,5 +228,60 @@ test("an ordinary account cannot open a privileged tool through an initial or ch
     await settle();
     assert.equal(state.route.value, "demo");
     assert.equal(requests.some(path => path.startsWith("/api/content") || path.startsWith("/api/admin")), false);
+  } finally { app.unmount(); }
+});
+
+test("opening API Keys makes the Default key once and keeps its full text only in memory", async () => {
+  const requests = [];
+  let made = false;
+  let state;
+  globalThis.fetch = async (path, options = {}) => {
+    requests.push(`${options.method || "GET"} ${path}`);
+    if (path === "/api/me") return json({ user: { access_points: ["profile", "api-keys"] } });
+    if (path === "/api/api-keys/default") {
+      if (made) return json({ created: false });
+      made = true;
+      return json({ created: true, key: { api_key_id: 30, name: "Default", key: "umst_read_synthetic", key_prefix: "umst_read_synthe" } }, 201);
+    }
+    if (path === "/api/api-keys") return json({ keys: [{ api_key_id: 30, name: "Default", key_prefix: "umst_read_synthe" }] });
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  const app = renderer.createApp({
+    setup() {
+      state = useDashboardTools({ initialRoute: () => "api-keys", onRouteChange() {}, scrollToEditor() {}, t: copy });
+      return () => null;
+    }
+  });
+  app.mount({});
+  try {
+    await settle();
+    assert.deepEqual(requests, ["GET /api/me", "POST /api/api-keys/default", "GET /api/api-keys"]);
+    assert.equal(state.newKey.value.key, "umst_read_synthetic");
+    assert.equal(state.newKey.value.isDefault, true);
+    assert.equal(state.keys.value[0].key_prefix, "umst_read_synthe");
+    assert.equal(JSON.stringify(state.keys.value).includes("umst_read_synthetic"), false);
+  } finally { app.unmount(); }
+});
+
+test("an expired session on the Default key request opens Login once", async () => {
+  const requests = [];
+  let expired = 0;
+  globalThis.fetch = async (path, options = {}) => {
+    requests.push(`${options.method || "GET"} ${path}`);
+    if (path === "/api/me") return json({ user: { access_points: ["profile", "api-keys"] } });
+    if (path === "/api/api-keys/default") return json({ detail: "Authentication required" }, 401);
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  const app = renderer.createApp({
+    setup() {
+      useDashboardTools({ initialRoute: () => "api-keys", onRouteChange() {}, onSessionExpired: () => { expired += 1; }, scrollToEditor() {}, t: copy });
+      return () => null;
+    }
+  });
+  app.mount({});
+  try {
+    await settle();
+    assert.deepEqual(requests, ["GET /api/me", "POST /api/api-keys/default"]);
+    assert.equal(expired, 1);
   } finally { app.unmount(); }
 });
