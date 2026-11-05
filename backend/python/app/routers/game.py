@@ -202,12 +202,16 @@ def _computer(value: str) -> str:
 
 
 def _json_text(value: dict[str, Any], *, limit: int, code: str, what: str) -> str:
-    """The JSON text PostgreSQL will store, refused early when over its limit."""
+    """JSON text for PostgreSQL, refused early when already over the database's limit.
+
+    The separators match the text form of jsonb that the size check measures.
+    """
     try:
         text = json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(", ", ": "))
+        size = len(text.encode("utf-8"))
     except ValueError:
-        raise GameError(422, "invalid_request", f"The {what} is not valid JSON (NaN or Infinity)") from None
-    size = len(text.encode("utf-8"))
+        # NaN and Infinity are not JSON, and a lone surrogate ("\ud800") cannot be encoded.
+        raise GameError(422, "invalid_request", f"The {what} is not valid JSON") from None
     if size > limit:
         raise GameError(413, code, f"The {what} is {size} bytes; the limit is {limit}", limit_bytes=limit)
     return text

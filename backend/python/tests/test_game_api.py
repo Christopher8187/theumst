@@ -250,6 +250,29 @@ def test_the_computer_name_is_cleaned_and_shortened(computer, expected):
     assert game._computer(computer) == expected
 
 
+def test_lone_surrogates_are_refused_before_hashing_or_storing(api):
+    # Pydantic refuses them in string fields; a save's own values reach _json_text.
+    response = api.client.post(
+        "/api/game/sign-in",
+        content=b'{"username": "chris\\ud800", "password": "right-password", "computer": "PC"}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert_game_error(response, 422, "invalid_request")
+    named = api.client.post(
+        "/api/game/characters",
+        content=b'{"name": "Ar\\udc00ia", "sex": "female", "save": {}, "save_version": 1}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert_game_error(named, 422, "invalid_request")
+    saved = api.client.post(
+        "/api/game/characters",
+        content=b'{"name": "Aria", "sex": "female", "save": {"note": "\\ud800"}, "save_version": 1}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert_game_error(saved, 422, "invalid_request")
+    assert api.used == []
+
+
 def test_a_blank_computer_name_is_refused(api):
     assert_game_error(sign_in(api.client, computer="   "), 422, "invalid_request")
     assert api.used == []
