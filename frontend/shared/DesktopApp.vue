@@ -72,8 +72,17 @@ const dashboardRoute = ref("demo"),
 const entry = consumeDesktopEntry();
 const query = entry.searchParams;
 const accountQueries = ref<Record<string, string>>({});
+// Seconds the login page asks the reader to wait after too many wrong
+// passwords; a refused form post arrives as ?error=too-many-attempts&retry_after=N.
+function waitFromQuery(params: URLSearchParams) {
+  const seconds = Number(params.get("retry_after"));
+  return params.get("error") === "too-many-attempts" && Number.isInteger(seconds) && seconds > 0
+    ? seconds
+    : 0;
+}
 const loginError = ref(query.get("error") === "bad-login"),
   loginMessage = ref(""),
+  loginWait = ref(waitFromQuery(query)),
   authBusy = ref(false);
 const resetSuccess = ref(query.get("reset") === "success"),
   verifiedSuccess = ref(
@@ -190,6 +199,7 @@ async function submitAuth(event: Event, action: string) {
   authBusy.value = true;
   loginError.value = false;
   loginMessage.value = "";
+  loginWait.value = 0;
   try {
     const response = await apiFetch(action, {
       method: "POST",
@@ -200,6 +210,12 @@ async function submitAuth(event: Event, action: string) {
     if (!response.ok) {
       if (data.code === "email_delivery_failed") {
         navigate("/verify-email?delivery=failed");
+        return;
+      }
+      const wait =
+        Number(data.retry_after) || Number(response.headers.get("Retry-After"));
+      if (action === "/auth/login" && data.code === "too_many_attempts" && wait > 0) {
+        loginWait.value = Math.ceil(wait);
         return;
       }
       loginError.value =
@@ -405,6 +421,7 @@ onMounted(async () => {
         :session="session"
         :title-key="pages[w.id]?.titleKey"
         :login-error="loginError"
+        :login-wait="loginWait"
         :password-reset-success="resetSuccess"
         :email-verified-success="verifiedSuccess"
         :login-message="loginMessage"

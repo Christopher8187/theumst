@@ -1,8 +1,20 @@
 <script setup>
+import { computed } from "vue";
 
-
-defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean, passwordResetSuccess: Boolean, emailVerifiedSuccess: Boolean, loginMessage: String, authBusy: Boolean, newsLabel: String, optionalLabel: String });
+const props = defineProps({ tr: Function, session: Object, titleKey: String, loginError: Boolean, loginWait: Number, passwordResetSuccess: Boolean, emailVerifiedSuccess: Boolean, loginMessage: String, authBusy: Boolean, newsLabel: String, optionalLabel: String });
 defineEmits(["navigate", "set-language", "login"]);
+
+// After too many wrong passwords: how long to wait, in the page's language.
+// Under a minute in seconds, otherwise in whole minutes rounded up.
+const waitMessage = computed(() => {
+  const seconds = props.loginWait;
+  if (!seconds) return "";
+  const inMinutes = seconds >= 60;
+  const wait = new Intl.NumberFormat(document.documentElement.lang || undefined, {
+    style: "unit", unit: inMinutes ? "minute" : "second", unitDisplay: "long"
+  }).format(inMinutes ? Math.ceil(seconds / 60) : seconds);
+  return props.tr("login.tooManyAttempts").replace("{wait}", wait);
+});
 </script>
 
 <template>
@@ -25,6 +37,7 @@ defineEmits(["navigate", "set-language", "login"]);
         </div>
 
         <p v-if="loginError" class="login-error">{{ tr("login.badLogin") }}</p>
+        <p v-if="waitMessage" class="login-error" role="alert">{{ waitMessage }}</p>
         <p v-if="passwordResetSuccess" class="login-status is-success">{{ tr("login.resetSuccess") }}</p>
         <p v-if="emailVerifiedSuccess" class="login-status is-success">{{ tr("login.verifiedSuccess") }}</p>
         <p v-if="loginMessage" class="login-status is-error">{{ loginMessage }} <a href="/verify-email" @click.prevent="$emit('navigate', '/verify-email')">{{ tr("login.resendVerification") }}</a></p>

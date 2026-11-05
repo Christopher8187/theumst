@@ -223,6 +223,52 @@ test.describe("S: shared desktop regression", () => {
     });
   }
 
+  for (const scenario of [
+    { language: "en", wait: 312, message: "Too many wrong passwords. Wait 6 minutes before trying again." },
+    { language: "zh", wait: 45, message: "密码错误次数过多。请等待45秒钟后再试。" },
+    { language: "ja", wait: 900, message: "パスワードの誤りが多すぎます。15 分待ってから、もう一度お試しください。" }
+  ]) {
+    test(`a refused login says how long to wait: ${scenario.language}`, async ({ page }) => {
+      await page.addInitScript(language => localStorage.setItem("language", language), scenario.language);
+      const service = await simulatedServices(page, { signedIn: false });
+      const attempts = [];
+      await page.route("**/auth/login", route => {
+        attempts.push(route.request().method());
+        if (attempts.length > 1) return route.fulfill({ status: 401, json: { ok: false, detail: "Incorrect username or password" } });
+        return route.fulfill({
+          status: 429,
+          headers: { "Retry-After": String(scenario.wait) },
+          json: { ok: false, code: "too_many_attempts", detail: "Too many wrong passwords; wait before trying again", retry_after: scenario.wait }
+        });
+      });
+      await page.goto("/login");
+      const login = windowFor(page, "login");
+      await login.locator('input[name="username"]').fill("test_reader");
+      await login.locator('input[name="password"]').fill("simulated-only-password");
+      await login.locator('button[type="submit"]').click();
+      const refusal = login.getByRole("alert");
+      await expect(refusal).toHaveText(scenario.message);
+      await expect(login.locator(".login-error")).toHaveCount(1);
+      await expect(login.locator(".login-status")).toHaveCount(0);
+      await expect(windowFor(page, "profile")).toBeHidden();
+      await expect(page).toHaveURL("/");
+      // The next answer replaces the wait with the usual wrong-password message.
+      await login.locator('button[type="submit"]').click();
+      await expect(refusal).toHaveCount(0);
+      await expect(login.locator(".login-error")).toHaveCount(1);
+      expect(attempts).toEqual(["POST", "POST"]);
+      expect(service.unexpected).toEqual([]);
+    });
+  }
+
+  test("a refused form post's login address shows the wait", async ({ page }) => {
+    const service = await simulatedServices(page, { signedIn: false });
+    await page.goto("/login?error=too-many-attempts&retry_after=45");
+    await expect(windowFor(page, "login").getByRole("alert")).toHaveText("Too many wrong passwords. Wait 45 seconds before trying again.");
+    await expect(page).toHaveURL("/");
+    expect(service.unexpected).toEqual([]);
+  });
+
   test("old public and Profile links open their windows at the root address", async ({ page }) => {
     await simulatedServices(page);
     await page.goto("/about?old-link=1");

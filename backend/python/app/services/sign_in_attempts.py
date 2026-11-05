@@ -1,10 +1,14 @@
-"""Slow repeated wrong passwords at the game's sign-in, per account and per address.
+"""Slow repeated wrong passwords, per account and per address.
 
-A sign-in first looks the account up. Attempts on an account are counted by its
-user_id, so only that account's own right password resets its count. Attempts
-on a username no account has are counted by the SHA-256 of the username as the
-lookup normalises it, lower(btrim(...)) in PostgreSQL. The client's public
-address is counted too. Rows are kept for a day.
+The game's sign-in (/api/game/sign-in) and the website's login (/auth/login)
+both check passwords through attempt(), so they share these limits and the
+sign_in_attempt table: wrong passwords at either count toward both.
+
+An attempt first looks the account up. Attempts on an account are counted by
+its user_id, so only that account's own right password resets its count.
+Attempts on a username no account has are counted by the SHA-256 of the
+username as the lookup normalises it, lower(btrim(...)) in PostgreSQL. The
+client's public address is counted too. Rows are kept for a day.
 
 The subject's and the address's advisory locks are held from counting to
 recording, so parallel attempts cannot all pass the limit.
@@ -12,8 +16,12 @@ recording, so parallel attempts cannot all pass the limit.
 from __future__ import annotations
 
 import ipaddress
+from dataclasses import dataclass
 from datetime import timedelta
+from functools import lru_cache
 from typing import Any
+
+from ..security import hash_password, verify_password
 
 
 WINDOW = timedelta(minutes=15)
@@ -126,3 +134,56 @@ def record(cur, *, user_id: int | None, username_hash: str | None, address: str 
         """,
         (user_id, None if user_id is not None else username_hash, address, succeeded),
     )
+
+
+@lru_cache(maxsize=1)
+def decoy_hash() -> str:
+    # Checking an unknown username's password against this takes as long as a
+    # real check, so the answer's timing does not tell which usernames exist.
+    return hash_password("theumst-unknown-account")
+
+
+@dataclass(frozen=True)
+class Attempt:
+    """What one attempt found.
+
+    `account` is find_account's row; its user_id is None for an unknown
+    username. `wait` is the seconds to wait when the attempt was refused past a
+    limit, and then the password was not checked; otherwise it is 0. `correct`
+    is true when the password was the account's, whether or not its email is
+    confirmed.
+    """
+
+    account: dict[str, Any]
+    wait: int
+    correct: bool
+
+
+def attempt(cur, username: str, password: str, address: str | None) -> Attempt:
+    """Check a password under the limits, inside the caller's transaction.
+
+    Looks the account up, takes the locks, and refuses past a limit without
+    checking the password or recording anything. Otherwise it checks the
+    password, against a decoy for an unknown username, and records the attempt.
+    The locks are held until the caller's transaction ends, and the caller must
+    commit that transaction even when it then refuses the attempt, so that a
+    wrong password counts.
+    """
+    account = find_account(cur, username)
+    user_id = account["user_id"]
+    subject = {
+        "user_id": user_id,
+        "username_hash": None if user_id is not None else account["username_hash"],
+        "address": address,
+    }
+    lock(cur, **subject)
+    wait = retry_after(cur, **subject)
+    if wait:
+        return Attempt(account, wait, False)
+    if user_id is not None:
+        correct = verify_password(password, account["password_hash"])
+    else:
+        verify_password(password, decoy_hash())
+        correct = False
+    record(cur, **subject, succeeded=correct)
+    return Attempt(account, 0, correct)

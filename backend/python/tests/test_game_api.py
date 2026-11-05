@@ -243,17 +243,17 @@ def test_wrong_password_is_401_and_the_failed_attempt_is_kept(api):
 
 def test_an_unknown_username_is_counted_by_its_normalised_hash_and_spends_a_password_check(api, monkeypatch):
     checked_hashes = []
-    real_verify = game.verify_password
+    real_verify = sign_in_attempts.verify_password
 
     def recording_verify(password, hashed):
         checked_hashes.append(hashed)
         return real_verify(password, hashed)
 
-    monkeypatch.setattr(game, "verify_password", recording_verify)
+    monkeypatch.setattr(sign_in_attempts, "verify_password", recording_verify)
     cursor = ScriptedCursor(no_account(), no_failures())
     api.cursors.append(cursor)
     assert_game_error(sign_in(api.client, username="nobody"), 401, "wrong_credentials")
-    assert checked_hashes == [game._decoy_hash()]
+    assert checked_hashes == [sign_in_attempts.decoy_hash()]
     _, lock_params = cursor.sql("pg_advisory_xact_lock(hashtext('theumst.sign-in.username')")[0]
     assert lock_params == (TYPED_HASH,)
     _, count_params = cursor.sql("WHERE username_hash = %(username_hash)s")[0]

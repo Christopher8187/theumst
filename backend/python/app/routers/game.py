@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import unicodedata
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 from typing import Any, Literal
 
 import psycopg2
@@ -28,7 +27,6 @@ from pydantic import BaseModel, Field
 
 from ..database import transaction
 from ..dependencies import authenticate_api_key
-from ..security import hash_password, verify_password
 from ..services import sign_in_attempts
 from ..services.api_keys import GAME_CLIENT, create_regular_key, revoke_game_keys
 
@@ -238,13 +236,6 @@ def _json_text(value: dict[str, Any], *, limit: int, code: str, what: str) -> st
     return text
 
 
-@lru_cache(maxsize=1)
-def _decoy_hash() -> str:
-    # Checking an unknown username's password against this takes as long as a
-    # real check, so the answer's timing does not tell which usernames exist.
-    return hash_password("theumst-unknown-account")
-
-
 def _key_info(key: dict[str, Any]) -> dict[str, Any]:
     return {
         "api_key_id": key["api_key_id"],
@@ -334,37 +325,22 @@ def sign_in(body: SignInBody, request: Request):
     computer = _computer(body.computer)
     key_name = f"UMST · {computer}"
     address = sign_in_attempts.public_address(request)
-    account = None
-    wait = 0
-    correct = False
     issued = None
     with transaction() as (_, cur):
-        account = sign_in_attempts.find_account(cur, body.username)
-        user_id = account["user_id"]
-        subject = {
-            "user_id": user_id,
-            "username_hash": None if user_id is not None else account["username_hash"],
-            "address": address,
-        }
-        sign_in_attempts.lock(cur, **subject)
-        wait = sign_in_attempts.retry_after(cur, **subject)
-        if not wait:
-            if user_id is not None:
-                correct = verify_password(body.password, account["password_hash"])
-            else:
-                verify_password(body.password, _decoy_hash())
-            sign_in_attempts.record(cur, **subject, succeeded=correct)
-            if correct and account["email_verified_at"] is not None:
-                # One key per computer: the one this computer had before goes.
-                revoke_game_keys(cur, int(user_id), name=key_name)
-                issued = create_regular_key(cur, int(user_id), key_name, client=GAME_CLIENT)
+        # The website's login checks passwords the same way, under the same limits.
+        attempt = sign_in_attempts.attempt(cur, body.username, body.password, address)
+        account = attempt.account
+        if attempt.correct and account["email_verified_at"] is not None:
+            # One key per computer: the one this computer had before goes.
+            revoke_game_keys(cur, int(account["user_id"]), name=key_name)
+            issued = create_regular_key(cur, int(account["user_id"]), key_name, client=GAME_CLIENT)
     # The attempt is committed before any refusal below.
-    if wait:
+    if attempt.wait:
         raise GameError(
             429, "too_many_attempts", "Too many wrong passwords; wait before trying again",
-            headers={"Retry-After": str(wait)}, retry_after=wait,
+            headers={"Retry-After": str(attempt.wait)}, retry_after=attempt.wait,
         )
-    if not correct:
+    if not attempt.correct:
         raise GameError(401, "wrong_credentials", "Incorrect username or password")
     if issued is None:
         raise GameError(403, "email_unverified", "Confirm your email address before signing in")

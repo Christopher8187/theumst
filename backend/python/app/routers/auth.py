@@ -27,6 +27,7 @@ from ..security import (
     session_expiry,
     verify_password,
 )
+from ..services import sign_in_attempts
 from ..services.api_keys import revoke_game_keys
 from ..services.email import (
     EmailConfigurationError,
@@ -58,12 +59,19 @@ def _error(
     detail: str,
     status: int = 400,
     code: str | None = None,
+    retry_after: int | None = None,
 ):
     if _wants_json(request):
         payload = {"ok": False, "detail": detail}
         if code:
             payload["code"] = code
-        return JSONResponse(payload, status_code=status)
+        headers = None
+        if retry_after:
+            payload["retry_after"] = retry_after
+            headers = {"Retry-After": str(retry_after)}
+        return JSONResponse(payload, status_code=status, headers=headers)
+    # No Retry-After here: on a redirect it would ask the browser to wait
+    # before following it.
     return RedirectResponse(redirect, status_code=303)
 
 
@@ -243,23 +251,35 @@ async def signup(request: Request):
     return RedirectResponse("/verify-email?sent=1", status_code=303)
 
 
+def _check_login(username: str, password: str, address: str | None) -> sign_in_attempts.Attempt:
+    # The game's sign-in limits, locks and table. The attempt commits with this
+    # transaction before the answer is chosen, so a wrong password counts.
+    with transaction() as (_, cur):
+        return sign_in_attempts.attempt(cur, username, password, address)
+
+
 @router.post("/auth/login")
 async def login(request: Request):
     form = await request.form()
     username = str(form.get("username", "")).strip()
     password = str(form.get("password", ""))
-    with transaction() as (_, cur):
-        cur.execute(
-            """
-            SELECT user_id, password_hash, email_verified_at
-            FROM "user"
-            WHERE lower(username) = lower(%s)
-            """,
-            (username,),
+    # In a worker thread, so that waiting on a parallel attempt's lock and the
+    # password check do not hold up other requests.
+    attempt = await run_in_threadpool(
+        _check_login, username, password, sign_in_attempts.public_address(request)
+    )
+    if attempt.wait:
+        return _error(
+            request,
+            f"/login?error=too-many-attempts&retry_after={attempt.wait}",
+            "Too many wrong passwords; wait before trying again",
+            429,
+            code="too_many_attempts",
+            retry_after=attempt.wait,
         )
-        row = cur.fetchone()
-    if not row or not verify_password(password, row["password_hash"]):
+    if not attempt.correct:
         return _error(request, "/login?error=bad-login", "Incorrect username or password", 401)
+    row = attempt.account
     if str(form.get("news_opt_in", "")).lower() in {"on", "true", "1"}:
         with transaction() as (_, cur):
             set_subscription(cur, int(row["user_id"]), True, "login")
