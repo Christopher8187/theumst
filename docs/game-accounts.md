@@ -1,6 +1,6 @@
 # Game accounts
 
-UMST signs in to theumst.com with a username and password, then keeps its characters here. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, and times are UTC, such as `2026-11-05T10:00:00Z`.
+UMST signs in to theumst.com with a username and password, then keeps its characters here. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables, and 014 deletes a character's save with it. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, and times are UTC, such as `2026-11-05T10:00:00Z`.
 
 ## Keys and limits
 
@@ -42,7 +42,7 @@ A key made on the dashboard has `client` null. A character:
  "open_elsewhere": false, "open_elsewhere_seconds_left": null}
 ```
 
-The list carries no saves. `sex` is `female` or `male`. `summary` is a JSON object of at most 2 KiB, stored as the game sends it; a PUT without one keeps the stored summary. `save` is a JSON object of at most 64 KiB, measured as PostgreSQL's text of the `jsonb`, and `save_version` (0 or more) is the game's save format. A name has 1 to 50 characters once spaces are trimmed and collapsed, and need not be unique. An account holds at most six characters.
+The list carries no saves. `sex` is `female` or `male`. `summary` is a JSON object of at most 2 KiB, stored as the game sends it; a PUT without one keeps the stored summary. `save` is a JSON object of at most 64 KiB, measured as PostgreSQL's text of the `jsonb`, and `save_version` (0 or more) is the game's save format. A name has 1 to 50 characters once spaces are trimmed and collapsed, and need not be unique. An account holds at most six characters. Deleting a character deletes its save, and so does deleting its account.
 
 ## Leases and revisions
 
@@ -76,7 +76,9 @@ Other answers come from outside the game API. In deployment the internal proxy (
 
 ## Slowing wrong passwords
 
-Sign-in first looks the account up as `lower(username) = lower(btrim(typed))` in PostgreSQL. `sign_in_attempt` keeps each attempt for a day: the account's `user_id` when one matches, otherwise the SHA-256 of `lower(btrim(typed))`, computed by the same query; the client's public address; and whether the password was right. An account may fail 10 times in 15 minutes after its own last right password, so a look-alike account cannot reset another's count. An unknown username may fail 10 times in 15 minutes, and an address 30 times. Past either limit, sign-in answers `too_many_attempts` without checking the password. An unknown username costs the same password check as a known one. Advisory locks on the account or username, then on the address, are held from counting to recording, so parallel attempts cannot all pass. Website login at `/auth/login` has no such limit yet.
+The game's sign-in and the website's login at `/auth/login` check passwords through the same `sign_in_attempts.attempt()`, so they share these limits and records. A wrong password at either counts toward both. An attempt first looks the account up as `lower(username) = lower(btrim(typed))` in PostgreSQL; the website trims surrounding whitespace from the typed username first, as it always has. `sign_in_attempt` keeps each attempt for a day: the account's `user_id` when one matches, otherwise the SHA-256 of `lower(btrim(typed))`, computed by the same query; the client's public address; and whether the password was right. An account may fail 10 times in 15 minutes after its own last right password, so a look-alike account cannot reset another's count. An unknown username may fail 10 times in 15 minutes, and an address 30 times. Past either limit, both refuse the attempt without checking the password and record nothing. A right password on an unconfirmed email counts as right. An unknown username costs the same password check as a known one. Advisory locks on the account or username, then on the address, are held from counting to recording, so parallel attempts cannot all pass.
+
+Past a limit the game gets `too_many_attempts`. The website's login answers a JSON request with 429, its usual `ok` and `detail`, `code: "too_many_attempts"` and `retry_after`, and sets `Retry-After`, both in seconds. A form post goes back to `/login?error=too-many-attempts&retry_after=<seconds>`. The login page says how long to wait, in seconds under a minute and otherwise in minutes rounded up. The login's other answers are unchanged: an unknown username or a wrong password gets 401, a right password on an unconfirmed email gets 403 `email_unverified`, and any other right password starts a session. Form posts get the same redirects as before.
 
 Uvicorn reads the client from `X-Forwarded-For` only when the connecting proxy is in `FORWARDED_ALLOW_IPS`, which `compose.deploy.yml` sets to Docker's private ranges. The address limit skips private and loopback addresses, so without that setting only the account limit applies, instead of one limit locking everyone out together.
 
@@ -103,3 +105,25 @@ SELECT (SELECT count(*) FROM "user") AS users, (SELECT count(*) FROM "character"
 ```
 
 The `api_rate_window` primary key is `(api_key_id, kind)`. `"character"` has no unique constraint on `name`, and `class_id` and `sex` accept null. `character_data.data` and `save_version` have no default. `sign_in_attempt` has `sign_in_attempt_subject_check`, which requires exactly one of `user_id` and `username_hash`.
+
+## Checking migration 014
+
+`"character".character_data_id` references `character_data` with `ON DELETE CASCADE`, so deleting a save deletes its character, but deleting a character left its save behind. Migration 014 adds the function `delete_character_data()` and the `AFTER DELETE` row trigger `character_delete_character_data` on `"character"`. The trigger deletes the save a deleted character pointed at, whether the game deleted the character or its account's deletion cascaded to it. 014 also removes saves no character points at. The game's own delete of the save then finds nothing left to delete.
+
+Run the `saves_without_character` query before applying 014 to see how many saves it will remove. Read-only queries for a database after the migration:
+
+```sql
+BEGIN TRANSACTION READ ONLY;
+SELECT tgname, tgenabled, pg_get_triggerdef(oid) FROM pg_trigger
+WHERE tgrelid = '"character"'::regclass AND NOT tgisinternal;
+SELECT pg_get_functiondef('public.delete_character_data()'::regprocedure);
+SELECT count(*) AS saves_without_character FROM character_data d
+WHERE NOT EXISTS (SELECT 1 FROM "character" c WHERE c.character_data_id = d.character_data_id);
+SELECT (SELECT count(*) FROM "user") AS users, (SELECT count(*) FROM "character") AS characters,
+       (SELECT count(*) FROM character_data) AS saves;
+SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conrelid = '"character"'::regclass AND contype IN ('f', 'u') ORDER BY conname;
+COMMIT;
+```
+
+`character_delete_character_data` is the table's only trigger. It is enabled (`O`) and reads `AFTER DELETE ... FOR EACH ROW EXECUTE FUNCTION delete_character_data()`. The function deletes the row `WHERE character_data_id = OLD.character_data_id`. `saves_without_character` is 0 and `characters` equals `saves`. `character_character_data_id_fkey` still reads `REFERENCES character_data(character_data_id) ON DELETE CASCADE`, beside `character_character_data_id_key`.
