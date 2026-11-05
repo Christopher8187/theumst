@@ -4,13 +4,15 @@
 
 `routers/frontend.py` serves public and dashboard HTML with `Cache-Control: no-cache, must-revalidate`, retaining ETag and Last-Modified validators. The policy follows the selected HTML file, including a single-page fallback, while non-HTML build assets keep their existing file-response behavior. This requires revalidation on future navigations; it does not replace JavaScript already running in an open tab. The Web Demo remains served by its separate protected container.
 
-Routers separate accounts, user profile, API keys, content, Web Demo, admin tools, superadmin tools, public publishing/reading, health and frontend delivery. `dependencies.py` authenticates sessions and keys and checks database-backed access. A hidden frontend button is never the authorization boundary.
+Routers separate accounts, user profile, API keys, content, Web Demo, admin tools, superadmin tools, public publishing/reading, the game's accounts and characters, health and frontend delivery. `dependencies.py` authenticates sessions and keys and checks database-backed access. A hidden frontend button is never the authorization boundary.
 
 Services own storage adapters, knowledge persistence, Whole-book upload, graph sidecars, email, Qdrant access and semantic discovery. `database.transaction()` opens a PostgreSQL connection, commits on success and rolls back on error. External vector/image writes do not share that transaction; see [ingestion](../ingestion.md).
 
 `routers/news.py` handles personal subscriptions, authorized email preview, unsubscribe confirmation and verified provider events. `services/news.py` owns explicit consent, the publication outbox, Resend delivery retries and suppression; `services/email.py` renders all four email types. The optional lifespan worker uses PostgreSQL leases and saved provider idempotency keys. [News subscriptions](../news-subscriptions.md) owns API behavior and delivery limits.
 
 `services/media_creation.py` wraps editorial creation in a persistent request identity scoped to its editor. The response and normalized payload fingerprint commit with the post and any announcement, so a lost creation response can be retried safely. Conflicting reuse returns 409; creating an announcement requires a UUID while legacy news-only creation remains compatible.
+
+`routers/game.py` serves UMST under `/api/game`: a password sign-in that makes the game's key, and character calls that take a key. Its refusals answer `{code, detail}`, and `install_error_handlers` gives request validation the same shape on game paths only. `authenticate_api_key(request, kind=...)` counts each key request as `book` or `character`. `services/api_keys.py` makes regular keys, including the Default key from email confirmation and `POST /api/api-keys/default`; `services/sign_in_attempts.py` slows repeated wrong passwords. [Game accounts](../game-accounts.md) owns the API.
 
 Web Demo routes require the Web Demo access point. Reader queries filter book visibility and active knowledge. Personal writing belongs to its user independently of source availability. Publishing and administration retain their own authorized routes. Read [security](../security.md) before changing these distinctions.
 

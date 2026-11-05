@@ -1,4 +1,4 @@
-# Theumst 0.0.7
+# Theumst 0.0.10
 
 Theumst turns structured books into a reader with saved study positions, shared completion, personal notes and discovery across available books. A reader signs in on the public site, requests Web Demo access from the dashboard, summons a grimoire and enters Text, Notes or Questions. The other realm entries describe future learning activities and currently show a coming-soon message.
 
@@ -12,6 +12,6 @@ Read [CONTEXT.md](CONTEXT.md) for Theumst meanings and its link to shared knowle
 
 Content managers use dashboard Books and Media. [Administration](docs/administration.md) explains hiding, deletion and roles. Publishers use the master-key [Whole-book upload](docs/ingestion.md). Read [security](docs/security.md) before changing access or publishing keys and [account recovery](docs/account-recovery.md) for SMTP and reset behavior.
 
-Before publishing an update, follow [testing](docs/testing.md), [release identity](docs/releases.md) and [operations](docs/operations.md). COM and CN have independent data and settings. This delivery targets COM only and delivers Web Demo 0.0.7. [News subscriptions](docs/news-subscriptions.md) describes consent, announcement publication and delivery operation.
+Before publishing an update, follow [testing](docs/testing.md), [release identity](docs/releases.md) and [operations](docs/operations.md). COM and CN have independent data and settings. This delivery targets COM only. Theumst 0.0.10 lets the game UMST sign in and keep its characters here; [game accounts](docs/game-accounts.md) describes that API. The Web Demo is still 0.0.7. [News subscriptions](docs/news-subscriptions.md) describes consent, announcement publication and delivery operation.
 
 Agent reading paths and repository procedures start in [AGENTS.md](AGENTS.md). Current explanations live under `docs/`; [historical material](docs/history/README.md) and [proposed graph effects](docs/plans/graph-effects.md) are separate from current behavior.
