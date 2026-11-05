@@ -72,7 +72,7 @@ Errors answer `{"code", "detail"}` and the listed fields.
 | 422 | `invalid_name` | make | name empty, over 50 characters or with control characters |
 | 422 | `invalid_request` | any | malformed body or path, NaN or Infinity, a blank computer name; `errors` lists `{field, message}`, empty when no field is to blame |
 
-Other answers come from outside the game API. On COM the internal proxy refuses a body over 128 KiB with 413 and an HTML page. An unknown path answers 404 `{"detail": "API route not found"}`, a wrong method 405 `{"detail": "Method Not Allowed"}`, and a server failure 500.
+Other answers come from outside the game API. In deployment the internal proxy (`config/nginx.docker.conf`) refuses a body over 128 KiB with 413 and an HTML page. An unknown path answers 404 `{"detail": "API route not found"}`, a wrong method 405 `{"detail": "Method Not Allowed"}`, and a server failure 500.
 
 ## Slowing wrong passwords
 

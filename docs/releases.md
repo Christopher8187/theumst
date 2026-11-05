@@ -4,6 +4,10 @@ Theumst 0.0.10 is in progress on the `game-accounts` branch and not yet publishe
 
 Christopher selected 0.0.7 for that delivery, superseding the previously proposed 0.0.4 and correcting the earlier 0.2.x numbering. 0.0.8 and 0.0.9 continue it. Historical tags remain unchanged. API compatibility metadata and third-party package versions remain independent.
 
+## 0.0.10 release notes
+
+The deployment applies migration 013 with the new image while the 0.0.9 backend is still serving, then starts 0.0.10. 0.0.9 reads `api_rate.searches_per_hour`, which 013 renames, so from the migration's commit until the 0.0.10 backend answers, about the time a backend takes to start, every API-key request and the dashboard's API Keys list fail with 500. That short outage is accepted for 0.0.10 and the migration order stays as it is. The reason: COM has two accounts and one publisher key, so a few seconds of failed key requests cost less than carrying both column shapes across two releases. Deploy when no Whole-book upload is running.
+
 ## Publication identity
 
 Run the [required verification](testing.md), resolve failures, and record exact commands, setup and results. Publish the verified tree on `main`. Create an annotated `v<version>` tag, such as `v0.0.9`, on that exact commit and a GitHub release referencing that tag. Preserve legacy branches until their separate migration route decides their disposition.

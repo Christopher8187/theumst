@@ -1,6 +1,6 @@
 # Account recovery
 
-The public login page links to password recovery. A user supplies their email, receives a reset link, chooses a new password and signs in again. The request returns a neutral accepted response to avoid revealing whether an account exists. Reset tokens are hashed in PostgreSQL, expire, work once and revoke existing sessions when successfully used.
+The public login page links to password recovery. A user supplies their email, receives a reset link, chooses a new password and signs in again. The request returns a neutral accepted response to avoid revealing whether an account exists. Reset tokens are hashed in PostgreSQL, expire, work once and revoke existing sessions when successfully used. The same transaction revokes the account's game keys (`api_key.client = 'umst'`) and frees the characters they had open, so each computer running UMST must sign in again with the new password; [game accounts](game-accounts.md) describes those keys.
 
 Configure `PUBLIC_WEBPAGE_URL`, `PASSWORD_RESET_TTL_MINUTES` and SMTP host, port, username, password, sender address/name and TLS mode in the selected environment. STARTTLS commonly uses port 587; implicit TLS commonly uses 465. Use the provider's actual settings. The code lives in `routers/auth.py`, `services/email.py` and `app/security.py`.
 
