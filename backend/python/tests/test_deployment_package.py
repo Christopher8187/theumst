@@ -69,6 +69,22 @@ def test_production_proxy_is_loopback_only_and_matches_host_nginx():
         assert "proxy_pass http://127.0.0.1:8000;" not in text
 
 
+def test_backend_trusts_forwarded_addresses_only_from_the_internal_proxies():
+    # The game's sign-in throttles wrong passwords per client address, which
+    # uvicorn takes from X-Forwarded-For only when the connecting proxy is
+    # trusted. Only Docker's private networks are; the backend is not published.
+    for name in ("compose.deploy.yml", "compose.deploy.example.yml"):
+        document = yaml.safe_load((ROOT / name).read_text(encoding="utf-8"))
+        backend = document["services"]["backend"]
+        trusted = backend["environment"]["FORWARDED_ALLOW_IPS"]
+        assert trusted == "${FORWARDED_ALLOW_IPS:-172.16.0.0/12,192.168.0.0/16}"
+        assert "*" not in trusted
+        assert "ports" not in backend
+    for name in ("nginx.docker.conf", "nginx.server.com.conf"):
+        text = (ROOT / "config" / name).read_text(encoding="utf-8")
+        assert "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;" in text
+
+
 def test_master_book_ingestion_has_a_route_scoped_one_gibibyte_limit():
     host = (ROOT / "config/nginx.server.com.conf").read_text(encoding="utf-8")
     internal = (ROOT / "config/nginx.docker.conf").read_text(encoding="utf-8")

@@ -64,7 +64,7 @@ def read_knowledge_collection(
     section_id: int | None = Query(default=None, gt=0),
     type: str | None = Query(default=None, max_length=80),
 ):
-    key = authenticate_api_key(request)
+    key = authenticate_api_key(request, kind="book")
     settings = get_settings()
     maximum = settings.master_read_max_page_size if key["key_type"] == "master" else settings.regular_read_max_page_size
     requested = limit or settings.regular_read_page_size
@@ -83,7 +83,7 @@ def read_knowledge_collection(
 
 @router.get("/knowledge/{knowledge_id}")
 def read_one_knowledge(knowledge_id: int, request: Request, language_id: int = Query(1, gt=0)):
-    key = authenticate_api_key(request)
+    key = authenticate_api_key(request, kind="book")
     return {
         "item": get_knowledge(knowledge_id, language_id, include_hidden=key["key_type"] == "master"),
         "key_type": key["key_type"], "rate_remaining": key.get("rate_remaining"),
@@ -95,7 +95,7 @@ async def create_book_archive(
     request: Request,
     archive: UploadFile = File(...),
 ):
-    key = authenticate_api_key(request, master_required=True)
+    key = authenticate_api_key(request, kind="book", master_required=True)
     result = await ingest_book_archive(archive)
     result["submitted_by"] = {"user_id": key["user_id"], "api_key_id": key["api_key_id"]}
     return result
@@ -103,7 +103,7 @@ async def create_book_archive(
 
 @router.post("/knowledge", status_code=201)
 def create_knowledge(payload: KnowledgeSubmission, request: Request):
-    key = authenticate_api_key(request, master_required=True)
+    key = authenticate_api_key(request, kind="book", master_required=True)
     result = submit_knowledge(payload)
     result["submitted_by"] = {"user_id": key["user_id"], "api_key_id": key["api_key_id"]}
     return result
@@ -115,7 +115,7 @@ def add_knowledge_embeddings(
     payload: EmbeddingBatchInput,
     request: Request,
 ):
-    key = authenticate_api_key(request, master_required=True)
+    key = authenticate_api_key(request, kind="book", master_required=True)
     result = submit_embeddings(knowledge_id, payload)
     result["submitted_by"] = {"user_id": key["user_id"], "api_key_id": key["api_key_id"]}
     return result
@@ -123,14 +123,14 @@ def add_knowledge_embeddings(
 
 @router.post("/storage/folders", status_code=201)
 def add_storage_folder(payload: StorageFolderCreate, request: Request):
-    authenticate_api_key(request, master_required=True)
+    authenticate_api_key(request, kind="book", master_required=True)
     key = storage.child_key(payload.path, payload.name)
     return {"ok": True, "path": storage.create_folder(key)}
 
 
 @router.post("/storage/text", status_code=201)
 def add_storage_text(payload: StorageTextWrite, request: Request):
-    authenticate_api_key(request, master_required=True)
+    authenticate_api_key(request, kind="book", master_required=True)
     return {"ok": True, "path": storage.write_bytes(payload.path, payload.content.encode("utf-8"))}
 
 
@@ -140,6 +140,6 @@ async def add_storage_file(
     file: UploadFile = File(...),
     folder: str = Form(""),
 ):
-    authenticate_api_key(request, master_required=True)
+    authenticate_api_key(request, kind="book", master_required=True)
     key = storage.child_key(folder, file.filename or "upload.bin")
     return {"ok": True, "path": storage.write_bytes(key, await file.read())}

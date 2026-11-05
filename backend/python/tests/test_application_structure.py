@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 from app.main import create_app
 
 
@@ -36,6 +38,28 @@ def test_expected_routes_and_sql_is_superadmin_only():
     assert "/api/v1/knowledge/{knowledge_id}/embeddings" in paths
     assert "/api/v1/storage/files" in paths
     assert "/api/api-keys/{api_key_id}/upgrade-master" in paths
+    assert "/api/api-keys/default" in paths
+    for path in (
+        "/api/game/sign-in", "/api/game/me", "/api/game/sign-out", "/api/game/characters",
+        "/api/game/characters/{character_id}/open", "/api/game/characters/{character_id}/heartbeat",
+        "/api/game/characters/{character_id}/close", "/api/game/characters/{character_id}/data",
+        "/api/game/characters/{character_id}",
+    ):
+        assert path in paths
+
+
+def test_game_errors_have_their_own_shape_and_other_routes_keep_fastapis():
+    client = TestClient(create_app(initialize_services=False))
+    game = client.post("/api/game/sign-in", json={})
+    assert game.status_code == 422
+    assert game.json()["code"] == "invalid_request"
+    assert {error["field"] for error in game.json()["errors"]} == {"username", "password", "computer"}
+    other = client.post("/auth/forgot-password", json={})
+    assert other.status_code == 422
+    assert isinstance(other.json()["detail"], list)
+    missing = client.get("/api/game/nothing-here")
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "API route not found"
 
 
 def test_backend_is_refactored_into_conventional_modules():

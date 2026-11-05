@@ -27,6 +27,7 @@ from ..security import (
     session_expiry,
     verify_password,
 )
+from ..services.api_keys import StandardTierMissing, ensure_default_key
 from ..services.email import (
     EmailConfigurationError,
     ensure_email_configured,
@@ -324,7 +325,12 @@ async def resend_email_verification(payload: EmailVerificationResendRequest):
 
 @router.post("/auth/email-verification/confirm")
 def confirm_email_verification(payload: EmailVerificationRequest):
+    """Confirm the address and make the account's Default key.
+
+    The key's full text is returned once, for the confirmation page to show.
+    """
     token_hash = hash_secret(payload.token)
+    default_key = None
     with transaction() as (_, cur):
         cur.execute(
             """
@@ -350,7 +356,15 @@ def confirm_email_verification(payload: EmailVerificationRequest):
             "UPDATE email_verification_token SET used_at = now() WHERE user_id = %s AND used_at IS NULL",
             (token["user_id"],),
         )
-    return {"ok": True, "redirect": "/login?verified=success"}
+        try:
+            default_key = ensure_default_key(cur, int(token["user_id"]))
+        except StandardTierMissing:
+            # Confirming must not depend on the key; the API Keys page makes it later.
+            logger.error("Default API key not made at confirmation: the standard tier is missing")
+    return JSONResponse(
+        {"ok": True, "redirect": "/login?verified=success", "default_key": default_key},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/auth/email-change/request", status_code=202)

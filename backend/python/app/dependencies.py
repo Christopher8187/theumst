@@ -77,13 +77,33 @@ def _raw_api_key(request: Request) -> str:
     raise HTTPException(status_code=401, detail="API key required")
 
 
-def authenticate_api_key(request: Request, *, master_required: bool = False) -> dict[str, Any]:
+# Book reads (/api/v1) and the game's calls (/api/game) are counted apart, so a
+# long game session never uses up a key's book allowance.
+API_REQUEST_KINDS = ("book", "character")
+
+
+def authenticate_api_key(
+    request: Request,
+    *,
+    kind: str,
+    master_required: bool = False,
+) -> dict[str, Any]:
+    """Resolve an active key and count this request as `kind`.
+
+    A regular key may make its tier's requests_per_minute requests of each kind
+    in a one-minute window; beyond that it gets 429 with Retry-After in
+    seconds. Master keys have no limit. Every accepted request, master keys
+    included, adds one to api_usage_daily for the key, UTC day and kind; a
+    refused request rolls back and is counted nowhere.
+    """
+    if kind not in API_REQUEST_KINDS:
+        raise ValueError(f"Unknown API request kind: {kind}")
     raw = _raw_api_key(request)
     with transaction() as (_, cur):
         cur.execute(
             """
-            SELECT k.api_key_id, k.user_id, k.name, k.key_type, k.api_rate_id,
-                   r.searches_per_hour, r.level_name,
+            SELECT k.api_key_id, k.user_id, k.name, k.key_prefix, k.key_type, k.client,
+                   k.api_rate_id, r.requests_per_minute, r.level_name,
                    u.username, a.name AS authority_type
             FROM api_key k
             JOIN "user" u ON u.user_id = k.user_id
@@ -103,34 +123,49 @@ def authenticate_api_key(request: Request, *, master_required: bool = False) -> 
             raise HTTPException(status_code=403, detail="A master API key is required")
 
         if key["key_type"] != "master":
-            limit = int(key.get("searches_per_hour") or 0)
+            limit = int(key.get("requests_per_minute") or 0)
             if limit <= 0:
                 raise HTTPException(status_code=429, detail="This API key has no active rate allowance")
             cur.execute(
                 """
-                INSERT INTO api_rate_window (api_key_id, window_started_at, request_count)
-                VALUES (%s, now(), 1)
-                ON CONFLICT (api_key_id) DO UPDATE SET
+                INSERT INTO api_rate_window (api_key_id, kind, window_started_at, request_count)
+                VALUES (%s, %s, now(), 1)
+                ON CONFLICT (api_key_id, kind) DO UPDATE SET
                     window_started_at = CASE
-                        WHEN api_rate_window.window_started_at <= now() - interval '1 hour'
+                        WHEN api_rate_window.window_started_at <= now() - interval '1 minute'
                         THEN now() ELSE api_rate_window.window_started_at END,
                     request_count = CASE
-                        WHEN api_rate_window.window_started_at <= now() - interval '1 hour'
+                        WHEN api_rate_window.window_started_at <= now() - interval '1 minute'
                         THEN 1 ELSE api_rate_window.request_count + 1 END
-                RETURNING window_started_at, request_count
+                RETURNING request_count,
+                    GREATEST(1, ceil(extract(epoch FROM
+                        window_started_at + interval '1 minute' - now())))::int AS retry_after
                 """,
-                (key["api_key_id"],),
+                (key["api_key_id"], kind),
             )
             window = cur.fetchone()
-            if int(window["request_count"]) > limit:
+            count = int(window["request_count"])
+            if count > limit:
                 raise HTTPException(
                     status_code=429,
-                    detail=f"Rate limit exceeded: {limit} requests per hour",
-                    headers={"Retry-After": "3600"},
+                    detail=f"Rate limit exceeded: {limit} {kind} requests per minute",
+                    headers={"Retry-After": str(int(window["retry_after"]))},
                 )
-            key["rate_remaining"] = max(0, limit - int(window["request_count"]))
+            key["rate_limit"] = limit
+            key["rate_remaining"] = max(0, limit - count)
         else:
+            key["rate_limit"] = None
             key["rate_remaining"] = None
 
+        cur.execute(
+            """
+            INSERT INTO api_usage_daily (api_key_id, day, kind, request_count)
+            VALUES (%s, (now() AT TIME ZONE 'UTC')::date, %s, 1)
+            ON CONFLICT (api_key_id, day, kind)
+            DO UPDATE SET request_count = api_usage_daily.request_count + 1
+            """,
+            (key["api_key_id"], kind),
+        )
         cur.execute("UPDATE api_key SET last_used_at = now() WHERE api_key_id = %s", (key["api_key_id"],))
+        key["kind"] = kind
         return key

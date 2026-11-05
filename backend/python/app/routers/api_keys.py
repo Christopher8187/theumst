@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from ..database import transaction
 from ..dependencies import require_user
 from ..schemas import ApiKeyCreate
-from ..security import new_api_key
+from ..services.api_keys import StandardTierMissing, create_regular_key, ensure_default_key
 
 
 router = APIRouter(prefix="/api/api-keys", tags=["api keys"])
@@ -17,9 +17,9 @@ def list_api_keys(request: Request):
     with transaction() as (_, cur):
         cur.execute(
             """
-            SELECT k.api_key_id, k.name, k.key_prefix, k.key_type,
+            SELECT k.api_key_id, k.name, k.key_prefix, k.key_type, k.client,
                    k.created_at, k.last_used_at, k.revoked_at, k.upgraded_at,
-                   r.searches_per_hour, r.level_name
+                   r.requests_per_minute, r.level_name
             FROM api_key k
             LEFT JOIN api_rate r ON r.api_rate_id = k.api_rate_id
             WHERE k.user_id = %s
@@ -34,26 +34,35 @@ def list_api_keys(request: Request):
     return {"keys": keys}
 
 
-@router.post("", status_code=201)
-def create_api_key(payload: ApiKeyCreate, request: Request):
+@router.post("/default")
+def ensure_default_api_key(request: Request, response: Response):
+    """Make the account's Default key the first time its API Keys page opens.
+
+    The response carries the key's full text only when this call made it.
+    """
     user = require_user(request)
-    raw, prefix, digest = new_api_key("regular")
-    with transaction() as (_, cur):
-        cur.execute("SELECT api_rate_id FROM api_rate WHERE level_name = 'standard'")
-        rate = cur.fetchone()
-        if not rate:
-            raise HTTPException(status_code=500, detail="Standard API rate is not configured")
-        cur.execute(
-            """
-            INSERT INTO api_key (
-                user_id, api_rate_id, name, key_prefix, key_hash, key_type
-            ) VALUES (%s, %s, %s, %s, %s, 'regular')
-            RETURNING api_key_id
-            """,
-            (user["user_id"], rate["api_rate_id"], payload.name.strip(), prefix, digest),
-        )
-        key_id = int(cur.fetchone()["api_key_id"])
-    return {"api_key_id": key_id, "key": raw, "key_type": "regular"}
+    try:
+        with transaction() as (_, cur):
+            made = ensure_default_key(cur, int(user["user_id"]))
+    except StandardTierMissing as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from None
+    response.headers["Cache-Control"] = "no-store"
+    if not made:
+        return {"created": False}
+    response.status_code = 201
+    return {"created": True, "key": made}
+
+
+@router.post("", status_code=201)
+def create_api_key(payload: ApiKeyCreate, request: Request, response: Response):
+    user = require_user(request)
+    try:
+        with transaction() as (_, cur):
+            made = create_regular_key(cur, int(user["user_id"]), payload.name.strip())
+    except StandardTierMissing as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from None
+    response.headers["Cache-Control"] = "no-store"
+    return {"api_key_id": made["api_key_id"], "name": made["name"], "key": made["key"], "key_type": "regular"}
 
 
 @router.post("/{api_key_id}/upgrade-master")
@@ -92,6 +101,16 @@ def revoke_api_key(api_key_id: int, request: Request):
             (api_key_id, user["user_id"]),
         )
         row = cur.fetchone()
+        if row:
+            # A revoked key can no longer heartbeat, so free what it had open
+            # instead of making another computer wait for the lease to lapse.
+            cur.execute(
+                """
+                UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL
+                WHERE lease_api_key_id = %s
+                """,
+                (api_key_id,),
+            )
     if not row:
         raise HTTPException(status_code=404, detail="Active API key not found")
     return {"ok": True}

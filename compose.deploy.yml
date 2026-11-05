@@ -48,6 +48,9 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_SCHEMA_STARTUP_MODE: disabled
+      # Uvicorn takes the client from X-Forwarded-For only when the connecting
+      # proxy is trusted; the game's sign-in throttles wrong passwords by it.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-172.16.0.0/12,192.168.0.0/16}
       SESSION_DAYS: ${SESSION_DAYS:-7}
       COOKIE_SECURE: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:-https://theumst.com,https://www.theumst.com,https://theumst.cn,https://www.theumst.cn}
