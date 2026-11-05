@@ -1,6 +1,9 @@
 from contextlib import contextmanager
 from dataclasses import replace
 
+import pytest
+from fastapi import HTTPException
+
 from app.config import get_settings
 from app.routers import auth
 from app.schemas import ResetPasswordRequest
@@ -83,3 +86,52 @@ def test_a_password_reset_revokes_the_games_keys_and_frees_their_characters(monk
     assert cursor.executions[leases][1] == ([41],)
     # The same transaction as the new password.
     assert committed == [cursor]
+
+
+def one_transaction_for(monkeypatch, cursor):
+    """Run the reset on `cursor` and note whether its transaction commits."""
+    outcomes = []
+
+    @contextmanager
+    def one_transaction():
+        try:
+            yield None, cursor
+        except Exception:
+            outcomes.append("rolled back")
+            raise
+        outcomes.append("committed")
+
+    monkeypatch.setattr(auth, "transaction", one_transaction)
+    return outcomes
+
+
+def test_a_password_reset_clears_the_accounts_wrong_password_count_in_its_own_transaction(monkeypatch):
+    cursor = ResetCursor({"password_reset_token_id": 2, "user_id": 7}, [])
+    outcomes = one_transaction_for(monkeypatch, cursor)
+    auth.reset_password(ResetPasswordRequest(token="x" * 32, new_password="long-enough"))
+    statements = [sql for sql, _ in cursor.executions]
+    password = next(i for i, sql in enumerate(statements) if sql.startswith('UPDATE "user" SET password_hash'))
+    cleared = [i for i, sql in enumerate(statements) if "sign_in_attempt" in sql]
+    assert len(cleared) == 1 and password < cleared[0]
+    # A right password for the account, with no address: the account's count
+    # starts again. No wrong password is removed or changed, so each address
+    # keeps its count.
+    assert cursor.executions[cleared[0]] == (
+        "INSERT INTO sign_in_attempt (user_id, username_hash, address, succeeded) VALUES (%s, NULL, NULL, true)",
+        (7,),
+    )
+    assert outcomes == ["committed"]
+
+
+def test_a_reset_link_that_is_unknown_used_unsent_or_expired_changes_nothing(monkeypatch):
+    cursor = ResetCursor(None)
+    outcomes = one_transaction_for(monkeypatch, cursor)
+    with pytest.raises(HTTPException) as refused:
+        auth.reset_password(ResetPasswordRequest(token="x" * 32, new_password="long-enough"))
+    assert refused.value.status_code == 400
+    # Only the lookup ran: no new password, and the count of wrong passwords stays.
+    [(lookup, _)] = cursor.executions
+    assert lookup.startswith("SELECT password_reset_token_id, user_id FROM password_reset_token")
+    for condition in ("used_at IS NULL", "sent_at IS NOT NULL", "expires_at > now()"):
+        assert condition in lookup
+    assert outcomes == ["rolled back"]

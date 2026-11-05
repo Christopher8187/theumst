@@ -591,6 +591,9 @@ def reset_password(payload: ResetPasswordRequest):
         # The game's keys came from the old password: revoke them and free the
         # characters they had open, so every computer signs in again.
         revoke_game_keys(cur, int(token["user_id"]))
+        # Clear the account's wrong-password count, so the new password works
+        # at once even after too many wrong ones. Each address keeps its count.
+        sign_in_attempts.clear_account(cur, int(token["user_id"]))
 
     return {"ok": True, "redirect": "/login?reset=success"}
 

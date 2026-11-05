@@ -5,10 +5,11 @@ both check passwords through attempt(), so they share these limits and the
 sign_in_attempt table: wrong passwords at either count toward both.
 
 An attempt first looks the account up. Attempts on an account are counted by
-its user_id, so only that account's own right password resets its count.
-Attempts on a username no account has are counted by the SHA-256 of the
-username as the lookup normalises it, lower(btrim(...)) in PostgreSQL. The
-client's public address is counted too. Rows are kept for a day.
+its user_id, so only that account's own right password, or a reset of its
+password, resets its count. Attempts on a username no account has are counted
+by the SHA-256 of the username as the lookup normalises it, lower(btrim(...))
+in PostgreSQL. The client's public address is counted too. Rows are kept for a
+day.
 
 The subject's and the address's advisory locks are held from counting to
 recording, so parallel attempts cannot all pass the limit.
@@ -133,6 +134,25 @@ def record(cur, *, user_id: int | None, username_hash: str | None, address: str 
         VALUES (%s, %s, %s, %s)
         """,
         (user_id, None if user_id is not None else username_hash, address, succeeded),
+    )
+
+
+def clear_account(cur, user_id: int) -> None:
+    """Clear the account's wrong-password count, inside the caller's
+    transaction. A successful password reset calls this.
+
+    It records a right password for the account with no address, so the
+    account's count starts again, as after its own right password. The wrong
+    passwords stay recorded, so each address keeps its count. Unlike record()
+    it forgets no old rows: that delete could wait on a game sign-in that is
+    itself waiting on the keys the reset revoked.
+    """
+    cur.execute(
+        """
+        INSERT INTO sign_in_attempt (user_id, username_hash, address, succeeded)
+        VALUES (%s, NULL, NULL, true)
+        """,
+        (user_id,),
     )
 
 
