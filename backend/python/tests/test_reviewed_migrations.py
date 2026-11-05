@@ -15,6 +15,16 @@ from app.config import Settings
 
 ROOT = Path(__file__).resolve().parents[3]
 
+# Rows a reviewed migration may change: 014 deletes the saves no character
+# points at, and its trigger deletes a deleted character's save. No reviewed
+# migration inserts seed rows.
+REVIEWED_ROW_CHANGES = {
+    "014_character_data_deletion.sql": [
+        "DELETE FROM CHARACTER_DATA WHERE CHARACTER_DATA_ID = OLD.CHARACTER_DATA_ID;",
+        "DELETE FROM CHARACTER_DATA D",
+    ],
+}
+
 
 def test_reviewed_sources_have_exact_checksums_and_exclude_historical_seeds():
     settings = SimpleNamespace(sql_dir=ROOT / "backend/sql")
@@ -23,7 +33,7 @@ def test_reviewed_sources_have_exact_checksums_and_exclude_historical_seeds():
         "006_knowledge_graph.sql", "007_study_positions.sql", "008_news_subscriptions.sql",
         "009_media_create_requests.sql",
         "010_knowledge_names.sql", "011_crystal_source_keys.sql", "012_book_image_objects.sql",
-        "013_game_accounts.sql",
+        "013_game_accounts.sql", "014_character_data_deletion.sql",
     ]
     assert "007_research_corpus_access.sql" not in Path(
         reviewed_migrations.__file__
@@ -34,10 +44,11 @@ def test_reviewed_sources_have_exact_checksums_and_exclude_historical_seeds():
             line.strip().upper()
             for line in path.read_text(encoding="utf-8").splitlines()
         ]
-        assert not any(
-            line.startswith(("INSERT ", "UPDATE ", "DELETE ", "TRUNCATE "))
-            for line in statements
-        )
+        changes = [
+            line for line in statements
+            if line.startswith(("INSERT ", "UPDATE ", "DELETE ", "TRUNCATE "))
+        ]
+        assert changes == REVIEWED_ROW_CHANGES.get(migration.filename, []), migration.filename
 
 
 @pytest.mark.parametrize("value", ["", "abc", "g" * 64, "0" * 63, "0" * 65])

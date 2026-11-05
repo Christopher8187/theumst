@@ -151,6 +151,14 @@ REVIEWED_MIGRATIONS = (
             Marker("relation", "public.sign_in_attempt_time_idx"),
         ),
     ),
+    ReviewedMigration(
+        key="character_data_deletion_v1", filename="014_character_data_deletion.sql",
+        sha256="9e9b6cac92c134897b97e96acf980e2ea00e30c73fcecb98fe25387c94444ebc",
+        exclusive_markers=(
+            Marker("function", "public.delete_character_data()"),
+            Marker("trigger", "character_delete_character_data", "public.character"),
+        ),
+    ),
 )
 
 
