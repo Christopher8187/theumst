@@ -1,6 +1,6 @@
 # Backend tests
 
-Run `python -m pytest tests` from `backend/python` after installing `requirements-dev.txt`. Use LOCAL configuration and isolated service addresses. On Windows put Git for Windows `bin` before System32 in PATH so shell checks use Git Bash rather than the WSL launcher.
+Run `python -m pytest tests` from `backend/python` after installing `requirements-dev.txt`. Use LOCAL configuration and isolated service addresses. `config.py` also reads the repository's `.env`, so set `COOKIE_SECURE=false` when that file asks for secure cookies. The test client speaks plain HTTP and never sends a secure session cookie back, so the news suite's signed-in requests would fail with 401. On Windows put Git for Windows `bin` before System32 in PATH so shell checks use Git Bash rather than the WSL launcher.
 
 The endpoint and service unit tests use scripted cursors or HTTP transports. They check authentication order, data filtering, error behavior, ingestion validation, account/token handling and deployment guards without establishing database persistence. `test_similar_retrieval.py` covers the retained single-book endpoint and crystallization; `test_discovery.py` covers the current cross-book discovery service. `test_reviewed_migrations.py` checks pinned sources and refusal of partial state.
 
