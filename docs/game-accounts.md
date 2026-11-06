@@ -140,11 +140,11 @@ Migration 015 adds the nullable column `"character".lease_install_id` and its ch
 BEGIN TRANSACTION READ ONLY;
 SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns
 WHERE table_schema = 'public' AND table_name = 'character' ORDER BY ordinal_position;
+SELECT count(lease_install_id) AS install_ids FROM "character";
 SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
 WHERE conrelid = '"character"'::regclass ORDER BY conname;
 SELECT count(*) AS characters, count(lease_api_key_id) AS leases,
-       count(*) FILTER (WHERE lease_expires_at > now()) AS live_leases,
-       count(lease_install_id) AS install_ids FROM "character";
+       count(*) FILTER (WHERE lease_expires_at > now()) AS live_leases FROM "character";
 SELECT (SELECT count(*) FROM "user") AS users, (SELECT count(*) FROM "character") AS characters,
        (SELECT count(*) FROM character_data) AS saves, (SELECT count(*) FROM api_key) AS keys;
 COMMIT;
