@@ -1,10 +1,12 @@
 # Game accounts
 
-UMST signs in to theumst.com with a username and password, then keeps its characters here. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables, and 014 deletes a character's save with it. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, and times are UTC, such as `2026-11-05T10:00:00Z`.
+UMST signs in to theumst.com with a username and password, then keeps its characters here. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables, 014 deletes a character's save with it, and 015 keeps the install that has a character open. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, and times are UTC, such as `2026-11-05T10:00:00Z`.
 
 ## Keys and limits
 
-`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Signing in again on the same computer revokes that computer's earlier game key first. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active regular key of the account works, so a key pasted into the game's settings works too; master keys are refused. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`. A password reset revokes all the account's game keys.
+`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Signing in again on the same computer revokes that computer's earlier game key first. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active regular key of the account works, so a key pasted into the game's settings works too; master keys are refused. These calls need no Web Demo access, so every confirmed account plays. Reading books under `/api/v1` does need it since 0.0.13, as [security](security.md) explains. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`. A password reset revokes all the account's game keys.
+
+A call may name its game install in `X-Install-Id`, the short id the game keeps per install and puts in its key names, `UMST · <computer> · <install id>`. The value is 1 to 64 ASCII letters, digits, hyphens or underscores, such as `k7m2qx`. A malformed or repeated header gets 422 `invalid_request` naming `X-Install-Id`, before the key is looked up or the call counted. Only the leases read it, and the game in players' hands sends none yet.
 
 A regular key gets its tier's `requests_per_minute` (600 for `standard`) for each kind of request in a one-minute window. Calls under `/api/game` count as `character`; calls under `/api/v1` count as `book`. Past the limit the answer is 429 with `Retry-After` in seconds; a tier without allowance answers 429 with `Retry-After: 60`. Master keys have no limit on `/api/v1`. `api_usage_daily` counts every accepted request by key, UTC day and kind, master keys included. A refused request counts nowhere.
 
@@ -48,6 +50,8 @@ The list carries no saves. `sex` is `female` or `male`. `summary` is a JSON obje
 
 Opening takes a 120-second lease for the key and returns the save and its `revision`. A heartbeat or save renews the lease. Close releases it, and so does anything that revokes the key: sign-out, the dashboard, a new sign-in on the same computer and a password reset. While the lease lives, another key's open, heartbeat, save or delete gets `open_elsewhere`. A key's lapsed lease stays its own until another key opens the character, so a computer that slept carries on. A save must name the current revision, and its answer gives the next one. While idle, the game should heartbeat about every 30 seconds.
 
+Since 0.0.13 the lease also keeps the install that took it, so one key pasted on two computers no longer shares a lease. While the lease lives, the same key from another install counts as another key. Its open, heartbeat, save or delete gets `open_elsewhere`, the list shows the character `open_elsewhere`, and its close releases nothing. Once the lease lapses, that install may open the character and take the lease. Until it does, its heartbeat or save gets `not_open`. The key alone decides a call without the header, as before 0.0.13. Such a call keeps the install already beside its key's lease, and a call that names an install puts it on a lease that has none. Sign-out, and anything else that frees a key's leases, still frees every one of them, whichever install took it.
+
 Each character call checks inside its own transaction that the key is still active, and holds it until the transaction ends.
 
 ## Errors
@@ -64,13 +68,13 @@ Errors answer `{"code", "detail"}` and the listed fields.
 | 429 | `rate_limited` | all others | key over its minute, or a tier without allowance; `retry_after` and `Retry-After` |
 | 404 | `not_found` | open, heartbeat, close, save, delete | no such character on this account |
 | 409 | `full` | make | a seventh character; `limit` |
-| 409 | `open_elsewhere` | open, heartbeat, save, delete | another key holds a live lease; `seconds_left` |
-| 409 | `not_open` | heartbeat, save | this key has no lease; open the character again |
+| 409 | `open_elsewhere` | open, heartbeat, save, delete | another key, or this key from another install, holds a live lease; `seconds_left` |
+| 409 | `not_open` | heartbeat, save | this key has no lease, or another install of it took the lapsed one; open the character again |
 | 409 | `stale` | save | made from an older revision; `revision` is the current one |
 | 409 | `name_mismatch` | delete | the typed name differs |
 | 413 | `save_too_large`, `summary_too_large` | make, save | over 64 KiB or 2 KiB; `limit_bytes` |
 | 422 | `invalid_name` | make | name empty, over 50 characters or with control characters |
-| 422 | `invalid_request` | any | malformed body or path, NaN or Infinity, a blank computer name; `errors` lists `{field, message}`, empty when no field is to blame |
+| 422 | `invalid_request` | any | malformed body or path, NaN or Infinity, a blank computer name, a malformed or repeated `X-Install-Id`; `errors` lists `{field, message}`, empty when no field is to blame |
 
 Other answers come from outside the game API. In deployment the internal proxy (`config/nginx.docker.conf`) refuses a body over 128 KiB with 413 and an HTML page. An unknown path answers 404 `{"detail": "API route not found"}`, a wrong method 405 `{"detail": "Method Not Allowed"}`, and a server failure 500.
 
@@ -127,3 +131,23 @@ COMMIT;
 ```
 
 `character_delete_character_data` is the table's only trigger. It is enabled (`O`) and reads `AFTER DELETE ... FOR EACH ROW EXECUTE FUNCTION delete_character_data()`. The function deletes the row `WHERE character_data_id = OLD.character_data_id`. `saves_without_character` is 0 and `characters` equals `saves`. `character_character_data_id_fkey` still reads `REFERENCES character_data(character_data_id) ON DELETE CASCADE`, beside `character_character_data_id_key`.
+
+## Checking migration 015
+
+Migration 015 adds the nullable column `"character".lease_install_id` and its check `character_lease_install_id_check`, with the pattern the API takes for `X-Install-Id`. It changes no row, so every lease keeps its key and expiry and has no install until a call that names one takes or renews it. The runner marks 015 by the column. Run the last three queries before applying 015 too, and compare. Read-only queries for a database after the migration:
+
+```sql
+BEGIN TRANSACTION READ ONLY;
+SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'character' ORDER BY ordinal_position;
+SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+WHERE conrelid = '"character"'::regclass ORDER BY conname;
+SELECT count(*) AS characters, count(lease_api_key_id) AS leases,
+       count(*) FILTER (WHERE lease_expires_at > now()) AS live_leases,
+       count(lease_install_id) AS install_ids FROM "character";
+SELECT (SELECT count(*) FROM "user") AS users, (SELECT count(*) FROM "character") AS characters,
+       (SELECT count(*) FROM character_data) AS saves, (SELECT count(*) FROM api_key) AS keys;
+COMMIT;
+```
+
+`lease_install_id` is the last column, after `lease_expires_at`. It is `text`, nullable, with no default. The constraints are those from before plus `character_lease_install_id_check`, which reads `CHECK ((lease_install_id ~ '^[A-Za-z0-9_-]{1,64}$'::text))`. `install_ids` is 0, and the other counts equal those from before, apart from leases that lapsed in between.

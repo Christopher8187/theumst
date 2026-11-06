@@ -1,8 +1,34 @@
 # Releases
 
-Theumst 0.0.12 is the current release, published as [v0.0.12](https://github.com/Christopher8187/theumst/releases/tag/v0.0.12) and deployed to COM on 5 November 2026. A successful password reset clears the account's wrong-password count, so a locked-out player who resets can sign in at once, at the website's login and in the game. It needs no migration. 0.0.11, published as [v0.0.11](https://github.com/Christopher8187/theumst/releases/tag/v0.0.11) and deployed to COM on 5 November 2026. It gives the website's login the game sign-in's wrong-password limit, and deletes a character's save with the character, including through its account (migration 014). 0.0.10 was published as [v0.0.10](https://github.com/Christopher8187/theumst/releases/tag/v0.0.10) and deployed to COM on 5 November 2026. It lets UMST sign in to theumst.com and keep its characters there, gives every account a Default key, and counts API requests per minute, apart for book reads and the game's calls (migration 013). 0.0.9 lets one book image belong to several knowledge objects, as a figure or as a scan of a page. 0.0.8 let Whole-book upload share knowledge crystals and keep dependency cycles. 0.0.7 replaced the previous Web Demo with the accepted Sanctuary, Orbit, realm book and notebook design, connected to persistent books, notes, completion, saved positions and discovery. It also gave knowledge objects an optional name and kept checked-off Mind Palace knowledge when a book leaves the collection. The homepage and dashboard retain their accepted design.
+Theumst 0.0.13 is in progress on the `demo-access` branch and not yet published. Only accounts the Web Demo admits read books through their API keys, and one key cannot open a character on two installs of the game, which migration 015 records. 0.0.12 is the current release, published as [v0.0.12](https://github.com/Christopher8187/theumst/releases/tag/v0.0.12) and deployed to COM on 5 November 2026. A successful password reset clears the account's wrong-password count, so a locked-out player who resets can sign in at once, at the website's login and in the game. It needs no migration. 0.0.11, published as [v0.0.11](https://github.com/Christopher8187/theumst/releases/tag/v0.0.11) and deployed to COM on 5 November 2026. It gives the website's login the game sign-in's wrong-password limit, and deletes a character's save with the character, including through its account (migration 014). 0.0.10 was published as [v0.0.10](https://github.com/Christopher8187/theumst/releases/tag/v0.0.10) and deployed to COM on 5 November 2026. It lets UMST sign in to theumst.com and keep its characters there, gives every account a Default key, and counts API requests per minute, apart for book reads and the game's calls (migration 013). 0.0.9 lets one book image belong to several knowledge objects, as a figure or as a scan of a page. 0.0.8 let Whole-book upload share knowledge crystals and keep dependency cycles. 0.0.7 replaced the previous Web Demo with the accepted Sanctuary, Orbit, realm book and notebook design, connected to persistent books, notes, completion, saved positions and discovery. It also gave knowledge objects an optional name and kept checked-off Mind Palace knowledge when a book leaves the collection. The homepage and dashboard retain their accepted design.
 
 Christopher selected 0.0.7 for that delivery, superseding the previously proposed 0.0.4 and correcting the earlier 0.2.x numbering. 0.0.8 and 0.0.9 continue it. Historical tags remain unchanged. API compatibility metadata and third-party package versions remain independent.
+
+## 0.0.13 release notes
+
+Migration 015 can run while 0.0.12 is still serving. It adds the nullable column `"character".lease_install_id` and its check, and changes no row. 0.0.12 names the columns it reads, so it never meets the new one. While the runner alters `"character"` it holds an exclusive lock on the table until its transaction commits, so game calls wait for that moment instead of failing. 0.0.13 does not start until the runner has applied 015. [Game accounts](game-accounts.md#checking-migration-015) lists the checks for a restored copy of COM's database, and `test_key_access_postgres.py` runs 015 against PostgreSQL with `THEUMST_KEY_ACCESS_DB_TESTS=1`.
+
+The book boundary changes for live accounts as soon as 0.0.13 starts. A regular key whose account lacks Web Demo access gets 403 `demo_access_required` on the knowledge list, an object and its images. On COM that is any confirmed account still at the `user` authority, never approved for the Demo. Book image URLs, which needed neither key nor session before, answer 401 without one, so an API client must send its key with them. The Web Demo keeps working, because its readers have the access and its pages send their session. The game's calls keep working too. `christopher` is a superadmin and Kaicenat's publisher key is a master key, so neither loses a read. This read-only query lists the confirmed accounts whose keys 0.0.13 refuses, with their regular keys and the book reads those keys made since 0.0.10:
+
+```sql
+BEGIN TRANSACTION READ ONLY;
+SELECT u.user_id, u.username, a.name AS authority,
+       (SELECT count(*) FROM api_key k
+        WHERE k.user_id = u.user_id AND k.key_type = 'regular' AND k.revoked_at IS NULL) AS active_regular_keys,
+       (SELECT COALESCE(sum(d.request_count), 0) FROM api_usage_daily d
+        JOIN api_key k ON k.api_key_id = d.api_key_id
+        WHERE k.user_id = u.user_id AND k.key_type = 'regular' AND d.kind = 'book') AS book_reads
+FROM "user" u
+JOIN authority a ON a.authority_id = u.authority_id
+WHERE u.email_verified_at IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM authority_access_map aam JOIN access ac ON ac.access_id = aam.access_id
+      WHERE aam.authority_id = u.authority_id AND ac.access_point = 'demo')
+ORDER BY u.user_id;
+COMMIT;
+```
+
+The game in players' hands sends no `X-Install-Id`, so its leases work as in 0.0.12 until an update of the game sends one. Going back to 0.0.12 leaves the column in place and unread. 0.0.12 also leaves it as it is when it takes a lease, so after coming forward again an install can find its own key's live lease refused as open elsewhere until that lease lapses, at most two minutes.
 
 ## 0.0.12 release notes
 

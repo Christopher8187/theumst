@@ -1,6 +1,6 @@
 # Administration
 
-Managers, admins and superadmins use Books and Media. Ordinary users retain their own profile, keys and permitted Web Demo access. Admins can promote an ordinary account to manager; they cannot use that action to downgrade another privileged account. Arbitrary PostgreSQL execution belongs to Superadmin tools.
+Managers, admins and superadmins use Books and Media. Ordinary users retain their own profile, keys and permitted Web Demo access. Admins and superadmins review Web Demo access requests, and approving one makes a user a betatester. Since 0.0.13 the same approval lets the account's API keys read books, as [Web Demo access](web-demo.md#access) explains. Admins can promote an ordinary account to manager; they cannot use that action to downgrade another privileged account. Arbitrary PostgreSQL execution belongs to Superadmin tools.
 
 Books supports creation and editing of title, publisher, ISBN, date, published version and source key. The visibility control requires active knowledge before enabling a book in the Web Demo. Hiding withholds reader source material and preserves personal progress/writing. Authorized management remains available to inspect, update and unhide it. See [Web Demo](web-demo.md) for reader behavior.
 
