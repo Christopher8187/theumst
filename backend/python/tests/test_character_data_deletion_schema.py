@@ -104,8 +104,10 @@ def test_the_pin_is_the_sha256_of_the_file_as_git_checks_it_out():
     data = MIGRATION_PATH.read_bytes()
     assert b"\r" not in data  # .gitattributes keeps *.sql at LF on every machine
     assert hashlib.sha256(data).hexdigest() == CHARACTER_DATA_DELETION.sha256
-    assert reviewed_migrations.REVIEWED_MIGRATIONS[-1] is CHARACTER_DATA_DELETION
-    assert reviewed_migrations.REVIEWED_MIGRATIONS[-2].key == "game_accounts_v1"
+    migrations = reviewed_migrations.REVIEWED_MIGRATIONS
+    position = migrations.index(CHARACTER_DATA_DELETION)
+    assert migrations[position - 1].key == "game_accounts_v1"
+    assert migrations[position + 1].key == "character_lease_install_v1"
 
 
 def test_the_readiness_markers_are_the_function_and_the_trigger():

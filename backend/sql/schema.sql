@@ -554,7 +554,9 @@ CREATE TABLE IF NOT EXISTS "character" (
     created_at timestamptz NOT NULL DEFAULT now(),
     last_played_at timestamptz,
     lease_api_key_id int REFERENCES api_key(api_key_id) ON DELETE SET NULL,
-    lease_expires_at timestamptz
+    lease_expires_at timestamptz,
+    -- The game install that took the lease, when its call named one (X-Install-Id).
+    lease_install_id text CHECK (lease_install_id ~ '^[A-Za-z0-9_-]{1,64}$')
 );
 CREATE INDEX IF NOT EXISTS character_user_idx ON "character" (user_id);
 CREATE INDEX IF NOT EXISTS character_lease_key_idx

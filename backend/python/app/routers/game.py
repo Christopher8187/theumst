@@ -7,13 +7,18 @@ Bearer, and counts as the 'character' kind of the key's per-minute allowance.
 Master keys are refused.
 
 A character is open on one computer at a time: opening it takes a lease held by
-the opening key for LEASE_SECONDS, renewed by heartbeats and saves. Each save
-names the revision it was loaded at and is refused unless that is the current
-one. docs/game-accounts.md describes the request and response shapes.
+the opening key for LEASE_SECONDS, renewed by heartbeats and saves. The game
+names its install in the X-Install-Id header, and the lease keeps the install
+that took it, so the same key on a second computer is refused like another key
+while the lease lives. A call without the header is judged by its key alone, as
+before 0.0.13. Each save names the revision it was loaded at and is refused
+unless that is the current one. docs/game-accounts.md describes the request and
+response shapes.
 """
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -37,6 +42,10 @@ NAME_MAX_CHARACTERS = 50
 COMPUTER_MAX_CHARACTERS = 100
 SAVE_MAX_BYTES = 64 * 1024
 SUMMARY_MAX_BYTES = 2 * 1024
+# The game keeps a short id per install and names its keys "UMST · <computer> ·
+# <install id>". The same pattern is "character".lease_install_id's check.
+INSTALL_ID_HEADER = "X-Install-Id"
+INSTALL_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _INT_MAX = 2_147_483_647
 _LEASE = timedelta(seconds=LEASE_SECONDS)
 
@@ -58,7 +67,26 @@ def _no_store(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
 
 
-router = APIRouter(prefix="/api/game", tags=["game"], dependencies=[Depends(_no_store)])
+def _install_id(request: Request) -> str | None:
+    """The game install making the call, from X-Install-Id; None without the header.
+
+    Checked before anything else on every game call, so a malformed id is
+    refused with 422 invalid_request before the key is looked up or counted.
+    """
+    values = request.headers.getlist(INSTALL_ID_HEADER)
+    if not values:
+        return None
+    if len(values) > 1 or not INSTALL_ID_PATTERN.fullmatch(values[0]):
+        raise _invalid(
+            f"{INSTALL_ID_HEADER} is one install id of 1 to 64 letters, digits, hyphens or underscores",
+            INSTALL_ID_HEADER,
+        )
+    return values[0]
+
+
+router = APIRouter(
+    prefix="/api/game", tags=["game"], dependencies=[Depends(_no_store), Depends(_install_id)],
+)
 
 
 class SignInBody(BaseModel):
@@ -250,14 +278,14 @@ def _key_info(key: dict[str, Any]) -> dict[str, Any]:
 
 _CHARACTER_COLUMNS = """
     c.character_id, c.name, c.sex, c.summary, c.created_at, c.last_played_at,
-    c.lease_api_key_id,
+    c.lease_api_key_id, c.lease_install_id,
     COALESCE(c.lease_expires_at > now(), false) AS lease_live,
     GREATEST(0, ceil(extract(epoch FROM c.lease_expires_at - now())))::int AS lease_seconds_left
 """
 
 
-def _character(row: dict[str, Any], key_id: int) -> dict[str, Any]:
-    elsewhere = _lease_state(row, key_id) == "elsewhere"
+def _character(row: dict[str, Any], key_id: int, install: str | None) -> dict[str, Any]:
+    elsewhere = _lease_state(row, key_id, install) == "elsewhere"
     return {
         "character_id": row["character_id"],
         "name": row["name"],
@@ -270,15 +298,28 @@ def _character(row: dict[str, Any], key_id: int) -> dict[str, Any]:
     }
 
 
-def _lease_state(row: dict[str, Any], key_id: int) -> str:
-    """'mine' when this key holds the lease (even lapsed: nobody took it since),
-    'elsewhere' when another key holds a live one, else 'free'."""
+def _lease_state(row: dict[str, Any], key_id: int, install: str | None) -> str:
+    """'mine' when this key holds the lease (even lapsed: nobody took it since)
+    and the install that took it is this call's, or either is unknown;
+    'elsewhere' when another key, or this key from another install, holds a
+    live one; else 'free'. Without an install this is the key-only rule of 0.0.12."""
     holder = row["lease_api_key_id"]
-    if holder is not None and holder == key_id:
+    if holder is None:
+        return "free"
+    held_by = row.get("lease_install_id")
+    if holder == key_id and (install is None or held_by is None or held_by == install):
         return "mine"
-    if holder is not None and row["lease_live"]:
+    if row["lease_live"]:
         return "elsewhere"
     return "free"
+
+
+def _lease_install(row: dict[str, Any], key_id: int, install: str | None) -> str | None:
+    """The install to keep beside a lease this key takes or renews: the call's,
+    or when it names none, the one already there if this key held the lease."""
+    if install is not None:
+        return install
+    return row.get("lease_install_id") if row["lease_api_key_id"] == key_id else None
 
 
 def _locked_character(cur, character_id: int, user_id: int, *, with_save: bool = False) -> dict[str, Any] | None:
@@ -296,21 +337,21 @@ def _locked_character(cur, character_id: int, user_id: int, *, with_save: bool =
     return cur.fetchone()
 
 
-def _take_lease(cur, character_id: int, key_id: int) -> dict[str, Any]:
+def _take_lease(cur, row: dict[str, Any], key_id: int, install: str | None) -> dict[str, Any]:
     cur.execute(
         """
-        UPDATE "character" SET lease_api_key_id = %s, lease_expires_at = now() + %s
+        UPDATE "character" SET lease_api_key_id = %s, lease_install_id = %s, lease_expires_at = now() + %s
         WHERE character_id = %s
         RETURNING lease_expires_at
         """,
-        (key_id, _LEASE, character_id),
+        (key_id, _lease_install(row, key_id, install), _LEASE, row["character_id"]),
     )
-    row = cur.fetchone()
-    return {"lease_seconds": LEASE_SECONDS, "lease_expires_at": _iso(row["lease_expires_at"])}
+    taken = cur.fetchone()
+    return {"lease_seconds": LEASE_SECONDS, "lease_expires_at": _iso(taken["lease_expires_at"])}
 
 
-def _require_lease(row: dict[str, Any], key_id: int) -> None:
-    state = _lease_state(row, key_id)
+def _require_lease(row: dict[str, Any], key_id: int, install: str | None) -> None:
+    state = _lease_state(row, key_id, install)
     if state == "elsewhere":
         raise _open_elsewhere(row)
     if state != "mine":
@@ -363,7 +404,7 @@ def sign_out(request: Request):
         cur.execute("SELECT api_key_id FROM api_key WHERE api_key_id = %s FOR UPDATE", (key["api_key_id"],))
         cur.execute(
             """
-            UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL
+            UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL, lease_install_id = NULL
             WHERE lease_api_key_id = %s
             RETURNING character_id
             """,
@@ -385,7 +426,7 @@ def sign_out(request: Request):
 # --- characters ---------------------------------------------------------------
 
 @router.get("/characters")
-def list_characters(request: Request):
+def list_characters(request: Request, install: str | None = Depends(_install_id)):
     key = _game_key(request)
     with transaction() as (_, cur):
         cur.execute(
@@ -399,7 +440,7 @@ def list_characters(request: Request):
         )
         rows = cur.fetchall()
     return {
-        "characters": [_character(row, key["api_key_id"]) for row in rows],
+        "characters": [_character(row, key["api_key_id"], install) for row in rows],
         "limit": MAX_CHARACTERS,
     }
 
@@ -432,7 +473,7 @@ def create_character(body: CharacterCreateBody, request: Request):
                 INSERT INTO "character" (user_id, character_data_id, name, sex, summary)
                 VALUES (%s, %s, %s, %s, %s::jsonb)
                 RETURNING character_id, name, sex, summary, created_at, last_played_at,
-                          lease_api_key_id, false AS lease_live, 0 AS lease_seconds_left
+                          lease_api_key_id, lease_install_id, false AS lease_live, 0 AS lease_seconds_left
                 """,
                 (key["user_id"], data["character_data_id"], name, body.sex, summary_text),
             )
@@ -442,23 +483,25 @@ def create_character(body: CharacterCreateBody, request: Request):
         if stored:
             raise stored from None
         raise
-    return {"character": _character(row, key["api_key_id"]), "revision": data["revision"]}
+    # A new character has no lease, whichever install made it.
+    return {"character": _character(row, key["api_key_id"], None), "revision": data["revision"]}
 
 
 @router.post("/characters/{character_id}/open")
-def open_character(character_id: int, request: Request):
-    """Take the lease and return the save; the same key may reopen its own."""
+def open_character(character_id: int, request: Request, install: str | None = Depends(_install_id)):
+    """Take the lease and return the save; the same key may reopen its own,
+    unless another install of it holds a live lease."""
     key = _game_key(request)
     with transaction() as (_, cur):
         _live_key(cur, key["api_key_id"])
         row = _locked_character(cur, character_id, key["user_id"], with_save=True)
         if row is None:
             raise _not_found()
-        if _lease_state(row, key["api_key_id"]) == "elsewhere":
+        if _lease_state(row, key["api_key_id"], install) == "elsewhere":
             raise _open_elsewhere(row)
-        lease = _take_lease(cur, character_id, key["api_key_id"])
+        lease = _take_lease(cur, row, key["api_key_id"], install)
     return {
-        "character": _character(row, key["api_key_id"]),
+        "character": _character(row, key["api_key_id"], install),
         "save": row["data"],
         "save_version": row["save_version"],
         "revision": row["revision"],
@@ -468,7 +511,7 @@ def open_character(character_id: int, request: Request):
 
 
 @router.post("/characters/{character_id}/heartbeat")
-def heartbeat(character_id: int, request: Request):
+def heartbeat(character_id: int, request: Request, install: str | None = Depends(_install_id)):
     """Renew this key's lease."""
     key = _game_key(request)
     with transaction() as (_, cur):
@@ -476,31 +519,36 @@ def heartbeat(character_id: int, request: Request):
         row = _locked_character(cur, character_id, key["user_id"])
         if row is None:
             raise _not_found()
-        _require_lease(row, key["api_key_id"])
-        lease = _take_lease(cur, character_id, key["api_key_id"])
+        _require_lease(row, key["api_key_id"], install)
+        lease = _take_lease(cur, row, key["api_key_id"], install)
     return lease
 
 
 @router.post("/characters/{character_id}/close")
-def close_character(character_id: int, request: Request):
-    """Release this key's lease; anything else is left as it is."""
+def close_character(character_id: int, request: Request, install: str | None = Depends(_install_id)):
+    """Release this key's lease; anything else, another install's lease of this key included, is left as it is."""
     key = _game_key(request)
     with transaction() as (_, cur):
         _live_key(cur, key["api_key_id"])
         row = _locked_character(cur, character_id, key["user_id"])
         if row is None:
             raise _not_found()
-        released = _lease_state(row, key["api_key_id"]) == "mine"
+        released = _lease_state(row, key["api_key_id"], install) == "mine"
         if released:
             cur.execute(
-                'UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL WHERE character_id = %s',
+                """
+                UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL, lease_install_id = NULL
+                WHERE character_id = %s
+                """,
                 (character_id,),
             )
     return {"released": released}
 
 
 @router.put("/characters/{character_id}/data")
-def save_character(character_id: int, body: CharacterSaveBody, request: Request):
+def save_character(
+    character_id: int, body: CharacterSaveBody, request: Request, install: str | None = Depends(_install_id),
+):
     """Store a save made from the current revision; renews the lease."""
     key = _game_key(request)
     save_text = _json_text(body.save, limit=SAVE_MAX_BYTES, code="save_too_large", what="save")
@@ -514,7 +562,7 @@ def save_character(character_id: int, body: CharacterSaveBody, request: Request)
             row = _locked_character(cur, character_id, key["user_id"])
             if row is None:
                 raise _not_found()
-            _require_lease(row, key["api_key_id"])
+            _require_lease(row, key["api_key_id"], install)
             if body.revision != row["revision"]:
                 raise GameError(
                     409, "stale", "This save was made from an older revision; open the character again",
@@ -533,12 +581,12 @@ def save_character(character_id: int, body: CharacterSaveBody, request: Request)
             cur.execute(
                 """
                 UPDATE "character"
-                SET last_played_at = now(), lease_expires_at = now() + %s,
+                SET last_played_at = now(), lease_expires_at = now() + %s, lease_install_id = %s,
                     summary = COALESCE(%s::jsonb, summary)
                 WHERE character_id = %s
                 RETURNING last_played_at, lease_expires_at
                 """,
-                (_LEASE, summary_text, character_id),
+                (_LEASE, _lease_install(row, key["api_key_id"], install), summary_text, character_id),
             )
             played = cur.fetchone()
     except psycopg2.Error as exc:
@@ -556,7 +604,9 @@ def save_character(character_id: int, body: CharacterSaveBody, request: Request)
 
 
 @router.delete("/characters/{character_id}")
-def delete_character(character_id: int, body: CharacterDeleteBody, request: Request):
+def delete_character(
+    character_id: int, body: CharacterDeleteBody, request: Request, install: str | None = Depends(_install_id),
+):
     """Delete a character and its save once its name is typed."""
     key = _game_key(request)
     typed = _plain(body.name)
@@ -567,7 +617,7 @@ def delete_character(character_id: int, body: CharacterDeleteBody, request: Requ
             raise _not_found()
         if typed != row["name"]:
             raise GameError(409, "name_mismatch", "Type the character's name exactly to delete it")
-        if _lease_state(row, key["api_key_id"]) == "elsewhere":
+        if _lease_state(row, key["api_key_id"], install) == "elsewhere":
             raise _open_elsewhere(row)
         cur.execute('DELETE FROM "character" WHERE character_id = %s', (character_id,))
         cur.execute("DELETE FROM character_data WHERE character_data_id = %s", (row["character_data_id"],))

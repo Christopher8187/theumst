@@ -106,7 +106,7 @@ def revoke_api_key(api_key_id: int, request: Request):
             # instead of making another computer wait for the lease to lapse.
             cur.execute(
                 """
-                UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL
+                UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL, lease_install_id = NULL
                 WHERE lease_api_key_id = %s
                 """,
                 (api_key_id,),

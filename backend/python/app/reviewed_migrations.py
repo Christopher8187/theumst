@@ -159,6 +159,11 @@ REVIEWED_MIGRATIONS = (
             Marker("trigger", "character_delete_character_data", "public.character"),
         ),
     ),
+    ReviewedMigration(
+        key="character_lease_install_v1", filename="015_character_lease_install.sql",
+        sha256="c72e17fb85e69ff1c952c2a1e85ce2b2f2c043598b84d404eedc225fb27b4765",
+        exclusive_markers=(Marker("column", "public.character.lease_install_id"),),
+    ),
 )
 
 

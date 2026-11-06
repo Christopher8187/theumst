@@ -44,9 +44,10 @@ FRESH_SHAPES = {
     "api_rate": ["api_rate_id", "requests_per_minute", "level_name"],
     "api_rate_window": ["api_key_id", "kind", "window_started_at", "request_count"],
     "api_usage_daily": ["api_key_id", "day", "kind", "request_count"],
+    # Migration 015 appends lease_install_id after 013's columns.
     '"character"': [
         "character_id", "user_id", "character_data_id", "class_id", "name", "sex", "summary",
-        "created_at", "last_played_at", "lease_api_key_id", "lease_expires_at",
+        "created_at", "last_played_at", "lease_api_key_id", "lease_expires_at", "lease_install_id",
     ],
     "character_data": ["character_data_id", "level", "data", "save_version", "revision", "updated_at"],
     "sign_in_attempt": ["sign_in_attempt_id", "user_id", "username_hash", "address", "succeeded", "attempted_at"],

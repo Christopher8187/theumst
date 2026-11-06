@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import psycopg2
@@ -83,7 +84,7 @@ def character_row(**overrides):
         "character_id": 12, "name": "Aria", "sex": "female",
         "summary": {"rank": {"key": "rank.novice", "args": []}, "day": 3},
         "created_at": NOW - timedelta(days=2), "last_played_at": NOW - timedelta(hours=1),
-        "lease_api_key_id": None, "lease_live": False, "lease_seconds_left": 0,
+        "lease_api_key_id": None, "lease_install_id": None, "lease_live": False, "lease_seconds_left": 0,
         "character_data_id": 77, "revision": 5,
     }
     row.update(overrides)
@@ -546,7 +547,7 @@ def made_row():
         "character_id": 12, "name": "Aria", "sex": "female",
         "summary": {"rank": {"key": "rank.novice", "args": []}, "day": 1},
         "created_at": NOW, "last_played_at": None,
-        "lease_api_key_id": None, "lease_live": False, "lease_seconds_left": 0,
+        "lease_api_key_id": None, "lease_install_id": None, "lease_live": False, "lease_seconds_left": 0,
     }
 
 
@@ -690,8 +691,10 @@ def test_opening_takes_the_lease_and_returns_the_save_and_revision(api):
     select_sql, select_params = cursor.executions[1]
     assert "FOR UPDATE" in select_sql and "d.data" in select_sql
     assert select_params == (12, USER_ID)
-    _, lease_params = cursor.sql('UPDATE "character" SET lease_api_key_id = %s')[0]
-    assert lease_params == (KEY_ID, timedelta(seconds=120), 12)
+    lease_sql, lease_params = cursor.sql('UPDATE "character" SET lease_api_key_id = %s')[0]
+    assert "lease_install_id = %s" in lease_sql
+    # Without X-Install-Id the lease names no install, as before 0.0.13.
+    assert lease_params == (KEY_ID, None, timedelta(seconds=120), 12)
     assert cursor.outcome == "committed"
 
 
@@ -786,8 +789,8 @@ def test_a_save_raises_the_revision_sets_last_played_and_renews_the_lease(api):
     assert "revision = revision + 1" in data_sql and "updated_at = now()" in data_sql
     assert data_params == ('{"level": 5}', 3, 77)
     played_sql, played_params = cursor.sql('UPDATE "character" SET last_played_at = now()')[0]
-    assert "COALESCE(%s::jsonb, summary)" in played_sql
-    assert played_params == (timedelta(seconds=120), '{"day": 4}', 12)
+    assert "COALESCE(%s::jsonb, summary)" in played_sql and "lease_install_id = %s" in played_sql
+    assert played_params == (timedelta(seconds=120), None, '{"day": 4}', 12)
     assert cursor.outcome == "committed"
 
 
@@ -801,7 +804,7 @@ def test_a_save_without_a_summary_keeps_the_stored_one(api):
     body = save_body()
     del body["summary"]
     assert api.client.put("/api/game/characters/12/data", json=body).status_code == 200
-    assert cursor.sql('UPDATE "character" SET last_played_at')[0][1][1] is None
+    assert cursor.sql('UPDATE "character" SET last_played_at')[0][1][2] is None
 
 
 def test_a_save_from_an_older_revision_is_409_stale_with_the_current_one(api):
@@ -883,3 +886,234 @@ def test_every_key_route_counts_as_a_character_call_and_refuses_master_keys(api)
     assert api.master_allowed == [False, False, False]
     # The game asks for no access point: every confirmed account plays, in the Web Demo or not.
     assert api.access_points == [None, None, None]
+
+
+# --- one key on two computers: the install id (0.0.13) ---------------------------------
+
+HERE = "k7m2qx"     # this install's id, as the game makes them
+THERE = "p4n8wz"    # another install's, under the same key
+INSTALL = {"X-Install-Id": HERE}
+
+
+class Headers:
+    """Request headers as Starlette gives them: names folded to lower case, repeats kept."""
+
+    def __init__(self, *items):
+        self.items = [(name.lower(), value) for name, value in items]
+
+    def getlist(self, name):
+        return [value for key, value in self.items if key == name.lower()]
+
+
+def held_here(**overrides):
+    return character_row(lease_api_key_id=KEY_ID, lease_install_id=HERE, **overrides)
+
+
+def held_there(**overrides):
+    return character_row(lease_api_key_id=KEY_ID, lease_install_id=THERE, **overrides)
+
+
+@pytest.mark.parametrize("value", ["", "k7m2 qx", "x" * 65, "k7m2qx,p4n8wz", "k7/m2qx", "k7m2qx\t"])
+def test_a_malformed_install_id_is_422_before_the_key_is_checked(api, value):
+    response = api.client.post("/api/game/characters/12/open", headers={"X-Install-Id": value})
+    body = assert_game_error(response, 422, "invalid_request")
+    assert body["errors"] == [{"field": "X-Install-Id", "message": body["detail"]}]
+    assert api.kinds == [] and api.used == []
+
+
+def test_an_install_id_outside_ascii_is_refused():
+    # Starlette reads header bytes as Latin-1; "é" sent as UTF-8 arrives as two characters.
+    with pytest.raises(game.GameError) as refused:
+        game._install_id(SimpleNamespace(headers=Headers(("X-Install-Id", "k7m2qÃ©"))))
+    assert refused.value.code == "invalid_request"
+
+
+def test_an_install_id_is_sent_once():
+    with pytest.raises(game.GameError) as refused:
+        game._install_id(SimpleNamespace(headers=Headers(("x-install-id", HERE), ("X-Install-Id", THERE))))
+    assert refused.value.code == "invalid_request"
+    assert game._install_id(SimpleNamespace(headers=Headers(("X-Install-Id", HERE)))) == HERE
+    assert game._install_id(SimpleNamespace(headers=Headers())) is None
+
+
+@pytest.mark.parametrize("value", ["k7m2qx", "a", "x" * 64, "Desk_top-2", "0123456789"])
+def test_install_ids_of_1_to_64_letters_digits_hyphens_and_underscores_are_taken(value):
+    assert game._install_id(SimpleNamespace(headers=Headers(("X-Install-Id", value)))) == value
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("POST", "/api/game/sign-in", {"username": "christopher", "password": "right-password", "computer": "PC"}),
+        ("GET", "/api/game/me", None),
+        ("POST", "/api/game/sign-out", None),
+        ("GET", "/api/game/characters", None),
+        ("POST", "/api/game/characters", {"name": "Aria", "sex": "female", "save": {}, "save_version": 1}),
+        ("POST", "/api/game/characters/12/heartbeat", None),
+        ("POST", "/api/game/characters/12/close", None),
+        ("PUT", "/api/game/characters/12/data", {"save": {}, "save_version": 1, "revision": 1}),
+        ("DELETE", "/api/game/characters/12", {"name": "Aria"}),
+    ],
+)
+def test_every_game_call_checks_the_install_id_first(api, method, path, body):
+    response = api.client.request(method, path, json=body, headers={"X-Install-Id": "not valid"})
+    assert_game_error(response, 422, "invalid_request")
+    assert api.kinds == [] and api.used == []
+
+
+def test_opening_keeps_the_install_beside_the_lease(api):
+    cursor = checked(with_save(character_row()), lease_row())
+    api.cursors.append(cursor)
+    assert api.client.post("/api/game/characters/12/open", headers=INSTALL).status_code == 200
+    _, lease_params = cursor.sql('UPDATE "character" SET lease_api_key_id = %s')[0]
+    assert lease_params == (KEY_ID, HERE, timedelta(seconds=120), 12)
+    assert "c.lease_install_id" in cursor.executions[1][0]
+
+
+def test_another_install_of_the_same_key_cannot_open_while_the_lease_lives(api):
+    cursor = checked(with_save(held_there(lease_live=True, lease_seconds_left=87)))
+    api.cursors.append(cursor)
+    body = assert_game_error(api.client.post("/api/game/characters/12/open", headers=INSTALL), 409, "open_elsewhere")
+    assert body["seconds_left"] == 87
+    assert not cursor.writes()
+    assert cursor.outcome == "rolled back"
+
+
+def test_another_install_cannot_heartbeat_or_save_while_the_lease_lives(api):
+    api.cursors.append(checked(held_there(lease_live=True, lease_seconds_left=40)))
+    heartbeat = api.client.post("/api/game/characters/12/heartbeat", headers=INSTALL)
+    assert assert_game_error(heartbeat, 409, "open_elsewhere")["seconds_left"] == 40
+    saving = checked(held_there(lease_live=True, lease_seconds_left=39))
+    api.cursors.append(saving)
+    response = api.client.put("/api/game/characters/12/data", json=save_body(), headers=INSTALL)
+    assert assert_game_error(response, 409, "open_elsewhere")["seconds_left"] == 39
+    assert not saving.writes()
+
+
+def test_another_install_cannot_delete_while_the_lease_lives(api):
+    cursor = checked(held_there(lease_live=True, lease_seconds_left=30))
+    api.cursors.append(cursor)
+    response = api.client.request("DELETE", "/api/game/characters/12", json={"name": "Aria"}, headers=INSTALL)
+    assert assert_game_error(response, 409, "open_elsewhere")["seconds_left"] == 30
+    assert not cursor.writes()
+
+
+def test_the_install_holding_the_lease_carries_on(api):
+    api.cursors.append(checked(with_save(held_here(lease_live=True, lease_seconds_left=60)), lease_row()))
+    assert api.client.post("/api/game/characters/12/open", headers=INSTALL).status_code == 200
+    beat = checked(held_here(lease_live=True, lease_seconds_left=20), lease_row())
+    api.cursors.append(beat)
+    assert api.client.post("/api/game/characters/12/heartbeat", headers=INSTALL).status_code == 200
+    assert beat.sql('UPDATE "character" SET lease_api_key_id = %s')[0][1] == (KEY_ID, HERE, timedelta(seconds=120), 12)
+    saving = checked(
+        held_here(lease_live=True, lease_seconds_left=40),
+        {"revision": 6, "updated_at": NOW},
+        {"last_played_at": NOW, "lease_expires_at": NOW + timedelta(seconds=120)},
+    )
+    api.cursors.append(saving)
+    assert api.client.put("/api/game/characters/12/data", json=save_body(), headers=INSTALL).status_code == 200
+    assert saving.sql('UPDATE "character" SET last_played_at')[0][1][1] == HERE
+
+
+def test_after_another_installs_lease_lapses_this_one_may_open_it(api):
+    cursor = checked(with_save(held_there(lease_live=False)), lease_row())
+    api.cursors.append(cursor)
+    assert api.client.post("/api/game/characters/12/open", headers=INSTALL).status_code == 200
+    assert cursor.sql('UPDATE "character" SET lease_api_key_id = %s')[0][1][:2] == (KEY_ID, HERE)
+
+
+def test_a_lapsed_lease_of_another_install_is_not_this_ones_to_renew(api):
+    api.cursors.append(checked(held_there(lease_live=False)))
+    assert_game_error(api.client.post("/api/game/characters/12/heartbeat", headers=INSTALL), 409, "not_open")
+    api.cursors.append(checked(held_there(lease_live=False)))
+    response = api.client.put("/api/game/characters/12/data", json=save_body(), headers=INSTALL)
+    assert_game_error(response, 409, "not_open")
+
+
+def test_closing_leaves_another_installs_lease_alone(api):
+    theirs = checked(held_there(lease_live=True, lease_seconds_left=50))
+    api.cursors.append(theirs)
+    assert api.client.post("/api/game/characters/12/close", headers=INSTALL).json() == {"released": False}
+    assert not theirs.writes()
+    mine = checked(held_here(lease_live=True, lease_seconds_left=50))
+    api.cursors.append(mine)
+    assert api.client.post("/api/game/characters/12/close", headers=INSTALL).json() == {"released": True}
+    release_sql, release_params = mine.sql("SET lease_api_key_id = NULL")[0]
+    assert "lease_install_id = NULL" in release_sql and release_params == (12,)
+
+
+def test_the_list_shows_a_character_open_on_another_install_as_open_elsewhere(api):
+    rows = [
+        held_there(lease_live=True, lease_seconds_left=70),
+        held_here(character_id=13, lease_live=True, lease_seconds_left=70),
+        held_there(character_id=14, lease_live=False),
+    ]
+    api.cursors.append(ScriptedCursor(rows))
+    there, here, lapsed = api.client.get("/api/game/characters", headers=INSTALL).json()["characters"]
+    assert there["open_elsewhere"] is True and there["open_elsewhere_seconds_left"] == 70
+    assert here["open_elsewhere"] is False and lapsed["open_elsewhere"] is False
+    # Without the header the key alone decides, as before 0.0.13.
+    api.cursors.append(ScriptedCursor(rows))
+    listed = api.client.get("/api/game/characters").json()["characters"]
+    assert [character["open_elsewhere"] for character in listed] == [False, False, False]
+
+
+def test_a_lease_taken_without_an_install_is_kept_for_the_first_install_that_names_itself(api):
+    # An older game opened it; the updated game carries on and its install is recorded.
+    beat = checked(character_row(lease_api_key_id=KEY_ID, lease_live=True, lease_seconds_left=50), lease_row())
+    api.cursors.append(beat)
+    assert api.client.post("/api/game/characters/12/heartbeat", headers=INSTALL).status_code == 200
+    assert beat.sql('UPDATE "character" SET lease_api_key_id = %s')[0][1] == (KEY_ID, HERE, timedelta(seconds=120), 12)
+
+
+def lease_calls():
+    live = {"lease_live": True, "lease_seconds_left": 50}
+    return [
+        ("POST", "/api/game/characters/12/open", None, [with_save(held_there(**live)), lease_row()]),
+        ("POST", "/api/game/characters/12/heartbeat", None, [held_there(**live), lease_row()]),
+        ("PUT", "/api/game/characters/12/data", save_body(),
+         [held_there(**live), {"revision": 6, "updated_at": NOW}, {"last_played_at": NOW, "lease_expires_at": NOW}]),
+        ("POST", "/api/game/characters/12/close", None, [held_there(**live)]),
+        ("DELETE", "/api/game/characters/12", {"name": "Aria"}, [held_there(**live)]),
+    ]
+
+
+@pytest.mark.parametrize(("method", "path", "body", "results"), lease_calls(), ids=lambda value: str(value)[:40])
+def test_without_the_header_the_key_alone_decides_as_before(api, method, path, body, results):
+    # The game in players' hands sends no install id: its key's lease is its own.
+    cursor = checked(*results)
+    api.cursors.append(cursor)
+    response = api.client.request(method, path, json=body)
+    assert response.status_code == 200, response.text
+    if path.endswith(("/open", "/heartbeat")):
+        # This key held the lease, so the install already beside it stays.
+        assert cursor.sql('UPDATE "character" SET lease_api_key_id = %s')[0][1][1] == THERE
+    if method == "PUT":
+        assert cursor.sql('UPDATE "character" SET last_played_at')[0][1][1] == THERE
+
+
+def test_a_key_taking_over_a_lapsed_lease_without_a_header_names_no_install(api):
+    row = character_row(lease_api_key_id=OTHER_KEY_ID, lease_install_id=THERE, lease_live=False)
+    cursor = checked(with_save(row), lease_row())
+    api.cursors.append(cursor)
+    assert api.client.post("/api/game/characters/12/open").status_code == 200
+    assert cursor.sql('UPDATE "character" SET lease_api_key_id = %s')[0][1] == (KEY_ID, None, timedelta(seconds=120), 12)
+
+
+def test_another_keys_live_lease_is_still_elsewhere_from_any_install(api):
+    row = character_row(lease_api_key_id=OTHER_KEY_ID, lease_install_id=HERE, lease_live=True, lease_seconds_left=12)
+    api.cursors.append(checked(with_save(row)))
+    assert_game_error(api.client.post("/api/game/characters/12/open", headers=INSTALL), 409, "open_elsewhere")
+
+
+def test_sign_out_frees_every_lease_of_the_key_with_its_install(api):
+    cursor = ScriptedCursor([{"character_id": 12}, {"character_id": 13}], {"api_key_id": KEY_ID})
+    api.cursors.append(cursor)
+    assert api.client.post("/api/game/sign-out", headers=INSTALL).json() == {"revoked": True, "released_characters": 2}
+    release_sql, release_params = cursor.sql('UPDATE "character" SET lease_api_key_id = NULL')[0]
+    assert "lease_install_id = NULL" in release_sql and release_params == (KEY_ID,)
+
+
+def test_the_header_pattern_is_the_columns_check():
+    schema = (Path(__file__).resolve().parents[3] / "backend/sql/schema.sql").read_text(encoding="utf-8")
+    assert f"CHECK (lease_install_id ~ '^{game.INSTALL_ID_PATTERN.pattern}$')" in schema

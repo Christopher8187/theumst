@@ -101,7 +101,7 @@ def revoke_game_keys(cur, user_id: int, *, name: str | None = None) -> list[int]
     if revoked:
         cur.execute(
             """
-            UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL
+            UPDATE "character" SET lease_api_key_id = NULL, lease_expires_at = NULL, lease_install_id = NULL
             WHERE lease_api_key_id = ANY(%s)
             """,
             (revoked,),
