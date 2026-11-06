@@ -31,7 +31,9 @@ def test_regular_and_master_page_caps(monkeypatch):
 
 
 def test_every_public_api_key_check_counts_as_a_book_request():
+    # The three reads share _reader_key; the six master routes call it themselves.
     source = Path(public_api.__file__).read_text(encoding="utf-8")
     calls = source.count("authenticate_api_key(request")
-    assert calls == 8
+    assert calls == 7
     assert source.count('authenticate_api_key(request, kind="book"') == calls
+    assert source.count("_reader_key(request)") == 3

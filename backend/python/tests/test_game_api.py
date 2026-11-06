@@ -96,7 +96,7 @@ def with_save(row):
 
 @pytest.fixture
 def api(monkeypatch):
-    state = SimpleNamespace(cursors=[], used=[], kinds=[], master_allowed=[], key=game_key())
+    state = SimpleNamespace(cursors=[], used=[], kinds=[], master_allowed=[], access_points=[], key=game_key())
 
     @contextmanager
     def fake_transaction():
@@ -109,9 +109,10 @@ def api(monkeypatch):
             raise
         cursor.outcome = "committed"
 
-    def fake_authenticate(request, *, kind, master_required=False, master_allowed=True):
+    def fake_authenticate(request, *, kind, master_required=False, master_allowed=True, access_point=None):
         state.kinds.append(kind)
         state.master_allowed.append(master_allowed)
+        state.access_points.append(access_point)
         if isinstance(state.key, Exception):
             raise state.key
         return dict(state.key)
@@ -880,3 +881,5 @@ def test_every_key_route_counts_as_a_character_call_and_refuses_master_keys(api)
     api.client.get("/api/game/me")
     assert api.kinds == ["character", "character", "character"]
     assert api.master_allowed == [False, False, False]
+    # The game asks for no access point: every confirmed account plays, in the Web Demo or not.
+    assert api.access_points == [None, None, None]

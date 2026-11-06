@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .database import initialize_database
+from .dependencies import AccessRefused, access_refused_response
 from .reviewed_migrations import assert_database_schema_ready
 from .routers import admin, api_keys, auth, content, demo, frontend, game, health, news, public_api, superadmin, users
 from .services.news import delivery_loop, ensure_news_delivery_configured
@@ -103,6 +104,7 @@ def create_app(*, initialize_services: bool = True) -> FastAPI:
     application.include_router(public_api.router)
     application.include_router(game.router)
     game.install_error_handlers(application)
+    application.add_exception_handler(AccessRefused, access_refused_response)
     application.include_router(frontend.router)
     return application
 

@@ -3,10 +3,43 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from .config import get_settings
 from .database import transaction
 from .security import hash_secret
+
+
+# The Web Demo's access point. The Demo's proxy checks it for a session through
+# /api/demo/auth-check; since 0.0.13 a key needs it to read books as well.
+DEMO_ACCESS_POINT = "demo"
+
+_ACCESS_REFUSALS = {
+    DEMO_ACCESS_POINT: "Reading books needs Web Demo access; request it from the dashboard",
+}
+
+
+class AccessRefused(HTTPException):
+    """403 for an account without the access point a request needs.
+
+    Answered as {"code": "<access point>_access_required", "detail"}, so a client
+    can tell it from a refused key or a missing master key.
+    """
+
+    def __init__(self, access_point: str):
+        super().__init__(
+            status_code=403,
+            detail=_ACCESS_REFUSALS.get(access_point, f"Access to {access_point} is not permitted"),
+        )
+        self.code = f"{access_point}_access_required"
+
+
+async def access_refused_response(request: Request, exc: AccessRefused) -> JSONResponse:
+    return JSONResponse(
+        {"code": exc.code, "detail": exc.detail},
+        status_code=exc.status_code,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def current_user(request: Request) -> dict[str, Any] | None:
@@ -67,6 +100,13 @@ def require_role(request: Request, roles: set[str]) -> dict[str, Any]:
     return user
 
 
+def has_api_key(request: Request) -> bool:
+    """Whether the request sends a key where authenticate_api_key looks for one."""
+    if request.headers.get("x-api-key", "").strip():
+        return True
+    return request.headers.get("authorization", "").lower().startswith("bearer ")
+
+
 def _raw_api_key(request: Request) -> str:
     value = request.headers.get("x-api-key", "").strip()
     if value:
@@ -89,15 +129,20 @@ def authenticate_api_key(
     kind: str,
     master_required: bool = False,
     master_allowed: bool = True,
+    access_point: str | None = None,
 ) -> dict[str, Any]:
     """Resolve an active key and count this request as `kind`.
 
     A regular key may make its tier's requests_per_minute requests of each kind
     in a one-minute window; beyond that, or on a tier without allowance, it gets
     429 with Retry-After in seconds. Master keys have no limit; a route that
-    does not take them refuses them with 403 before anything is counted. Every
-    accepted request, master keys included, adds one to api_usage_daily for the
-    key, UTC day and kind; a refused request rolls back and is counted nowhere.
+    does not take them refuses them with 403 before anything is counted. With
+    `access_point`, a regular key whose account lacks it gets AccessRefused
+    (403 `<access point>_access_required`) before anything is counted: the same
+    authority/access-point check a session gets from require_access. Master
+    keys pass it. Every accepted request, master keys included, adds one to
+    api_usage_daily for the key, UTC day and kind; a refused request rolls back
+    and is counted nowhere.
     """
     if kind not in API_REQUEST_KINDS:
         raise ValueError(f"Unknown API request kind: {kind}")
@@ -107,7 +152,14 @@ def authenticate_api_key(
             """
             SELECT k.api_key_id, k.user_id, k.name, k.key_prefix, k.key_type, k.client,
                    k.api_rate_id, r.requests_per_minute, r.level_name,
-                   u.username, a.name AS authority_type
+                   u.username, a.name AS authority_type,
+                   ARRAY(
+                       SELECT ac.access_point
+                       FROM authority_access_map aam
+                       JOIN access ac ON ac.access_id = aam.access_id
+                       WHERE aam.authority_id = a.authority_id
+                       ORDER BY ac.access_point
+                   ) AS access_points
             FROM api_key k
             JOIN "user" u ON u.user_id = k.user_id
             JOIN authority a ON a.authority_id = u.authority_id
@@ -126,6 +178,12 @@ def authenticate_api_key(
             raise HTTPException(status_code=403, detail="A master API key is required")
         if not master_allowed and key["key_type"] == "master":
             raise HTTPException(status_code=403, detail="Master keys are not accepted here")
+        if (
+            access_point is not None
+            and key["key_type"] != "master"
+            and access_point not in set(key.get("access_points") or ())
+        ):
+            raise AccessRefused(access_point)
 
         if key["key_type"] != "master":
             limit = int(key.get("requests_per_minute") or 0)

@@ -1,4 +1,13 @@
+"""The public API under /api/v1: book reads for keys and master publishing.
+
+Reading books (the knowledge list, one object and its book images) needs the
+access the Web Demo needs: a key's account must have the Demo's access point,
+the check the Demo's proxy makes for a session, or the key must be a master key.
+Everything else here takes master keys only.
+"""
 from __future__ import annotations
+
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -13,7 +22,7 @@ from fastapi import (
 
 from ..config import get_settings
 from ..database import transaction
-from ..dependencies import authenticate_api_key
+from ..dependencies import DEMO_ACCESS_POINT, AccessRefused, authenticate_api_key, has_api_key, require_user
 from ..schemas import (
     EmbeddingBatchInput,
     KnowledgeSubmission,
@@ -32,8 +41,25 @@ from ..services.knowledge import (
 router = APIRouter(prefix="/api/v1", tags=["public API"])
 
 
+def _reader_key(request: Request) -> dict[str, Any]:
+    """A key reading books. A regular key's account needs Web Demo access."""
+    return authenticate_api_key(request, kind="book", access_point=DEMO_ACCESS_POINT)
+
+
+def _image_reader(request: Request) -> None:
+    """Book images go to a key that may read books, or to a signed-in reader the
+    Web Demo admits: its pages load them with the session cookie and no key."""
+    if has_api_key(request):
+        _reader_key(request)
+        return
+    user = require_user(request)
+    if DEMO_ACCESS_POINT not in set(user.get("access_points") or []):
+        raise AccessRefused(DEMO_ACCESS_POINT)
+
+
 @router.get("/storage/{path:path}", include_in_schema=False)
-def read_public_storage(path: str):
+def read_book_image(path: str, request: Request):
+    _image_reader(request)
     key = storage.clean_key(path)
     with transaction() as (_, cur):
         cur.execute(
@@ -64,7 +90,7 @@ def read_knowledge_collection(
     section_id: int | None = Query(default=None, gt=0),
     type: str | None = Query(default=None, max_length=80),
 ):
-    key = authenticate_api_key(request, kind="book")
+    key = _reader_key(request)
     settings = get_settings()
     maximum = settings.master_read_max_page_size if key["key_type"] == "master" else settings.regular_read_max_page_size
     requested = limit or settings.regular_read_page_size
@@ -83,7 +109,7 @@ def read_knowledge_collection(
 
 @router.get("/knowledge/{knowledge_id}")
 def read_one_knowledge(knowledge_id: int, request: Request, language_id: int = Query(1, gt=0)):
-    key = authenticate_api_key(request, kind="book")
+    key = _reader_key(request)
     return {
         "item": get_knowledge(knowledge_id, language_id, include_hidden=key["key_type"] == "master"),
         "key_type": key["key_type"], "rate_remaining": key.get("rate_remaining"),
