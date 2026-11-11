@@ -496,7 +496,11 @@ def get_grimoire_knowledge(grimoire_id: int, request: Request):
             SELECT k.knowledge_id, k.section_id, k.type, k.source_key,
                    k.source_metadata->'order' AS source_order,
                    k.name, COALESCE(NULLIF(btrim(k.name), ''), lk.label) AS label,
-                   COALESCE(p.completed, false) AS completed
+                   COALESCE(p.completed, false) AS completed,
+                   CASE WHEN jsonb_typeof(k.source_metadata->'difficulty') = 'number'
+                        THEN k.source_metadata->'difficulty' END AS difficulty,
+                   CASE WHEN jsonb_typeof(k.source_metadata->'estimated_minutes') = 'number'
+                        THEN k.source_metadata->'estimated_minutes' END AS estimated_minutes
             FROM knowledge k
             JOIN section s ON s.section_id = k.section_id
             JOIN language_knowledge lk
@@ -568,7 +572,11 @@ def get_grimoire_knowledge_detail(grimoire_id: int, knowledge_id: int, request: 
             SELECT k.knowledge_id, k.section_id, k.type, k.source_key,
                    k.source_metadata->'order' AS source_order,
                    k.name, COALESCE(NULLIF(btrim(k.name), ''), lk.label) AS label, lk.statement, lk.working, lk.working_summary,
-                   COALESCE(p.completed, false) AS completed
+                   COALESCE(p.completed, false) AS completed,
+                   CASE WHEN jsonb_typeof(k.source_metadata->'difficulty') = 'number'
+                        THEN k.source_metadata->'difficulty' END AS difficulty,
+                   CASE WHEN jsonb_typeof(k.source_metadata->'estimated_minutes') = 'number'
+                        THEN k.source_metadata->'estimated_minutes' END AS estimated_minutes
             FROM knowledge k
             JOIN section s ON s.section_id = k.section_id
             JOIN grimoire g ON g.grimoire_id = s.grimoire_id
