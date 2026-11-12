@@ -381,7 +381,8 @@ def test_migration_015_brings_a_0_0_12_table_to_the_fresh_schema_and_can_run_aga
             cur.execute('SELECT count(*) AS leases, count(lease_install_id) AS installs FROM "character"')
             assert cur.fetchone() == {"leases": 1, "installs": 0}
             # Every statement can run again, as the runner never would.
-            source = reviewed_migrations.validated_migration_sources()[-1][1]
+            source = next(path for migration, path in reviewed_migrations.validated_migration_sources()
+                          if migration.key == "character_lease_install_v1")
             cur.execute(source.read_text(encoding="utf-8"))
             cur.execute(source.read_text(encoding="utf-8"))
             assert catalogue(cur) == fresh

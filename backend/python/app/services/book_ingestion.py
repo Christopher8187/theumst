@@ -16,7 +16,7 @@ from fastapi import HTTPException, UploadFile
 from psycopg2.extras import execute_values
 
 from ..database import transaction
-from . import storage
+from . import book_read, storage
 from .graph_sidecar import (
     GRAPH_SIDECAR_FORMAT,
     GraphSidecarValidationError,
@@ -1105,6 +1105,7 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
         graph_capability = "unchanged"
         with transaction() as (_, cur):
             grimoire_id, language_id = _upsert_book(cur, manifest["book"])
+            book_read.lock(cur, grimoire_id)
             _deactivate_book_state(cur, grimoire_id)
             sections = _upsert_sections(cur, grimoire_id, language_id, manifest["sections"])
             objects = _upsert_objects(
@@ -1124,6 +1125,8 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
                     batch_size=DATABASE_BATCH_SIZE,
                 )
                 graph_capability = graph_receipt.capability
+            # The whole-book read commits with the facts it describes; a failed build leaves no row.
+            book_read_result = book_read.refresh(cur, grimoire_id)
             stale_points = _stale_embedding_points(cur, grimoire_id)
 
         stale_by_collection: dict[str, list[str]] = defaultdict(list)
@@ -1197,4 +1200,5 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
             "capability": graph_capability,
             "receipt_id": None,
         },
+        "book_read": book_read_result.receipt(),
     }

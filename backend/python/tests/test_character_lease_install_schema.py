@@ -85,8 +85,10 @@ def test_the_pin_is_the_sha256_of_the_file_as_git_checks_it_out():
     data = MIGRATION_PATH.read_bytes()
     assert b"\r" not in data  # .gitattributes keeps *.sql at LF on every machine
     assert hashlib.sha256(data).hexdigest() == LEASE_INSTALL.sha256
-    assert reviewed_migrations.REVIEWED_MIGRATIONS[-1] is LEASE_INSTALL
-    assert reviewed_migrations.REVIEWED_MIGRATIONS[-2].key == "character_data_deletion_v1"
+    migrations = reviewed_migrations.REVIEWED_MIGRATIONS
+    position = migrations.index(LEASE_INSTALL)
+    assert migrations[position - 1].key == "character_data_deletion_v1"
+    assert migrations[position + 1].key == "book_read_v1"
 
 
 def test_the_readiness_marker_is_the_column():

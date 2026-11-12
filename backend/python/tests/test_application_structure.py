@@ -24,6 +24,7 @@ def test_expected_routes_and_sql_is_superadmin_only():
     assert "/api/demo/access/request" in paths
     assert "/api/demo/access/requests/{user_id}/approve" in paths
     assert "/api/demo/grimoires/{grimoire_id}/knowledge" in paths
+    assert "/api/demo/grimoires/{grimoire_id}/book-read" in paths
     assert "/api/demo/notes" in paths
     assert "/api/demo/crystallize/{knowledge_id}" in paths
     assert "/auth/forgot-password" in paths

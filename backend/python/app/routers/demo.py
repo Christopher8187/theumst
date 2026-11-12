@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import math
@@ -8,6 +9,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 
 from ..config import get_settings
 from ..database import transaction
@@ -19,6 +21,7 @@ from ..schemas import (
     DemoReviewPayload,
     DemoStudyStatePayload,
 )
+from ..services import book_read
 from ..services.atlas_graph import fetch_atlas_graph
 from ..services.graph_sidecar import GRAPH_ROLES, fetch_contents, fetch_focused_graph
 from ..services.qdrant import qdrant_service
@@ -32,6 +35,7 @@ SIMILAR_QUERY_OVERFETCH = 4
 GRAPH_MAX_NODES = 150
 GRAPH_MAX_DEPTH = 2
 GRAPH_CACHE_SECONDS = 300
+BOOK_READ_CACHE_SECONDS = 14 * 24 * 3600  # two weeks; clients revalidate with the ETag on every open
 
 
 def _object_images(cur, knowledge_id: int, link_type: str = "figure") -> list[dict[str, Any]]:
@@ -391,6 +395,104 @@ def get_grimoire_graph(
     for name, value in headers.items():
         response.headers[name] = value
     return graph
+
+
+_NO_STORE = {"Cache-Control": "no-store"}
+
+
+def _book_read_headers(version: str) -> dict[str, str]:
+    return {
+        "ETag": f'"{version}"',
+        "Cache-Control": f"private, max-age={BOOK_READ_CACHE_SECONDS}",
+        "Vary": "Authorization, Cookie, Accept-Encoding",
+    }
+
+
+def _etag_matches(header: str | None, etag: str) -> bool:
+    """If-None-Match: a list of tags, weak or strong, or *; any one that matches will do."""
+    for entry in (header or "").split(","):
+        tag = entry.strip()
+        if tag.startswith("W/"):
+            tag = tag[2:].strip()
+        if tag == "*" or tag == etag:
+            return True
+    return False
+
+
+def _accepts_gzip(header: str | None) -> bool:
+    """Accept-Encoding allows gzip when it lists gzip, or failing that *, with q above 0."""
+    named: bool | None = None
+    wildcard: bool | None = None
+    for entry in (header or "").split(","):
+        coding, *parameters = (part.strip() for part in entry.split(";"))
+        coding = coding.lower()
+        quality = 1.0
+        for parameter in parameters:
+            name, _, value = parameter.partition("=")
+            if name.strip().lower() == "q":
+                try:
+                    quality = float(value.strip())
+                except ValueError:
+                    quality = 0.0
+        allowed = quality > 0
+        if coding in {"gzip", "x-gzip"}:
+            named = allowed or bool(named)
+        elif coding == "*":
+            wildcard = allowed or bool(wildcard)
+    return named if named is not None else bool(wildcard)
+
+
+def _book_read_refusal(status_code: int, detail: str, code: str) -> JSONResponse:
+    return JSONResponse({"detail": detail, "code": code}, status_code=status_code, headers=dict(_NO_STORE))
+
+
+def _book_read_not_computed() -> JSONResponse:
+    return _book_read_refusal(409, "This book's whole read has not been computed yet", "book_read_not_computed")
+
+
+@router.get("/grimoires/{grimoire_id}/book-read")
+def get_book_read(grimoire_id: int, request: Request):
+    """A whole book in one read (0.0.15): the answer ingestion stored, revalidated by its ETag.
+
+    It writes nothing; in particular it does not mark the book opened. The stored gzip is
+    sent as it is to a client that accepts gzip, and decompressed for one that does not.
+    """
+    try:
+        _demo_user(request)
+    except HTTPException as exc:
+        raise HTTPException(exc.status_code, exc.detail, headers={**(exc.headers or {}), **_NO_STORE}) from None
+    with transaction() as (_, cur):
+        cur.execute(
+            """
+            SELECT (COALESCE(g.source_metadata->>'demo', 'false') = 'true') AS visible,
+                   br.format, br.version
+            FROM grimoire g
+            LEFT JOIN book_read br USING (grimoire_id)
+            WHERE g.grimoire_id = %s
+            """,
+            (grimoire_id,),
+        )
+        book = cur.fetchone()
+        if not book or not book["visible"]:
+            return _book_read_refusal(404, "Demo grimoire not found", "book_not_found")
+        if book["format"] != book_read.FORMAT:
+            return _book_read_not_computed()
+        if _etag_matches(request.headers.get("if-none-match"), f'"{book["version"]}"'):
+            return Response(status_code=304, headers=_book_read_headers(book["version"]))
+        cur.execute(
+            "SELECT version, body_gzip FROM book_read WHERE grimoire_id = %s AND format = %s",
+            (grimoire_id, book_read.FORMAT),
+        )
+        stored = cur.fetchone()
+    if not stored:  # deleted by a failed rebuild since the first read
+        return _book_read_not_computed()
+    headers = _book_read_headers(stored["version"])
+    body = bytes(stored["body_gzip"])
+    if _accepts_gzip(request.headers.get("accept-encoding")):
+        # GZipMiddleware passes a response that already names its Content-Encoding through untouched.
+        headers["Content-Encoding"] = "gzip"
+        return Response(content=body, media_type="application/json", headers=headers)
+    return Response(content=gzip.decompress(body), media_type="application/json", headers=headers)
 
 
 @router.post("/grimoires/{grimoire_id}/summon")

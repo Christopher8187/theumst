@@ -15,6 +15,7 @@ from ..schemas import (
     SectionReference,
     SemanticEmbeddingInput,
 )
+from . import book_read
 from .qdrant import qdrant_service
 
 
@@ -303,6 +304,7 @@ def submit_knowledge(payload: KnowledgeSubmission) -> dict[str, Any]:
 
     with transaction() as (_, cur):
         grimoire_id = _resolve_book(cur, payload.book)
+        book_read.lock(cur, grimoire_id)
         section_id = _resolve_section(cur, grimoire_id, payload.section)
         cur.execute("SELECT language_id FROM language WHERE language_id = %s", (payload.knowledge.language_id,))
         if not cur.fetchone():
@@ -340,6 +342,8 @@ def submit_knowledge(payload: KnowledgeSubmission) -> dict[str, Any]:
             "working_type": payload.knowledge.type,
         }
         pending_points = _queue_embeddings(cur, context=context, embeddings=payload.embeddings)
+        # The new object, and any new section, change the book's whole read before this commits.
+        book_read.refresh(cur, grimoire_id)
 
     indexed, failed = _index_pending_embeddings(pending_points)
     return {

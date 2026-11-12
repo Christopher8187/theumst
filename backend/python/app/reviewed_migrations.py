@@ -164,6 +164,11 @@ REVIEWED_MIGRATIONS = (
         sha256="c72e17fb85e69ff1c952c2a1e85ce2b2f2c043598b84d404eedc225fb27b4765",
         exclusive_markers=(Marker("column", "public.character.lease_install_id"),),
     ),
+    ReviewedMigration(
+        key="book_read_v1", filename="016_book_read.sql",
+        sha256="ccb308ef61a9bb91c380c50557b8bbd716c761b5f607cc750d784ee88953f0f4",
+        exclusive_markers=(Marker("relation", "public.book_read"),),
+    ),
 )
 
 
