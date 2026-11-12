@@ -39,7 +39,7 @@ def _book_ids(requested: Sequence[int]) -> tuple[list[int], list[int]]:
 def _line(grimoire_id: int, result: book_read.BookReadResult, seconds: float) -> str:
     built = result.built
     if built is None:
-        return f"book {grimoire_id:>4}  failed: {(result.error or '')[:200]}"
+        return f"book {grimoire_id:>4}  failed: {book_read.one_line(result.error or '', 200)}"
     counts = built.counts
     relations = "".join(
         f"  {relation_type} {count:>5}" for relation_type, count in sorted(counts["relations"].items())
@@ -60,7 +60,7 @@ def _one(grimoire_id: int, check: bool) -> book_read.BookReadResult:
             book_read.lock(cur, grimoire_id)
             return book_read.refresh(cur, grimoire_id)
     except Exception as exc:  # noqa: BLE001 - one book's failure must not stop the others
-        return book_read.BookReadResult("failed", error=str(exc) or type(exc).__name__)
+        return book_read.BookReadResult("failed", error=book_read.one_line(exc))
 
 
 def run(requested: Sequence[int] = (), *, check: bool = False, out=None) -> int:

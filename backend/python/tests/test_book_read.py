@@ -80,16 +80,17 @@ def test_the_version_is_the_hash_of_the_answer_without_it():
 class Rows:
     """Answers the build's queries from fixed rows, and keeps every statement."""
 
-    def __init__(self, *, book=True, sections=(), objects=(), edges=(), stored=None, fail=None):
+    def __init__(self, *, book=True, sections=(), objects=(), edges=(), stored=None, fail=None,
+                 failure="the build broke " + "x" * 600):
         self.book, self.sections, self.objects, self.edges = book, sections, objects, edges
-        self.stored, self.fail = stored, fail
+        self.stored, self.fail, self.failure = stored, fail, failure
         self.statements: list[tuple[str, object]] = []
 
     def execute(self, sql, params=None):
         text = " ".join(sql.split())
         self.statements.append((text, params))
         if self.fail and self.fail in text:
-            raise RuntimeError("the build broke " + "x" * 600)
+            raise RuntimeError(self.failure)
 
     def _last(self):
         return self.statements[-1][0]
@@ -206,6 +207,25 @@ def test_a_failed_build_deletes_the_row_and_lets_the_transaction_go_on():
         "DELETE FROM book_read WHERE grimoire_id = %s",
         "RELEASE SAVEPOINT book_read_build",
     ]
+
+
+def test_a_failed_build_reports_one_line_and_logs_it(caplog):
+    rows = book_rows(fail="FROM knowledge_graph_edge",
+                     failure="injected failure\nCONTEXT:  PL/pgSQL function f() line 1 at RAISE\n")
+    with caplog.at_level("WARNING", logger="app.services.book_read"):
+        result = book_read.refresh(rows, 18)
+    assert result.error == "injected failure CONTEXT: PL/pgSQL function f() line 1 at RAISE"
+    assert result.receipt() == {"error": result.error}
+    [record] = [record for record in caplog.records if record.name == "app.services.book_read"]
+    assert record.levelname == "WARNING"
+    assert "book 18" in record.getMessage() and result.error in record.getMessage()
+
+
+def test_one_line_collapses_whitespace_and_cuts():
+    assert book_read.one_line("a\n\tb  c\n") == "a b c"
+    assert book_read.one_line("x" * 600) == "x" * 500
+    assert book_read.one_line("y " * 300, 200) == ("y " * 100)[:200]
+    assert book_read.one_line(KeyError()) == "KeyError"
 
 
 def test_the_lock_is_per_book():
@@ -506,6 +526,30 @@ def test_a_check_that_finds_a_stale_or_missing_book_exits_2(command):
     assert lines[-1].startswith("3 books: 1 current, 1 stale, 1 missing, 0 failed;")
     outcomes.update({18: result("current", built), 19: result("current", built)})
     assert run(check=True)[0] == 0
+
+
+def test_a_multi_line_failure_stays_on_its_book_line(command):
+    built, outcomes, _, run = command
+    outcomes.update({
+        4: result("failed", error="injected book_read failure\nCONTEXT:  PL/pgSQL function f() line 1\n"),
+        8: result("written", built),
+    })
+    code, lines = run()
+    assert code == 1
+    assert lines[1] == "book    4  failed: injected book_read failure CONTEXT: PL/pgSQL function f() line 1"
+    assert lines[2].startswith("book    8  objects")
+    assert len(lines) == 4
+
+
+def test_an_exception_in_one_book_is_one_line(monkeypatch):
+    @contextmanager
+    def broken_transaction():
+        raise RuntimeError("server closed the connection\nunexpectedly\n")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(build_book_reads, "transaction", broken_transaction)
+    outcome = build_book_reads._one(8, False)
+    assert outcome.status == "failed" and outcome.error == "server closed the connection unexpectedly"
 
 
 def test_an_unknown_book_is_a_failure(command):

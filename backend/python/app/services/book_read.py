@@ -12,6 +12,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
@@ -21,6 +22,14 @@ from .graph_sidecar import build_contents_tree
 FORMAT = 1
 LOCK_NAME = "theumst.book_read"
 ERROR_LIMIT = 500
+
+logger = logging.getLogger(__name__)
+
+
+def one_line(error: BaseException | str, limit: int = ERROR_LIMIT) -> str:
+    """An error as one line of at most limit characters (PostgreSQL's carry CONTEXT lines)."""
+    text = error if isinstance(error, str) else (str(error) or type(error).__name__)
+    return " ".join(text.split())[:limit]
 
 _SECTIONS = """
 SELECT s.section_id, s.parent_section, s.section_number, ls.section_name,
@@ -269,7 +278,8 @@ def refresh(cur, grimoire_id: int) -> BookReadResult:
     """Rebuild one book's row inside the caller's transaction, which holds lock(cur, grimoire_id).
 
     The build runs in a savepoint. If it fails, the savepoint is rolled back, the book's
-    row is deleted so no stale answer is served, and the caller's transaction goes on.
+    row is deleted so no stale answer is served, the failure is logged for the operator
+    (a single-object submission reports nothing else), and the caller's transaction goes on.
     """
     cur.execute("SAVEPOINT book_read_build")
     try:
@@ -279,7 +289,13 @@ def refresh(cur, grimoire_id: int) -> BookReadResult:
         cur.execute("ROLLBACK TO SAVEPOINT book_read_build")
         cur.execute("DELETE FROM book_read WHERE grimoire_id = %s", (grimoire_id,))
         cur.execute("RELEASE SAVEPOINT book_read_build")
-        return BookReadResult("failed", error=(str(exc) or type(exc).__name__)[:ERROR_LIMIT])
+        error = one_line(exc)
+        logger.warning(
+            "Whole-book read of book %s failed and its row was removed; "
+            "run scripts.build_book_reads --book %s once the cause is fixed: %s",
+            grimoire_id, grimoire_id, error,
+        )
+        return BookReadResult("failed", error=error)
     cur.execute("RELEASE SAVEPOINT book_read_build")
     return BookReadResult(status, built=built)
 
