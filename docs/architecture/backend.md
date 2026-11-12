@@ -16,6 +16,8 @@ Services own storage adapters, knowledge persistence, Whole-book upload, graph s
 
 Web Demo routes require the Web Demo access point. Since 0.0.13 book reads under `/api/v1` require it too, from a key's account or, for book images, from a session. Master keys keep their reads. Reader queries filter book visibility and active knowledge. Personal writing belongs to its user independently of source availability. Publishing and administration retain their own authorized routes. Read [security](../security.md) before changing these distinctions.
 
+`services/book_read.py` builds, stores and checks a book's whole-book read. Whole-book upload and `services/knowledge.py` call it inside their transactions, `python -m scripts.build_book_reads` calls it for the books already held, and `routers/demo.py` serves the stored row without reading the book again. [Data architecture](data.md) owns the answer and [Web Demo behavior](../web-demo.md#whole-book-read) the route.
+
 Schema source lives in `backend/sql`. `reviewed_migrations.py` checks file hashes, baseline markers, applied schema markers and partial application. The explicit migration runner requires a verified backup digest. Backend lifespan calls the readiness check by default; historical replay is restricted to an explicitly configured local environment. [Operations](../operations.md) owns commands.
 
 The [backend README](../../backend/README.md) lists source entry points. [Test modules](../../backend/python/tests/README.md) explain actual service/database coverage.

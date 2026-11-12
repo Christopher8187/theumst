@@ -34,6 +34,17 @@ The script transfers one compressed archive, retains the previous remote source 
 
 Record the deployment artifact SHA-256 and source revision. Check root page, `/health`, `/health/db`, `/health/qdrant`, `/health/assets` and `/health/storage`, the protected demo access path and representative authenticated reading. Match the deployed revision to the annotated release tag. A static homepage check does not establish study persistence or visibility.
 
+## Whole-book reads
+
+Since 0.0.15 every book has a stored whole-book read, which ingestion rebuilds ([data architecture](architecture/data.md)). Build it by hand once right after deploying 0.0.15, after restoring PostgreSQL, after changing book facts with SQL, and after a release that raises its format. From the published source run `dev/sh/agent_build_book_reads.sh COM`, which runs the command in the backend container over SSH. On the server it is:
+
+```
+cd /var/www/theumst.com && sudo docker compose --env-file .env -f compose.deploy.yml exec -T backend \
+    python -m scripts.build_book_reads [--book ID ...] [--check]
+```
+
+Without `--book` it covers every grimoire in id order, hidden ones included. Each book has its own transaction, so one failure leaves the others written, and a second run changes nothing. It prints `book_read format 1`, a line per book and a total. A book's line gives its objects, sections, relations by type, shared crystals, raw and gzip bytes, the version's first 12 hex characters, and `written`, `unchanged` or `failed`. `--check` writes nothing and says `current`, `stale` or `missing` instead. It exits 0 when all is well, 1 when a book failed, and 2 when `--check` found a stale or missing book. Until it has run, the route answers 409 and clients fall back to per-object reads.
+
 ## Recovery and troubleshooting
 
 When an old website remains visible after deployment, compare `RELEASE_REVISION`, HTML asset references and `Cache-Control` from both HTTPS hostnames before attributing it to caching or DNS. Public and dashboard HTML must revalidate as described in [backend architecture](architecture/backend.md); [frontend architecture](architecture/frontend.md#desktop-navigation-and-entry-urls) owns the visible root URL. A current server response does not establish which build an open tab is running. Inspect that tab, then reload while bypassing cache with Ctrl+Shift+R when needed. Record unavailable browser observations instead of claiming the cause was reproduced. Changing window URLs is not a cache fix.

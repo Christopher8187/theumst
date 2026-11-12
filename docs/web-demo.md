@@ -30,6 +30,14 @@ Crystallization retrieves actual same-crystal instances, excluding hidden source
 
 Show supplied summary and ISBN, falling back to the title and an unavailable marker when absent. Contents starts at top-level chapters, expands descendants and renders a bounded list. Support English, Chinese and Japanese throughout the interface; source text remains unchanged. [Atlas](atlas.md) owns display details and [testing objectives](testing/web-demo.md) own acceptance checks. The implementation remains a release candidate until recorded verification completes.
 
+## Whole-book read
+
+Since 0.0.15 `GET /api/demo/grimoires/{grimoire_id}/book-read` returns a whole book in one answer: its sections, active objects in reader order, authored relations and shared crystals. Ingestion stores it, as [data architecture](architecture/data.md) explains. The route needs a session with Web Demo access and writes nothing. It does not mark the book opened, so a client that opens books this way sends `POST /api/demo/grimoires/{grimoire_id}/summon` itself.
+
+It checks the session first and answers 401 or 403 as every Demo route does. Then it checks the book, with 404 `{"detail": "Demo grimoire not found", "code": "book_not_found"}` for an unknown or hidden one. A book with no stored answer in format 1 gets 409 `{"detail": "This book's whole read has not been computed yet", "code": "book_read_not_computed"}`. Refusals carry `Cache-Control: no-store`.
+
+A 200 or 304 carries `ETag: "<version>"`, the two weeks of `Cache-Control: private, max-age=1209600`, and `Vary: Authorization, Cookie, Accept-Encoding`. `If-None-Match` matches when any listed tag equals the ETag, with or without `W/`, or is `*`, and the answer is then 304 with no body. A client whose `Accept-Encoding` allows gzip gets the stored gzip bytes with `Content-Encoding: gzip`; any other gets the JSON uncompressed. The Web Demo's own 0.0.7 build does not read this route.
+
 ## Access
 
 An account enters the Web Demo when its authority has the `demo` access point, as betatester, manager, admin and superadmin do. A user asks for access on the dashboard, and an admin's or superadmin's approval makes that account a betatester. The internal proxy checks this access for the session before serving the Demo, and the Demo's pages load book images with the same session. Since 0.0.13 reading books through an API key needs the same access, for the knowledge list, one object and its book images under `/api/v1`. Christopher decided this in round 4, Q39, of the UMST online accounts grilling in the Parent Repo's `docs/plans/`, so that Artin's Algebra, which is under copyright, stays with approved accounts. Another account's key gets 403 `demo_access_required`. Master keys keep their reads, and the game's calls need no Demo access. [Security](security.md) owns the boundary.
