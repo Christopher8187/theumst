@@ -1,10 +1,11 @@
-"""The whole-book read (0.0.15): its answer, the route's answers and headers, migration 016,
-and the operator command, with scripted stand-ins for PostgreSQL.
+"""The whole-book reads (0.0.15, and the game's in 0.0.16): their answers, the Web Demo
+route's answers and headers, migrations 016 and 017, and the operator command, with scripted
+stand-ins for PostgreSQL.
 
-These establish the shape and order of the answer built from given rows, the order of the
+These establish the shape and order of the answers built from given rows, the order of the
 route's checks, its caching headers, that one gzip layer reaches the client, and the
-command's lines and exit codes. test_book_read_postgres.py checks the same against
-PostgreSQL, through ingestion and the application.
+command's lines and exit codes. test_game_books.py checks the game's routes the same way, and
+test_book_read_postgres.py checks both against PostgreSQL, through ingestion and the application.
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ import io
 import json
 import re
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -29,9 +31,13 @@ from scripts import build_book_reads
 
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATION_PATH = ROOT / "backend/sql/016_book_read.sql"
+GAME_MIGRATION_PATH = ROOT / "backend/sql/017_book_game_read.sql"
 SCHEMA = (ROOT / "backend/sql/schema.sql").read_text(encoding="utf-8")
 BOOK_READ_MIGRATION = next(
     migration for migration in reviewed_migrations.REVIEWED_MIGRATIONS if migration.key == "book_read_v1"
+)
+BOOK_GAME_READ_MIGRATION = next(
+    migration for migration in reviewed_migrations.REVIEWED_MIGRATIONS if migration.key == "book_game_read_v1"
 )
 ROUTE = "/api/demo/grimoires/{grimoire_id}/book-read"
 TWO_WEEKS = "private, max-age=1209600"
@@ -81,9 +87,10 @@ class Rows:
     """Answers the build's queries from fixed rows, and keeps every statement."""
 
     def __init__(self, *, book=True, sections=(), objects=(), edges=(), stored=None, fail=None,
-                 failure="the build broke " + "x" * 600):
+                 failure="the build broke " + "x" * 600, texts=None, figures=(), pages=(), stored_game=None):
         self.book, self.sections, self.objects, self.edges = book, sections, objects, edges
         self.stored, self.fail, self.failure = stored, fail, failure
+        self.texts, self.figures, self.pages, self.stored_game = texts, figures, pages, stored_game
         self.statements: list[tuple[str, object]] = []
 
     def execute(self, sql, params=None):
@@ -101,10 +108,21 @@ class Rows:
             return {"grimoire_id": 18, "graph_capability": "semantic_relations"} if self.book else None
         if sql.startswith("SELECT format, version FROM book_read"):
             return self.stored
+        if sql.startswith("SELECT format, version FROM book_game_read"):
+            return self.stored_game
         raise AssertionError(f"unexpected fetchone: {sql}")
 
     def fetchall(self):
         sql = self._last()
+        if "lk.statement" in sql:
+            if self.texts is not None:
+                return list(self.texts)
+            return [{"id": row["id"], "statement": f"Statement {row['id']}", "working": "",
+                     "working_summary": None} for row in self.objects]
+        if "link_type = 'figure'" in sql:
+            return list(self.figures)
+        if "link_type = 'page'" in sql:
+            return list(self.pages)
         if "FROM section s" in sql:
             return list(self.sections)
         if "FROM knowledge k" in sql:
@@ -172,6 +190,163 @@ def test_a_book_without_relations_has_empty_relations():
 def test_a_missing_book_cannot_be_built():
     with pytest.raises(LookupError):
         book_read.build(Rows(book=False), 18)
+    with pytest.raises(LookupError):
+        book_read.build_game(Rows(book=False), 18)
+
+
+# --- the game's answer (0.0.16) --------------------------------------------------------------
+
+UPLOADED = datetime(2026, 11, 12, 0, 0, 0, 123456, tzinfo=timezone.utc)
+
+
+def figure(knowledge_id, image, storage_key, **extra):
+    row = {"knowledge_id": knowledge_id, "source_image_id": image, "semantic_context_name": f"Figure {image}",
+           "storage_key": storage_key, "url": f"https://bucket.example/{image}.png", "metadata": {"page": 4},
+           "updated_at": UPLOADED}
+    row.update(extra)
+    return row
+
+
+def scan(knowledge_id, image, page, printed, **extra):
+    row = {"knowledge_id": knowledge_id, "source_image_id": image, "storage_key": f"books/18/pages/{image}.jpg",
+           "url": "", "metadata": {"page": page, "printed_page": printed}, "updated_at": UPLOADED}
+    row.update(extra)
+    return row
+
+
+def game_rows(**options):
+    rows = book_rows(**options)
+    rows.texts = [
+        {"id": 1, "statement": r"Let $X$ be a space.", "working": r"Take $U \\subseteq X$.", "working_summary": "Open."},
+        {"id": 2, "statement": "A statement.", "working": None, "working_summary": None},
+        {"id": 3, "statement": "Three.", "working": "", "working_summary": ""},
+        {"id": 4, "statement": "Four.", "working": "w", "working_summary": None},
+    ]
+    rows.figures = [
+        figure(1, "fig-2", "books/18/images/fig 2.png"),
+        figure(1, "fig-7", "", metadata={"page": "iv"}),  # no storage key: the stored url stays
+        figure(3, "fig-2", "books/18/images/fig 2.png", semantic_context_name=None, metadata={"page": True},
+               updated_at=datetime(2026, 11, 12, 1, 2, 3)),  # a naive time is UTC
+    ]
+    rows.pages = [
+        scan(3, "p-012", 12, "4"), scan(3, "p-013", 13, 5),
+        scan(1, "p-012", 12, "4"),
+        scan(4, "p-099", None, ["x"], metadata={"page": "99"}),
+    ]
+    return rows
+
+
+def test_the_game_answer_is_the_web_demos_with_texts_figures_and_pages():
+    rows = game_rows()
+    game = book_read.build_game(rows, 18).answer
+    web = book_read.build(book_rows(), 18).answer
+    assert set(game) == set(web) | {"pages"}
+    for key in ("format", "grimoire_id", "graph_capability", "sections", "relations", "crystals"):
+        assert game[key] == web[key], key
+    added = {"statement", "working", "working_summary", "figures", "pages"}
+    assert [item["id"] for item in game["objects"]] == [3, 1, 2, 4]  # the Web Demo's order
+    for item, plain in zip(game["objects"], web["objects"]):
+        assert set(item) == set(plain) | added
+        assert {key: item[key] for key in plain} == plain
+    assert game["counts"] == {**web["counts"], "figures": 3, "pages": 3}
+
+    by_id = {item["id"]: item for item in game["objects"]}
+    assert (by_id[1]["statement"], by_id[1]["working"], by_id[1]["working_summary"]) == (
+        r"Let $X$ be a space.", r"Take $U \\subseteq X$.", "Open.")
+    assert by_id[2]["working"] == "" and by_id[2]["working_summary"] is None
+    assert by_id[3]["working_summary"] == ""  # as stored
+    assert by_id[1]["figures"] == [
+        {"image": "fig-2", "url": "/api/v1/storage/books/18/images/fig%202.png", "caption": "Figure fig-2",
+         "page": 4, "updated_at": "2026-11-12T00:00:00Z"},
+        {"image": "fig-7", "url": "https://bucket.example/fig-7.png", "caption": "Figure fig-7",
+         "page": None, "updated_at": "2026-11-12T00:00:00Z"},
+    ]
+    assert by_id[3]["figures"] == [
+        {"image": "fig-2", "url": "/api/v1/storage/books/18/images/fig%202.png", "caption": None,
+         "page": None, "updated_at": "2026-11-12T01:02:03Z"},
+    ]
+    assert by_id[2]["figures"] == [] and by_id[2]["pages"] == []
+    assert by_id[3]["pages"] == ["p-012", "p-013"] and by_id[1]["pages"] == ["p-012"]
+    assert game["pages"] == {
+        "p-012": {"url": "/api/v1/storage/books/18/pages/p-012.jpg", "page": 12, "printed_page": "4",
+                  "updated_at": "2026-11-12T00:00:00Z"},
+        "p-013": {"url": "/api/v1/storage/books/18/pages/p-013.jpg", "page": 13, "printed_page": 5,
+                  "updated_at": "2026-11-12T00:00:00Z"},
+        "p-099": {"url": "/api/v1/storage/books/18/pages/p-099.jpg", "page": None, "printed_page": None,
+                  "updated_at": "2026-11-12T00:00:00Z"},
+    }
+
+
+def test_the_game_answer_reads_texts_figures_and_pages_with_one_query_each():
+    rows = game_rows()
+    book_read.build_game(rows, 18)
+    queries = [(sql, params) for sql, params in rows.statements]
+    assert len(queries) == 7  # the book, sections, objects, relations; texts, figures, pages
+    texts, figures, pages = queries[4:]
+    assert "lk.statement" in texts[0] and texts[1] == (18,)
+    assert "link_type = 'figure'" in figures[0] and figures[1] == (18, 18)
+    assert "b.knowledge_id IN" in figures[0]  # a figure linked before migration 012
+    assert "link_type = 'page'" in pages[0] and pages[1] == (18,)
+    for sql, _ in queries[4:]:
+        assert "k.is_active" in sql
+    assert "bi.is_active" in figures[0] and "bi.is_active" in pages[0]
+
+
+def test_a_book_without_objects_has_an_empty_game_answer():
+    rows = Rows(sections=[section(1801, None, "001", "1 Topological spaces")])
+    answer = book_read.build_game(rows, 18).answer
+    assert answer["objects"] == [] and answer["pages"] == {} and answer["relations"] == {}
+    assert answer["counts"] == {"sections": 1, "objects": 0, "shared_crystals": 0, "relations": {},
+                                "figures": 0, "pages": 0}
+
+
+def test_the_game_answers_version_moves_with_an_images_time():
+    first = book_read.build_game(game_rows(), 18)
+    assert book_read.build_game(game_rows(), 18).body_gzip == first.body_gzip
+    later = game_rows()
+    later.pages = [dict(row, updated_at=datetime(2026, 11, 13, tzinfo=timezone.utc)) for row in later.pages]
+    assert book_read.build_game(later, 18).version != first.version
+
+
+def test_the_game_row_is_written_to_its_own_table_in_its_own_savepoint():
+    rows = game_rows()
+    result = book_read.refresh(rows, 18, book_read.GAME)
+    assert result.status == "written"
+    assert rows.ran("INSERT INTO book_game_read") and not rows.ran("INSERT INTO book_read ")
+    assert [sql for sql, _ in rows.statements if "SAVEPOINT" in sql] == [
+        "SAVEPOINT book_game_read_build", "RELEASE SAVEPOINT book_game_read_build",
+    ]
+    again = game_rows(stored_game={"format": 1, "version": result.built.version})
+    assert book_read.refresh(again, 18, book_read.GAME).status == "unchanged"
+    assert not again.ran("INSERT INTO book_game_read")
+
+
+def test_both_rows_are_rebuilt_and_a_failed_game_build_removes_only_its_row(caplog):
+    rows = game_rows(fail="lk.statement", failure="no texts")
+    with caplog.at_level("WARNING", logger="app.services.book_read"):
+        results = book_read.refresh_all(rows, 18)
+    assert list(results) == ["book_read", "book_game_read"]
+    assert results["book_read"].status == "written"
+    assert results["book_game_read"].status == "failed" and results["book_game_read"].error == "no texts"
+    assert rows.ran("INSERT INTO book_read ") and not rows.ran("INSERT INTO book_game_read")
+    assert rows.ran("DELETE FROM book_game_read") == [(18,)] and not rows.ran("DELETE FROM book_read ")
+    [record] = [record for record in caplog.records if record.name == "app.services.book_read"]
+    assert record.getMessage().startswith("Game whole-book read of book 18 failed")
+
+
+def test_a_check_that_cannot_build_reports_a_failure_and_lets_the_other_row_go_on():
+    rows = game_rows(fail="lk.statement", failure="no texts")
+    assert book_read.check(rows, 18, book_read.GAME).status == "failed"
+    assert [sql for sql, _ in rows.statements if "SAVEPOINT" in sql] == [
+        "SAVEPOINT book_game_read_check", "ROLLBACK TO SAVEPOINT book_game_read_check",
+        "RELEASE SAVEPOINT book_game_read_check",
+    ]
+    assert book_read.check(game_rows(), 18, book_read.GAME).status == "missing"
+
+
+def test_only_the_two_rows_are_known():
+    with pytest.raises(ValueError):
+        book_read.stored(Rows(), 18, "character")
 
 
 def test_a_rebuild_writes_a_new_version_and_nothing_for_the_same_one():
@@ -250,13 +425,49 @@ def test_ingestion_and_submission_lock_then_rebuild_inside_their_transactions():
 
     ingest = getsource(book_ingestion.ingest_book_archive)
     assert ingest.index("_upsert_book(") < ingest.index("book_read.lock(") < ingest.index("_deactivate_book_state(")
-    assert ingest.index("apply_graph_sidecar(") < ingest.index("book_read.refresh(") < ingest.index(
+    assert ingest.index("apply_graph_sidecar(") < ingest.index("book_read.refresh_all(") < ingest.index(
         "_stale_embedding_points(")
+    assert ingest.index("_store_images(") < ingest.index("_finalize_images(")
     assert '"book_read": book_read_result.receipt()' in ingest
+    assert '"book_game_read": book_game_read_result.receipt()' in ingest
     submit = getsource(knowledge.submit_knowledge)
     assert submit.index("_resolve_book(") < submit.index("book_read.lock(") < submit.index("_resolve_section(")
-    assert submit.index("_queue_embeddings(") < submit.index("book_read.refresh(") < submit.index(
+    assert submit.index("_queue_embeddings(") < submit.index("book_read.refresh_all(") < submit.index(
         "_index_pending_embeddings(")
+
+
+def test_the_game_row_is_rebuilt_once_the_images_are_active_again(monkeypatch):
+    """_deactivate_book_state turns a book's images off in the upload's transaction, so the game's
+    answer built there names no figure or scan. _finalize_images takes the lock, writes the image rows
+    and rebuilds the game's row in its own transaction, whether the upload had images or not."""
+    from app.services import book_ingestion
+
+    calls = []
+
+    @contextmanager
+    def recorded_transaction():
+        calls.append("transaction")
+        yield None, "cursor"
+
+    def write_images(cur, images, grimoire_id):
+        calls.append(("images", len(images)))
+        return {"figure": 2, "page": 1}
+
+    rebuilt = book_read.BookReadResult("written")
+
+    def refresh(cur, grimoire_id, read):
+        calls.append(("refresh", grimoire_id, read))
+        return rebuilt
+
+    monkeypatch.setattr(book_ingestion, "transaction", recorded_transaction)
+    monkeypatch.setattr(book_read, "lock", lambda cur, grimoire_id: calls.append(("lock", grimoire_id)))
+    monkeypatch.setattr(book_ingestion, "_write_image_rows", write_images)
+    monkeypatch.setattr(book_read, "refresh", refresh)
+    assert book_ingestion._finalize_images([{"source_image_id": "a"}], 18) == ({"figure": 2, "page": 1}, rebuilt)
+    assert calls == ["transaction", ("lock", 18), ("images", 1), ("refresh", 18, "book_game_read")]
+    calls.clear()
+    book_ingestion._finalize_images([], 18)
+    assert calls == ["transaction", ("lock", 18), ("images", 0), ("refresh", 18, "book_game_read")]
 
 
 # --- the route ----------------------------------------------------------------------------
@@ -428,7 +639,7 @@ def test_a_non_integer_id_gets_fastapis_422(route):
     ("*;q=0", False), ("br, *;q=0.1", True), ("gzip;q=nonsense", False),
 ])
 def test_accept_encoding_is_read_with_its_qualities(header, allowed):
-    assert demo._accepts_gzip(header) is allowed
+    assert book_read.accepts_gzip(header) is allowed
 
 
 # --- migration 016 ---------------------------------------------------------------------------
@@ -453,8 +664,8 @@ def test_the_pin_is_the_sha256_of_the_file_as_git_checks_it_out():
     data = MIGRATION_PATH.read_bytes()
     assert b"\r" not in data  # .gitattributes keeps *.sql at LF on every machine
     assert hashlib.sha256(data).hexdigest() == BOOK_READ_MIGRATION.sha256
-    assert reviewed_migrations.REVIEWED_MIGRATIONS[-1] is BOOK_READ_MIGRATION
-    assert reviewed_migrations.REVIEWED_MIGRATIONS[-2].key == "character_lease_install_v1"
+    assert reviewed_migrations.REVIEWED_MIGRATIONS[-2] is BOOK_READ_MIGRATION
+    assert reviewed_migrations.REVIEWED_MIGRATIONS[-3].key == "character_lease_install_v1"
 
 
 def test_the_readiness_marker_is_the_table():
@@ -462,6 +673,33 @@ def test_the_readiness_marker_is_the_table():
         ("relation", "public.book_read"),
     ]
     assert not BOOK_READ_MIGRATION.shared_markers
+
+
+# --- migration 017 ---------------------------------------------------------------------------
+
+def game_table(text: str) -> str:
+    match = re.search(r"CREATE TABLE IF NOT EXISTS book_game_read \((.*?)\n\);", text, re.DOTALL)
+    assert match
+    return match.group(1)
+
+
+def test_migration_017_and_schema_make_the_same_table_as_book_reads():
+    migration = GAME_MIGRATION_PATH.read_text(encoding="utf-8")
+    assert game_table(migration) == game_table(SCHEMA) == table(SCHEMA)
+    statements = [line for line in migration.splitlines() if line.strip() and not line.startswith("--")]
+    assert statements[0] == "CREATE TABLE IF NOT EXISTS book_game_read ("  # one statement, and no rows
+
+
+def test_017_is_pinned_after_016_with_its_table_as_the_marker():
+    data = GAME_MIGRATION_PATH.read_bytes()
+    assert b"\r" not in data
+    assert hashlib.sha256(data).hexdigest() == BOOK_GAME_READ_MIGRATION.sha256
+    assert reviewed_migrations.REVIEWED_MIGRATIONS[-1] is BOOK_GAME_READ_MIGRATION
+    assert BOOK_GAME_READ_MIGRATION.filename == "017_book_game_read.sql"
+    assert [(marker.kind, marker.name) for marker in BOOK_GAME_READ_MIGRATION.exclusive_markers] == [
+        ("relation", "public.book_game_read"),
+    ]
+    assert not BOOK_GAME_READ_MIGRATION.shared_markers
 
 
 # --- the operator command ------------------------------------------------------------------
@@ -473,12 +711,13 @@ def result(status, built=None, error=None):
 @pytest.fixture
 def command(monkeypatch):
     built = book_read.build(book_rows(), 18)
-    outcomes: dict[int, book_read.BookReadResult] = {}
+    game_built = book_read.build_game(game_rows(), 18)
+    outcomes: dict[int, tuple[book_read.BookReadResult, book_read.BookReadResult]] = {}
     calls: list[tuple[int, bool]] = []
 
     def one(grimoire_id, check):
         calls.append((grimoire_id, check))
-        return outcomes[grimoire_id]
+        return list(zip(book_read.READS, outcomes[grimoire_id], (0.01, 0.02)))
 
     monkeypatch.setattr(build_book_reads, "_one", one)
     monkeypatch.setattr(build_book_reads, "_book_ids",
@@ -491,73 +730,124 @@ def command(monkeypatch):
         code = build_book_reads.run(*args, out=out, **options)
         return code, out.getvalue().splitlines()
 
-    return built, outcomes, calls, run
+    return built, game_built, outcomes, calls, run
 
 
-def test_the_command_prints_a_line_per_book_and_a_total(command):
-    built, outcomes, calls, run = command
-    outcomes.update({8: result("written", built), 18: result("unchanged", built), 21: result("failed", error="boom")})
+def test_the_command_prints_a_line_per_row_and_a_total(command):
+    built, game_built, outcomes, calls, run = command
+    outcomes.update({
+        8: (result("written", built), result("written", game_built)),
+        18: (result("unchanged", built), result("written", game_built)),
+        21: (result("failed", error="boom"), result("failed", error="boom")),
+    })
     code, lines = run()
     assert code == 1
-    assert lines[0] == "book_read format 1"
+    assert lines[0] == "book_read format 1; book_game_read format 1"
     assert re.fullmatch(
-        r"book    8  objects     4  sections    2  dependency     2  supports     1  crystals    1"
-        r"  raw +[\d,]+  gzip +[\d,]+  " + built.version[:12] + r"  written  +\d+\.\d\d s",
+        r"book    8  book_read       objects     4  sections    2  dependency     2  supports     1  crystals    1"
+        r"  raw +[\d,]+  gzip +[\d,]+  " + built.version[:12] + r"  written    0\.01 s",
         lines[1],
     ), lines[1]
-    assert lines[2].startswith("book   18  objects     4  ") and f"  {built.version[:12]}  unchanged  " in lines[2]
-    assert lines[3] == "book   21  failed: boom"
-    assert re.fullmatch(r"3 books: 1 written, 1 unchanged, 1 failed; [\d,]+ bytes gzipped in all; \d+\.\d s", lines[4])
+    assert re.fullmatch(
+        r"book    8  book_game_read  objects     4  figures     3  pages     3"
+        r"  raw +[\d,]+  gzip +[\d,]+  " + game_built.version[:12] + r"  written    0\.02 s",
+        lines[2],
+    ), lines[2]
+    assert lines[3].startswith("book   18  book_read       objects     4  ") and "  unchanged  " in lines[3]
+    assert lines[4].startswith("book   18  book_game_read  objects     4  ") and "  written  " in lines[4]
+    assert lines[5] == "book   21  book_read       failed: boom"
+    assert lines[6] == "book   21  book_game_read  failed: boom"
+    assert re.fullmatch(r"3 books: book_read 1 written, 1 unchanged, 1 failed; "
+                        r"book_game_read 2 written, 0 unchanged, 1 failed; [\d,]+ bytes gzipped in all; \d+\.\d s",
+                        lines[7]), lines[7]
+    assert len(lines) == 8
     assert calls == [(8, False), (18, False), (21, False)]
+    for line in lines[1:5]:
+        assert int(line.split()[1]) in (8, 18) and line.split()[-3] in ("written", "unchanged")
 
 
 def test_the_command_exits_0_when_nothing_failed(command):
-    built, outcomes, _, run = command
-    outcomes.update({8: result("written", built), 18: result("unchanged", built)})
+    built, game_built, outcomes, _, run = command
+    outcomes.update({8: (result("written", built), result("written", game_built)),
+                     18: (result("unchanged", built), result("unchanged", game_built))})
     assert run()[0] == 0
 
 
-def test_a_check_that_finds_a_stale_or_missing_book_exits_2(command):
-    built, outcomes, calls, run = command
-    outcomes.update({8: result("current", built), 18: result("stale", built), 19: result("missing", built)})
+def test_a_failed_game_row_alone_fails_the_run(command):
+    built, _, outcomes, _, run = command
+    outcomes.update({8: (result("written", built), result("failed", error="no texts"))})
+    code, lines = run()
+    assert code == 1 and lines[2] == "book    8  book_game_read  failed: no texts"
+
+
+def test_a_check_that_finds_a_stale_or_missing_row_exits_2(command):
+    built, game_built, outcomes, calls, run = command
+    outcomes.update({
+        8: (result("current", built), result("current", game_built)),
+        18: (result("current", built), result("stale", game_built)),
+        19: (result("missing", built), result("current", game_built)),
+    })
     code, lines = run(check=True)
     assert code == 2
     assert calls == [(8, True), (18, True), (19, True)]
-    assert lines[-1].startswith("3 books: 1 current, 1 stale, 1 missing, 0 failed;")
-    outcomes.update({18: result("current", built), 19: result("current", built)})
+    assert lines[-1].startswith("3 books: book_read 2 current, 0 stale, 1 missing, 0 failed; "
+                                "book_game_read 2 current, 1 stale, 0 missing, 0 failed;")
+    outcomes.update({18: (result("current", built), result("current", game_built)),
+                     19: (result("current", built), result("current", game_built))})
     assert run(check=True)[0] == 0
 
 
 def test_a_multi_line_failure_stays_on_its_book_line(command):
-    built, outcomes, _, run = command
-    outcomes.update({
-        4: result("failed", error="injected book_read failure\nCONTEXT:  PL/pgSQL function f() line 1\n"),
-        8: result("written", built),
-    })
+    built, game_built, outcomes, _, run = command
+    failure = result("failed", error="injected book_read failure\nCONTEXT:  PL/pgSQL function f() line 1\n")
+    outcomes.update({4: (failure, failure), 8: (result("written", built), result("written", game_built))})
     code, lines = run()
     assert code == 1
-    assert lines[1] == "book    4  failed: injected book_read failure CONTEXT: PL/pgSQL function f() line 1"
-    assert lines[2].startswith("book    8  objects")
-    assert len(lines) == 4
+    assert lines[1] == "book    4  book_read       failed: injected book_read failure CONTEXT: PL/pgSQL function f() line 1"
+    assert lines[3].startswith("book    8  book_read       objects")
+    assert len(lines) == 6
 
 
-def test_an_exception_in_one_book_is_one_line(monkeypatch):
+def test_one_book_builds_both_rows_under_its_lock(monkeypatch):
+    cursor = game_rows()
+
+    @contextmanager
+    def one_transaction():
+        yield None, cursor
+
+    monkeypatch.setattr(build_book_reads, "transaction", one_transaction)
+    rows = build_book_reads._one(18, False)
+    assert [(read, outcome.status) for read, outcome, _ in rows] == [("book_read", "written"), ("book_game_read", "written")]
+    assert cursor.statements[0] == ("SELECT pg_advisory_xact_lock(hashtext(%s), %s)", ("theumst.book_read", 18))
+
+    cursor = game_rows(fail="lk.statement", failure="no texts")
+    statuses = [(read, outcome.status) for read, outcome, _ in build_book_reads._one(18, True)]
+    assert statuses == [("book_read", "missing"), ("book_game_read", "failed")]
+    assert cursor.statements[0] == ("SET TRANSACTION READ ONLY", None)
+    assert not [sql for sql, _ in cursor.statements if sql.startswith(("INSERT", "UPDATE", "DELETE"))]
+
+
+def test_an_exception_in_one_book_is_one_line_on_both_rows(monkeypatch):
     @contextmanager
     def broken_transaction():
         raise RuntimeError("server closed the connection\nunexpectedly\n")
         yield  # pragma: no cover
 
     monkeypatch.setattr(build_book_reads, "transaction", broken_transaction)
-    outcome = build_book_reads._one(8, False)
-    assert outcome.status == "failed" and outcome.error == "server closed the connection unexpectedly"
+    rows = build_book_reads._one(8, False)
+    assert [read for read, _, _ in rows] == ["book_read", "book_game_read"]
+    for _, outcome, _ in rows:
+        assert outcome.status == "failed" and outcome.error == "server closed the connection unexpectedly"
 
 
 def test_an_unknown_book_is_a_failure(command):
-    built, outcomes, _, run = command
-    outcomes.update({8: result("written", built)})
+    built, game_built, outcomes, _, run = command
+    outcomes.update({8: (result("written", built), result("written", game_built))})
     code, lines = run([8, 404])
     assert code == 1
     assert "book  404  failed: no such book" in lines
+    assert lines[-1].startswith("2 books: book_read 1 written, 0 unchanged, 1 failed; "
+                                "book_game_read 1 written, 0 unchanged, 1 failed;")
 
 
 def test_the_command_reads_its_options(monkeypatch):

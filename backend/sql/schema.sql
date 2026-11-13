@@ -914,3 +914,16 @@ CREATE TABLE IF NOT EXISTS book_read (
     object_count int NOT NULL CHECK (object_count >= 0),
     built_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- The game's whole-book read (migration 017): book_read's answer with each
+-- object's texts, figures and page scans. One row per book, written by
+-- ingestion and by scripts.build_book_reads; deleting a book deletes its row.
+CREATE TABLE IF NOT EXISTS book_game_read (
+    grimoire_id int PRIMARY KEY REFERENCES grimoire(grimoire_id) ON DELETE CASCADE,
+    format int NOT NULL CHECK (format > 0),
+    version text NOT NULL CHECK (version ~ '^[0-9a-f]{64}$'),
+    body_gzip bytea NOT NULL,
+    raw_bytes int NOT NULL CHECK (raw_bytes > 0),
+    object_count int NOT NULL CHECK (object_count >= 0),
+    built_at timestamptz NOT NULL DEFAULT now()
+);

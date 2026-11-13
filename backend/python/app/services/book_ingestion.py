@@ -1087,11 +1087,13 @@ def _write_image_rows(cur, images: list[dict[str, Any]], grimoire_id: int) -> di
     return counts
 
 
-def _finalize_images(images: list[dict[str, Any]], grimoire_id: int) -> dict[str, int]:
-    if not images:
-        return dict.fromkeys(IMAGE_LINK_TYPES, 0)
+def _finalize_images(images: list[dict[str, Any]], grimoire_id: int) -> tuple[dict[str, int], book_read.BookReadResult]:
+    """Store the book's image rows and links, then rebuild the game's whole-book read, which names the
+    book's figures and page scans: _deactivate_book_state turned them off in the upload's transaction."""
     with transaction() as (_, cur):
-        return _write_image_rows(cur, images, grimoire_id)
+        book_read.lock(cur, grimoire_id)
+        counts = _write_image_rows(cur, images, grimoire_id)
+        return counts, book_read.refresh(cur, grimoire_id, book_read.GAME)
 
 
 async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
@@ -1125,8 +1127,8 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
                     batch_size=DATABASE_BATCH_SIZE,
                 )
                 graph_capability = graph_receipt.capability
-            # The whole-book read commits with the facts it describes; a failed build leaves no row.
-            book_read_result = book_read.refresh(cur, grimoire_id)
+            # The whole-book reads commit with the facts they describe; a failed build leaves no row.
+            book_read_result = book_read.refresh_all(cur, grimoire_id)[book_read.WEB]
             stale_points = _stale_embedding_points(cur, grimoire_id)
 
         stale_by_collection: dict[str, list[str]] = defaultdict(list)
@@ -1182,7 +1184,7 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
             sections=sections,
             objects=objects,
         )
-        link_counts = _finalize_images(stored_images, grimoire_id)
+        link_counts, book_game_read_result = _finalize_images(stored_images, grimoire_id)
     finally:
         bundle.close()
 
@@ -1201,4 +1203,5 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
             "receipt_id": None,
         },
         "book_read": book_read_result.receipt(),
+        "book_game_read": book_game_read_result.receipt(),
     }

@@ -205,9 +205,14 @@ def ids_by_key(grimoire_id):
     return {row["source_key"]: row["knowledge_id"] for row in rows}
 
 
-def stored_row(grimoire_id):
-    return sql_one("SELECT format, version, body_gzip, raw_bytes, object_count, built_at FROM book_read "
+def stored_row(grimoire_id, table="book_read"):
+    assert table in book_read.READS
+    return sql_one(f"SELECT format, version, body_gzip, raw_bytes, object_count, built_at FROM {table} "
                    "WHERE grimoire_id = %s", (grimoire_id,))
+
+
+def game_row(grimoire_id):
+    return stored_row(grimoire_id, "book_game_read")
 
 
 def read(client, reader, grimoire_id, **headers):
@@ -518,31 +523,42 @@ def test_the_command_run_twice_changes_nothing_the_second_time(client, publisher
     with database.transaction() as (_, cur):
         cur.execute("UPDATE grimoire SET source_metadata = source_metadata || '{\"demo\": false}' WHERE grimoire_id = %s",
                     (hidden,))
-    uploaded = {row["grimoire_id"]: row["version"] for row in sql_all("SELECT grimoire_id, version FROM book_read")}
+    uploaded = {table: {row["grimoire_id"]: row["version"]
+                        for row in sql_all(f"SELECT grimoire_id, version FROM {table}")}
+                for table in book_read.READS}
     with database.transaction() as (_, cur):
         cur.execute("DELETE FROM book_read")
+        cur.execute("DELETE FROM book_game_read")
     books = [row["grimoire_id"] for row in sql_all("SELECT grimoire_id FROM grimoire ORDER BY grimoire_id")]
 
     first = io.StringIO()
     assert build_book_reads.run(out=first) == 0
     lines = first.getvalue().splitlines()
-    assert lines[0] == "book_read format 1"
-    assert [int(line.split()[1]) for line in lines[1:-1]] == books  # every book, hidden ones too, in id order
+    assert lines[0] == "book_read format 1; book_game_read format 1"
+    # every book, hidden ones too, in id order, a line per row
+    assert [(int(line.split()[1]), line.split()[2]) for line in lines[1:-1]] == [
+        (grimoire_id, table) for grimoire_id in books for table in book_read.READS
+    ]
     assert all(line.split()[-3] == "written" for line in lines[1:-1])
-    assert lines[-1].startswith(f"{len(books)} books: {len(books)} written, 0 unchanged, 0 failed; ")
-    rows = {row["grimoire_id"]: row for row in sql_all("SELECT * FROM book_read")}
-    assert set(rows) == set(books)
-    for grimoire_id, version in uploaded.items():
-        assert rows[grimoire_id]["version"] == version  # the same facts give ingestion's version
+    assert lines[-1].startswith(f"{len(books)} books: book_read {len(books)} written, 0 unchanged, 0 failed; "
+                                f"book_game_read {len(books)} written, 0 unchanged, 0 failed; ")
+    rows = {table: {row["grimoire_id"]: row for row in sql_all(f"SELECT * FROM {table}")} for table in book_read.READS}
+    for table in book_read.READS:
+        assert set(rows[table]) == set(books)
+        for grimoire_id, version in uploaded[table].items():
+            assert rows[table][grimoire_id]["version"] == version  # the same facts give ingestion's version
 
     second = io.StringIO()
     assert build_book_reads.run(out=second) == 0
     assert all(line.split()[-3] == "unchanged" for line in second.getvalue().splitlines()[1:-1])
-    assert second.getvalue().splitlines()[-1].startswith(f"{len(books)} books: 0 written, {len(books)} unchanged, ")
-    again = {row["grimoire_id"]: row for row in sql_all("SELECT * FROM book_read")}
-    for grimoire_id, row in rows.items():
-        assert again[grimoire_id]["built_at"] == row["built_at"]
-        assert bytes(again[grimoire_id]["body_gzip"]) == bytes(row["body_gzip"])
+    assert second.getvalue().splitlines()[-1].startswith(
+        f"{len(books)} books: book_read 0 written, {len(books)} unchanged, 0 failed; "
+        f"book_game_read 0 written, {len(books)} unchanged, 0 failed; ")
+    for table in book_read.READS:
+        again = {row["grimoire_id"]: row for row in sql_all(f"SELECT * FROM {table}")}
+        for grimoire_id, row in rows[table].items():
+            assert again[grimoire_id]["built_at"] == row["built_at"]
+            assert bytes(again[grimoire_id]["body_gzip"]) == bytes(row["body_gzip"])
 
     check = io.StringIO()
     assert build_book_reads.run(check=True, out=check) == 0
@@ -553,11 +569,15 @@ def test_the_check_finds_stale_and_missing_books_and_writes_nothing(book):
     with database.transaction() as (_, cur):
         cur.execute("UPDATE book_read SET version = repeat('0', 64) WHERE grimoire_id = %s", (book["grimoire_id"],))
         cur.execute("DELETE FROM book_read WHERE grimoire_id = %s", (book["other"],))
+        cur.execute("DELETE FROM book_game_read WHERE grimoire_id = %s", (book["grimoire_id"],))
     out = io.StringIO()
     assert build_book_reads.run([book["grimoire_id"], book["other"]], check=True, out=out) == 2
-    words = {int(line.split()[1]): line.split()[-3] for line in out.getvalue().splitlines()[1:-1]}
-    assert words == {book["grimoire_id"]: "stale", book["other"]: "missing"}
-    assert stored_row(book["other"]) is None
+    words = {(int(line.split()[1]), line.split()[2]): line.split()[-3] for line in out.getvalue().splitlines()[1:-1]}
+    assert words == {
+        (book["grimoire_id"], "book_read"): "stale", (book["grimoire_id"], "book_game_read"): "missing",
+        (book["other"], "book_read"): "missing", (book["other"], "book_game_read"): "current",
+    }
+    assert stored_row(book["other"]) is None and game_row(book["grimoire_id"]) is None
     assert stored_row(book["grimoire_id"])["version"] == "0" * 64
 
     assert build_book_reads.run([book["grimoire_id"], book["other"]], out=io.StringIO()) == 0

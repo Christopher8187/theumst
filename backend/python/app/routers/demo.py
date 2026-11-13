@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gzip
 import hashlib
 import json
 import math
@@ -35,7 +34,6 @@ SIMILAR_QUERY_OVERFETCH = 4
 GRAPH_MAX_NODES = 150
 GRAPH_MAX_DEPTH = 2
 GRAPH_CACHE_SECONDS = 300
-BOOK_READ_CACHE_SECONDS = 14 * 24 * 3600  # two weeks; clients revalidate with the ETag on every open
 
 
 def _object_images(cur, knowledge_id: int, link_type: str = "figure") -> list[dict[str, Any]]:
@@ -400,46 +398,8 @@ def get_grimoire_graph(
 _NO_STORE = {"Cache-Control": "no-store"}
 
 
-def _book_read_headers(version: str) -> dict[str, str]:
-    return {
-        "ETag": f'"{version}"',
-        "Cache-Control": f"private, max-age={BOOK_READ_CACHE_SECONDS}",
-        "Vary": "Authorization, Cookie, Accept-Encoding",
-    }
-
-
-def _etag_matches(header: str | None, etag: str) -> bool:
-    """If-None-Match: a list of tags, weak or strong, or *; any one that matches will do."""
-    for entry in (header or "").split(","):
-        tag = entry.strip()
-        if tag.startswith("W/"):
-            tag = tag[2:].strip()
-        if tag == "*" or tag == etag:
-            return True
-    return False
-
-
-def _accepts_gzip(header: str | None) -> bool:
-    """Accept-Encoding allows gzip when it lists gzip, or failing that *, with q above 0."""
-    named: bool | None = None
-    wildcard: bool | None = None
-    for entry in (header or "").split(","):
-        coding, *parameters = (part.strip() for part in entry.split(";"))
-        coding = coding.lower()
-        quality = 1.0
-        for parameter in parameters:
-            name, _, value = parameter.partition("=")
-            if name.strip().lower() == "q":
-                try:
-                    quality = float(value.strip())
-                except ValueError:
-                    quality = 0.0
-        allowed = quality > 0
-        if coding in {"gzip", "x-gzip"}:
-            named = allowed or bool(named)
-        elif coding == "*":
-            wildcard = allowed or bool(wildcard)
-    return named if named is not None else bool(wildcard)
+# The answer's two weeks of private caching and its ETag are book_read's, shared with the game's route.
+BOOK_READ_VARY = "Authorization, Cookie, Accept-Encoding"
 
 
 def _book_read_refusal(status_code: int, detail: str, code: str) -> JSONResponse:
@@ -477,8 +437,8 @@ def get_book_read(grimoire_id: int, request: Request):
             return _book_read_refusal(404, "Demo grimoire not found", "book_not_found")
         if book["format"] != book_read.FORMAT:
             return _book_read_not_computed()
-        if _etag_matches(request.headers.get("if-none-match"), f'"{book["version"]}"'):
-            return Response(status_code=304, headers=_book_read_headers(book["version"]))
+        if book_read.etag_matches(request.headers.get("if-none-match"), f'"{book["version"]}"'):
+            return Response(status_code=304, headers=book_read.cache_headers(book["version"], BOOK_READ_VARY))
         cur.execute(
             "SELECT version, body_gzip FROM book_read WHERE grimoire_id = %s AND format = %s",
             (grimoire_id, book_read.FORMAT),
@@ -486,13 +446,10 @@ def get_book_read(grimoire_id: int, request: Request):
         stored = cur.fetchone()
     if not stored:  # deleted by a failed rebuild since the first read
         return _book_read_not_computed()
-    headers = _book_read_headers(stored["version"])
-    body = bytes(stored["body_gzip"])
-    if _accepts_gzip(request.headers.get("accept-encoding")):
-        # GZipMiddleware passes a response that already names its Content-Encoding through untouched.
-        headers["Content-Encoding"] = "gzip"
-        return Response(content=body, media_type="application/json", headers=headers)
-    return Response(content=gzip.decompress(body), media_type="application/json", headers=headers)
+    content, headers = book_read.served(
+        stored["version"], bytes(stored["body_gzip"]), request.headers.get("accept-encoding"), BOOK_READ_VARY,
+    )
+    return Response(content=content, media_type="application/json", headers=headers)
 
 
 @router.post("/grimoires/{grimoire_id}/summon")

@@ -342,8 +342,8 @@ def submit_knowledge(payload: KnowledgeSubmission) -> dict[str, Any]:
             "working_type": payload.knowledge.type,
         }
         pending_points = _queue_embeddings(cur, context=context, embeddings=payload.embeddings)
-        # The new object, and any new section, change the book's whole read before this commits.
-        book_read.refresh(cur, grimoire_id)
+        # The new object, and any new section, change the book's whole reads before this commits.
+        book_read.refresh_all(cur, grimoire_id)
 
     indexed, failed = _index_pending_embeddings(pending_points)
     return {

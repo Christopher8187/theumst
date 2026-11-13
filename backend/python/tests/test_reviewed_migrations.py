@@ -34,7 +34,7 @@ def test_reviewed_sources_have_exact_checksums_and_exclude_historical_seeds():
         "009_media_create_requests.sql",
         "010_knowledge_names.sql", "011_crystal_source_keys.sql", "012_book_image_objects.sql",
         "013_game_accounts.sql", "014_character_data_deletion.sql", "015_character_lease_install.sql",
-        "016_book_read.sql",
+        "016_book_read.sql", "017_book_game_read.sql",
     ]
     assert "007_research_corpus_access.sql" not in Path(
         reviewed_migrations.__file__
