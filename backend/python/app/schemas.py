@@ -4,7 +4,7 @@ from hashlib import sha256
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_validator
 
 
 class ProfileUpdate(BaseModel):
@@ -102,20 +102,72 @@ class DemoStudyStatePayload(BaseModel):
     realm: Literal['text', 'questions'] = 'text'
 
 
+# A note's limits, the Web Demo's and the game's alike.
+NOTE_TAG_MAX_CHARACTERS = 120
+NOTE_CONTENT_MAX_CHARACTERS = 50_000
+
+
+def _check_note_target(note_type: str, knowledge_id: int | None) -> None:
+    if note_type == "attached" and knowledge_id is None:
+        raise ValueError("Attached notes require a knowledge_id")
+    if note_type == "scribble" and knowledge_id is not None:
+        raise ValueError("Scribble notes cannot be attached to a knowledge object")
+
+
 class DemoNotePayload(BaseModel):
     grimoire_id: int | None = Field(default=None, gt=0)
     knowledge_id: int | None = Field(default=None, gt=0)
     note_type: Literal["attached", "scribble"]
-    tag: str = Field(default="", max_length=120)
-    content: str = Field(default="", max_length=50_000)
+    tag: str = Field(default="", max_length=NOTE_TAG_MAX_CHARACTERS)
+    content: str = Field(default="", max_length=NOTE_CONTENT_MAX_CHARACTERS)
 
     @model_validator(mode="after")
     def validate_note_target(self) -> "DemoNotePayload":
-        if self.note_type == "attached" and self.knowledge_id is None:
-            raise ValueError("Attached notes require a knowledge_id")
-        if self.note_type == "scribble" and self.knowledge_id is not None:
-            raise ValueError("Scribble notes cannot be attached to a knowledge object")
+        _check_note_target(self.note_type, self.knowledge_id)
         return self
+
+
+def _storable(value: str) -> str:
+    # PostgreSQL text holds no NUL, and a lone surrogate cannot be encoded: refused as 422, not a 500.
+    if "\x00" in value:
+        raise ValueError("Text cannot contain the NUL character")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError("Text must be valid Unicode") from None
+    return value
+
+
+class GameNoteCreate(BaseModel):
+    """POST /api/game/grimoires/{id}/notes: a note in that book, checked as DemoNotePayload is."""
+
+    knowledge_id: int | None = Field(default=None, gt=0)
+    note_type: Literal["attached", "scribble"]
+    tag: str = Field(default="", max_length=NOTE_TAG_MAX_CHARACTERS)
+    content: str = Field(default="", max_length=NOTE_CONTENT_MAX_CHARACTERS)
+
+    _storable_text = field_validator("tag", "content")(_storable)
+
+    @model_validator(mode="after")
+    def validate_note_target(self) -> "GameNoteCreate":
+        _check_note_target(self.note_type, self.knowledge_id)
+        return self
+
+
+class GameNoteUpdate(BaseModel):
+    """PUT /api/game/grimoires/{id}/notes/{note_id}: new text, sent with the updated_at it was read at."""
+
+    tag: str = Field(max_length=NOTE_TAG_MAX_CHARACTERS)
+    content: str = Field(max_length=NOTE_CONTENT_MAX_CHARACTERS)
+    if_updated_at: AwareDatetime
+
+    _storable_text = field_validator("tag", "content")(_storable)
+
+
+class GameNoteDelete(BaseModel):
+    """DELETE /api/game/grimoires/{id}/notes/{note_id}: sent with the updated_at it was read at."""
+
+    if_updated_at: AwareDatetime
 
 
 class SqlRequest(BaseModel):

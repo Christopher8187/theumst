@@ -1,10 +1,16 @@
-"""UMST's account and character API.
+"""UMST's account, character, book and notes API.
 
 The game signs in with a username and password and receives its own key, named
 "UMST · <computer>" with client 'umst'. Every other call sends that key, or any
 other active regular key of the same account, in X-API-Key or Authorization:
-Bearer, and counts as the 'character' kind of the key's per-minute allowance.
-Master keys are refused.
+Bearer. Account and character calls count as the 'character' kind of the key's
+per-minute allowance; the book and notes calls (0.0.16) count as 'book', shared
+with /api/v1. Master keys are refused.
+
+Since 0.0.16 the game reads whole books here, once per book version, and keeps
+the account's Web Demo notes. Reading a book and its notes needs Web Demo
+access, as the Web Demo and /api/v1 do (0.0.13); the list of grimoires does not,
+so an account without it learns that it may not read.
 
 A character is open on one computer at a time: opening it takes a lease held by
 the opening key for LEASE_SECONDS, renewed by heartbeats and saves. The game
@@ -31,8 +37,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..database import transaction
-from ..dependencies import authenticate_api_key
-from ..services import sign_in_attempts
+from ..dependencies import DEMO_ACCESS_POINT, AccessRefused, authenticate_api_key
+from ..schemas import GameNoteCreate, GameNoteDelete, GameNoteUpdate
+from ..services import book_read, sign_in_attempts
 from ..services.api_keys import GAME_CLIENT, create_regular_key, revoke_game_keys
 
 
@@ -175,8 +182,20 @@ def _stored_error(exc: Exception) -> GameError | None:
 
 
 def _game_key(request: Request) -> dict[str, Any]:
+    return _key(request, kind="character")
+
+
+def _reader_key(request: Request, *, demo_access: bool = True) -> dict[str, Any]:
+    """A key reading books or notes, counted as 'book'; it needs Web Demo access unless told otherwise."""
+    return _key(request, kind="book", access_point=DEMO_ACCESS_POINT if demo_access else None)
+
+
+def _key(request: Request, *, kind: str, access_point: str | None = None) -> dict[str, Any]:
     try:
-        return authenticate_api_key(request, kind="character", master_allowed=False)
+        return authenticate_api_key(request, kind=kind, master_allowed=False, access_point=access_point)
+    except AccessRefused as exc:
+        # 403 <access point>_access_required, checked after a master key and before anything is counted.
+        raise GameError(403, exc.code, str(exc.detail)) from None
     except HTTPException as exc:
         headers = dict(exc.headers or {})
         if exc.status_code == 429:
@@ -622,3 +641,249 @@ def delete_character(
         cur.execute('DELETE FROM "character" WHERE character_id = %s', (character_id,))
         cur.execute("DELETE FROM character_data WHERE character_data_id = %s", (row["character_data_id"],))
     return {"deleted": True, "character_id": character_id}
+
+
+# --- books (0.0.16) -----------------------------------------------------------------
+#
+# The game downloads a whole book once per version and lays it out itself, so a page turn never
+# reaches theumst.com. The answer is book_read's game row (services/book_read.py), built at
+# upload; no request builds it.
+
+BOOK_VARY = "X-API-Key, Authorization, Accept-Encoding"
+# A grimoire's title ends with its credit, as "(Randal-Williams, 2026)"; the author is the credit
+# less its year, as shared/topics/build_topics.py reads it in UMST.
+_CREDIT = re.compile(r"\(([^()]*)\)\s*$")
+_CREDIT_YEAR = re.compile(r",\s*(\d{4})$")
+
+
+def _author(stored: Any, title: str | None) -> str | None:
+    """source_metadata's author when a non-empty string, else the title's credit less its year, else None."""
+    if isinstance(stored, str) and stored.strip():
+        return stored.strip()
+    match = _CREDIT.search(title or "")
+    credit = match.group(1) if match else ""
+    year = _CREDIT_YEAR.search(credit)
+    return (credit[:year.start()] if year else credit) or None
+
+
+def _book_not_found() -> GameError:
+    return GameError(404, "book_not_found", "theumst.com has no such grimoire")
+
+
+def _book_not_computed() -> GameError:
+    return GameError(409, "book_read_not_computed", "This book's whole read has not been computed yet")
+
+
+@router.get("/grimoires")
+def list_grimoires(request: Request):
+    """The grimoires the Web Demo shows, with the version, size and object count of each one's game
+    answer, and whether this account may read them. Needs no Web Demo access."""
+    key = _reader_key(request, demo_access=False)
+    may_read = DEMO_ACCESS_POINT in set(key.get("access_points") or ())
+    with transaction() as (_, cur):
+        cur.execute(
+            """
+            SELECT g.grimoire_id, lg.title, g.source_metadata->'author' AS author,
+                   r.version, r.object_count, octet_length(r.body_gzip) AS bytes
+            FROM grimoire g
+            JOIN language_grimoire lg ON lg.grimoire_id = g.grimoire_id AND lg.language_id = 1
+            LEFT JOIN book_game_read r ON r.grimoire_id = g.grimoire_id AND r.format = %s
+            WHERE g.source_metadata->>'demo' = 'true'
+            ORDER BY g.grimoire_id
+            """,
+            (book_read.FORMAT,),
+        )
+        rows = cur.fetchall()
+    return {
+        "may_read": may_read,
+        "grimoires": [
+            {
+                "grimoire_id": row["grimoire_id"],
+                "title": row["title"],
+                "author": _author(row["author"], row["title"]),
+                "version": row["version"],
+                "objects": row["object_count"],
+                "bytes": row["bytes"],
+                "may_read": may_read,
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.get("/grimoires/{grimoire_id}/book")
+def get_book(grimoire_id: int, request: Request):
+    """A whole book for the game, revalidated by its ETag: 304 when the version sent is current.
+
+    The stored gzip goes as it is to a client that accepts gzip, as the Web Demo's book-read
+    does. A 200 or 304 is a Response of its own, so it carries the two weeks of private caching
+    and never the router's no-store; every refusal is a GameError with no-store.
+    """
+    _reader_key(request)
+    with transaction() as (_, cur):
+        cur.execute(
+            """
+            SELECT (COALESCE(g.source_metadata->>'demo', 'false') = 'true') AS visible, r.format, r.version
+            FROM grimoire g
+            LEFT JOIN book_game_read r USING (grimoire_id)
+            WHERE g.grimoire_id = %s
+            """,
+            (grimoire_id,),
+        )
+        book = cur.fetchone()
+        if not book or not book["visible"]:
+            raise _book_not_found()
+        if book["format"] != book_read.FORMAT:
+            raise _book_not_computed()
+        if book_read.etag_matches(request.headers.get("if-none-match"), f'"{book["version"]}"'):
+            return Response(status_code=304, headers=book_read.cache_headers(book["version"], BOOK_VARY))
+        cur.execute(
+            "SELECT version, body_gzip FROM book_game_read WHERE grimoire_id = %s AND format = %s",
+            (grimoire_id, book_read.FORMAT),
+        )
+        stored = cur.fetchone()
+    if not stored:  # deleted by a failed rebuild since the first read
+        raise _book_not_computed()
+    content, headers = book_read.served(
+        stored["version"], bytes(stored["body_gzip"]), request.headers.get("accept-encoding"), BOOK_VARY,
+    )
+    return Response(content=content, media_type="application/json", headers=headers)
+
+
+# --- notes (0.0.16) -------------------------------------------------------------------
+#
+# The Web Demo's own notes (demo_note), so a note made in the game shows in the Web Demo's
+# notebook and one made there shows in the game. Only the key's account's notes are ever read
+# or changed. An update or delete names the updated_at it was read at and is refused with the
+# current note when the note changed since, so the game never overwrites an edit made on the
+# website. The Web Demo's own PUT has no such check.
+
+_NOTE_COLUMNS = "demo_note_id, grimoire_id, knowledge_id, note_type, tag, content, created_at, updated_at"
+
+
+def _iso_micro(value: datetime) -> str:
+    """UTC to the microsecond: updated_at is a note's edit token, and whole seconds could repeat."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _note(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "demo_note_id": row["demo_note_id"],
+        "grimoire_id": row["grimoire_id"],
+        "knowledge_id": row["knowledge_id"],
+        "note_type": row["note_type"],
+        "tag": row["tag"],
+        "content": row["content"],
+        "created_at": _iso_micro(row["created_at"]),
+        "updated_at": _iso_micro(row["updated_at"]),
+    }
+
+
+def _visible_book(cur, grimoire_id: int) -> None:
+    cur.execute(
+        "SELECT 1 FROM grimoire WHERE grimoire_id = %s AND source_metadata->>'demo' = 'true'",
+        (grimoire_id,),
+    )
+    if cur.fetchone() is None:
+        raise _book_not_found()
+
+
+def _locked_note(cur, grimoire_id: int, note_id: int, user_id: int) -> dict[str, Any]:
+    """This account's note in this book, locked for the change; another account's is not found."""
+    cur.execute(
+        f"""
+        SELECT {_NOTE_COLUMNS} FROM demo_note
+        WHERE demo_note_id = %s AND user_id = %s AND grimoire_id = %s
+        FOR UPDATE
+        """,
+        (note_id, user_id, grimoire_id),
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise GameError(404, "note_not_found", "This account has no such note in this book")
+    return row
+
+
+def _unchanged(row: dict[str, Any], if_updated_at: datetime) -> None:
+    if row["updated_at"] != if_updated_at:
+        raise GameError(409, "note_changed", "The note was changed since it was read", note=_note(row))
+
+
+@router.get("/grimoires/{grimoire_id}/notes")
+def list_book_notes(grimoire_id: int, request: Request):
+    """The account's notes in one book, attached and scribbles, most recently changed first."""
+    key = _reader_key(request)
+    with transaction() as (_, cur):
+        _visible_book(cur, grimoire_id)
+        cur.execute(
+            f"""
+            SELECT {_NOTE_COLUMNS} FROM demo_note
+            WHERE user_id = %s AND grimoire_id = %s
+            ORDER BY updated_at DESC, demo_note_id DESC
+            """,
+            (key["user_id"], grimoire_id),
+        )
+        rows = cur.fetchall()
+    return {"notes": [_note(row) for row in rows]}
+
+
+@router.post("/grimoires/{grimoire_id}/notes", status_code=201)
+def create_book_note(grimoire_id: int, body: GameNoteCreate, request: Request):
+    """A note in this book: attached to one of its active objects, or a scribble. Unlike the Web
+    Demo's, it does not need the book in My grimoires, and it adds nothing there."""
+    key = _reader_key(request)
+    with transaction() as (_, cur):
+        _visible_book(cur, grimoire_id)
+        if body.knowledge_id is not None:
+            cur.execute(
+                """
+                SELECT 1 FROM knowledge k JOIN section s ON s.section_id = k.section_id
+                WHERE k.knowledge_id = %s AND s.grimoire_id = %s AND k.is_active
+                """,
+                (body.knowledge_id, grimoire_id),
+            )
+            if cur.fetchone() is None:
+                raise GameError(404, "object_not_found", "This book has no such knowledge object")
+        cur.execute(
+            f"""
+            INSERT INTO demo_note (user_id, grimoire_id, knowledge_id, note_type, tag, content)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING {_NOTE_COLUMNS}
+            """,
+            (key["user_id"], grimoire_id, body.knowledge_id, body.note_type, body.tag.strip(), body.content),
+        )
+        row = cur.fetchone()
+    return {"note": _note(row)}
+
+
+@router.put("/grimoires/{grimoire_id}/notes/{note_id}")
+def update_book_note(grimoire_id: int, note_id: int, body: GameNoteUpdate, request: Request):
+    """New tag and content for a note; its book, object and type stay."""
+    key = _reader_key(request)
+    with transaction() as (_, cur):
+        _visible_book(cur, grimoire_id)
+        row = _locked_note(cur, grimoire_id, note_id, key["user_id"])
+        _unchanged(row, body.if_updated_at)
+        cur.execute(
+            f"""
+            UPDATE demo_note SET tag = %s, content = %s
+            WHERE demo_note_id = %s AND user_id = %s
+            RETURNING {_NOTE_COLUMNS}
+            """,
+            (body.tag.strip(), body.content, note_id, key["user_id"]),
+        )
+        row = cur.fetchone()
+    return {"note": _note(row)}
+
+
+@router.delete("/grimoires/{grimoire_id}/notes/{note_id}")
+def delete_book_note(grimoire_id: int, note_id: int, body: GameNoteDelete, request: Request):
+    key = _reader_key(request)
+    with transaction() as (_, cur):
+        _visible_book(cur, grimoire_id)
+        row = _locked_note(cur, grimoire_id, note_id, key["user_id"])
+        _unchanged(row, body.if_updated_at)
+        cur.execute("DELETE FROM demo_note WHERE demo_note_id = %s AND user_id = %s", (note_id, key["user_id"]))
+    return {"deleted": True, "demo_note_id": note_id}

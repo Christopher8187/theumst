@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -94,6 +95,27 @@ def test_the_internal_proxy_limits_game_bodies_to_128_kib():
     assert [line.strip() for line in game.splitlines() if line.strip().startswith("proxy_")] == [
         line.strip() for line in rest.splitlines() if line.strip().startswith("proxy_")
     ]
+
+
+def test_the_internal_proxy_lets_a_game_note_carry_what_a_web_demo_note_may():
+    from app.schemas import NOTE_CONTENT_MAX_CHARACTERS, NOTE_TAG_MAX_CHARACTERS
+
+    internal = (ROOT / "config/nginx.docker.conf").read_text(encoding="utf-8")
+    opening = "location ~ ^/api/game/grimoires/[0-9]+/notes(/[0-9]+)?$ {"
+    notes = internal.split(opening, 1)[1].split("}", 1)[0]
+    rest = internal.split("    location / {", 1)[1].split("}", 1)[0]
+    assert "client_max_body_size 1m;" in notes
+    assert [line.strip() for line in notes.splitlines() if line.strip().startswith("proxy_")] == [
+        line.strip() for line in rest.splitlines() if line.strip().startswith("proxy_")
+    ]
+    # Every character written as a JSON surrogate-pair escape, 12 bytes, still fits with room for the rest.
+    assert (NOTE_CONTENT_MAX_CHARACTERS + NOTE_TAG_MAX_CHARACTERS) * 12 + 4096 < 1024 * 1024
+    # Only the notes paths: a book or a character keeps the 128 KiB limit.
+    pattern = re.compile(opening.split(" ", 2)[2].rsplit(" ", 1)[0])
+    assert pattern.match("/api/game/grimoires/18/notes") and pattern.match("/api/game/grimoires/18/notes/7")
+    for path in ("/api/game/grimoires/18/book", "/api/game/characters/3/data", "/api/game/grimoires/18/notes/x",
+                 "/api/game/grimoires/18/notesx", "/api/game/grimoires", "/api/demo/grimoires/18/notes"):
+        assert not pattern.match(path)
 
 
 def test_master_book_ingestion_has_a_route_scoped_one_gibibyte_limit():
