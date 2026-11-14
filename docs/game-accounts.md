@@ -1,14 +1,14 @@
 # Game accounts
 
-UMST signs in to theumst.com with a username and password, then keeps its characters here. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables, 014 deletes a character's save with it, and 015 keeps the install that has a character open. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, and times are UTC, such as `2026-11-05T10:00:00Z`.
+UMST signs in to theumst.com with a username and password, then keeps its characters here. Since 0.0.16 it also downloads whole books here and keeps the account's Web Demo notes. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables, 014 deletes a character's save with it, 015 keeps the install that has a character open, and 017 holds the books the game reads. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, apart from a book's 200 and 304, and times are UTC, such as `2026-11-05T10:00:00Z`. A note's times also give microseconds.
 
 ## Keys and limits
 
-`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Signing in again on the same computer revokes that computer's earlier game key first. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active regular key of the account works, so a key pasted into the game's settings works too; master keys are refused. These calls need no Web Demo access, so every confirmed account plays. Reading books under `/api/v1` does need it since 0.0.13, as [security](security.md) explains. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`. A password reset revokes all the account's game keys.
+`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Signing in again on the same computer revokes that computer's earlier game key first. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active regular key of the account works, so a key pasted into the game's settings works too; master keys are refused. The account and character calls and the list of grimoires need no Web Demo access, so every confirmed account plays. A book and its notes need it, as reading books under `/api/v1` has since 0.0.13 ([security](security.md)). Another account's key gets 403 `demo_access_required` there, and the call counts nowhere. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`. A password reset revokes all the account's game keys.
 
 A call may name its game install in `X-Install-Id`, the short id the game keeps per install and puts in its key names, `UMST · <computer> · <install id>`. The value is 1 to 64 ASCII letters, digits, hyphens or underscores, such as `k7m2qx`. A malformed or repeated header gets 422 `invalid_request` naming `X-Install-Id`, before the key is looked up or the call counted. Only the leases read it, and the game in players' hands sends none yet.
 
-A regular key gets its tier's `requests_per_minute` (600 for `standard`) for each kind of request in a one-minute window. Calls under `/api/game` count as `character`; calls under `/api/v1` count as `book`. Past the limit the answer is 429 with `Retry-After` in seconds; a tier without allowance answers 429 with `Retry-After: 60`. Master keys have no limit on `/api/v1`. `api_usage_daily` counts every accepted request by key, UTC day and kind, master keys included. A refused request counts nowhere.
+A regular key gets its tier's `requests_per_minute` (600 for `standard`) for each kind of request in a one-minute window. Account and character calls count as `character`. The list of grimoires, books and notes under `/api/game`, and calls under `/api/v1`, count as `book` and share one window. Past the limit the answer is 429 with `Retry-After` in seconds; a tier without allowance answers 429 with `Retry-After: 60`. Master keys have no limit on `/api/v1`. `api_usage_daily` counts every accepted request by key, UTC day and kind, master keys included. A refused request counts nowhere.
 
 The Default key comes only from the signed-in API Keys page. When an account without one opens it, `POST /api/api-keys/default` makes a regular `standard` key named `Default` and answers 201 with its full text, once; otherwise it answers 200 `{"created": false}`. Confirming an email makes no key, because its link works without a session and could reach a mail scanner or anyone the email is forwarded to. Any key named `Default` without a client counts, revoked ones too, so revoking it never brings another.
 
@@ -28,6 +28,12 @@ Paths are under `/api/game`.
 | `POST /characters/{id}/close` | | 200 `{released}` |
 | `PUT /characters/{id}/data` | `save`, `save_version`, `revision`, optional `summary` | 200 `{revision, updated_at, last_played_at, lease_seconds, lease_expires_at}` |
 | `DELETE /characters/{id}` | `name` | 200 `{deleted: true, character_id}` |
+| `GET /grimoires` | | 200 `{may_read, grimoires: [grimoire]}` |
+| `GET /grimoires/{id}/book` | | 200 the book, or 304 |
+| `GET /grimoires/{id}/notes` | | 200 `{notes: [note]}` |
+| `POST /grimoires/{id}/notes` | `note_type`, `knowledge_id` when attached, optional `tag`, `content` | 201 `{note}` |
+| `PUT /grimoires/{id}/notes/{note_id}` | `tag`, `content`, `if_updated_at` | 200 `{note}` |
+| `DELETE /grimoires/{id}/notes/{note_id}` | `if_updated_at` | 200 `{deleted: true, demo_note_id}` |
 
 The sign-in `key`, and `/me`'s without `key`:
 
@@ -54,6 +60,31 @@ Since 0.0.13 the lease also keeps the install that took it, so one key pasted on
 
 Each character call checks inside its own transaction that the key is still active, and holds it until the transaction ends.
 
+## Books and notes
+
+Since 0.0.16 the game downloads a whole book once per version and lays it out itself, so turning a page asks theumst.com nothing. `GET /grimoires` lists the grimoires the Web Demo shows, by id; hidden ones are absent. A grimoire:
+
+```json
+{"grimoire_id": 18, "title": "Topological Spaces, Part IB lecture notes (Randal-Williams, 2026)",
+ "author": "Randal-Williams", "version": "<64 hex>", "objects": 468, "bytes": 70604, "may_read": true}
+```
+
+`title` is the language-1 title. `author` is the book's `source_metadata.author` when that is a non-empty string, else the title's last parenthesis less its `, YYYY`, else null. `version`, `objects` and `bytes`, the stored gzip's size, are those of the book's stored game answer, and null while it has none. `may_read` says whether the account has Web Demo access. Every row's value equals the top-level one today.
+
+`GET /grimoires/{id}/book` sends that answer: the Web Demo's whole-book read of format 1 with each object's statement, working, summary, figures and page scans, as [data architecture](architecture/data.md) explains. It is served as the [Web Demo's](web-demo.md#whole-book-read) is. A 200 or 304 carries `ETag: "<version>"`, `Cache-Control: private, max-age=1209600` and `Vary: X-API-Key, Authorization, Accept-Encoding`, never `no-store`. `If-None-Match` matches when any listed tag equals the ETag, with or without `W/`, or is `*`, and the answer is then 304 with no body. A client whose `Accept-Encoding` allows gzip gets the stored gzip bytes with `Content-Encoding: gzip`, and any other the JSON. No request builds the answer: until ingestion or the [manual run](operations.md#whole-book-reads) has stored one, the book gets 409 `book_read_not_computed`.
+
+Figures and page scans come from `GET /api/v1/storage/{storage_key}`, the `url` each one names. That route serves any active image of a visible book to a key whose account has Web Demo access, counts as `book` and answers `Cache-Control: private, no-store`. Its refusals are `/api/v1`'s: 401 and 404 as `{"detail"}`, 403 `demo_access_required`, and 429 with `Retry-After`.
+
+The notes are the Web Demo's own `demo_note` rows, so a note made in the game shows in the Web Demo's notebook and one made there shows in the game. A note:
+
+```json
+{"demo_note_id": 7, "grimoire_id": 18, "knowledge_id": 18190, "note_type": "attached", "tag": "IVT",
+ "content": "Compare $f(a) < 0 < f(b)$.", "created_at": "2026-11-13T10:00:00.123456Z",
+ "updated_at": "2026-11-13T10:05:00.654321Z"}
+```
+
+The list gives the account's notes in one book, attached and scribbles, most recently changed first. Only the account's own notes are ever read or changed, and another account's note answers as a missing one. An `attached` note names an active object of the book in `knowledge_id`, and a `scribble` names none. `tag` holds at most 120 characters, stored without surrounding whitespace, and `content` at most 50,000, as in the Web Demo; neither may hold NUL or a lone surrogate. Unlike the Web Demo's, making a note needs no book in My grimoires and adds none. A PUT gives both `tag` and `content` and changes nothing else. A PUT or DELETE sends the `updated_at` it read as `if_updated_at`, with any UTC offset. When the note has changed since, the answer is 409 `note_changed` with the current `note`, so the game never overwrites an edit made on the website. The Web Demo's own edits have no such check. Notes carry no ETag.
+
 ## Errors
 
 Errors answer `{"code", "detail"}` and the listed fields.
@@ -65,7 +96,13 @@ Errors answer `{"code", "detail"}` and the listed fields.
 | 429 | `too_many_attempts` | sign-in | too many wrong passwords; `retry_after` and `Retry-After` |
 | 401 | `invalid_key` | all others | key missing, unknown or revoked, revoked during the call, or its account unconfirmed |
 | 403 | `master_key_not_allowed` | all others | a master key |
+| 403 | `demo_access_required` | book, notes | the account has no Web Demo access; nothing counted |
 | 429 | `rate_limited` | all others | key over its minute, or a tier without allowance; `retry_after` and `Retry-After` |
+| 404 | `book_not_found` | book, notes | unknown or hidden grimoire |
+| 404 | `object_not_found` | make note | `knowledge_id` is no active object of the book |
+| 404 | `note_not_found` | change or delete note | no such note of this account in this book |
+| 409 | `book_read_not_computed` | book | no stored answer in format 1 |
+| 409 | `note_changed` | change or delete note | `if_updated_at` is not the note's `updated_at`; `note` is the current one |
 | 404 | `not_found` | open, heartbeat, close, save, delete | no such character on this account |
 | 409 | `full` | make | a seventh character; `limit` |
 | 409 | `open_elsewhere` | open, heartbeat, save, delete | another key, or this key from another install, holds a live lease; `seconds_left` |
@@ -74,9 +111,11 @@ Errors answer `{"code", "detail"}` and the listed fields.
 | 409 | `name_mismatch` | delete | the typed name differs |
 | 413 | `save_too_large`, `summary_too_large` | make, save | over 64 KiB or 2 KiB; `limit_bytes` |
 | 422 | `invalid_name` | make | name empty, over 50 characters or with control characters |
-| 422 | `invalid_request` | any | malformed body or path, NaN or Infinity, a blank computer name, a malformed or repeated `X-Install-Id`; `errors` lists `{field, message}`, empty when no field is to blame |
+| 422 | `invalid_request` | any | malformed body or path, NaN or Infinity, a blank computer name, a malformed or repeated `X-Install-Id`, a note over its limits, holding NUL or with the wrong target; `errors` lists `{field, message}`, empty when no field is to blame |
 
-Other answers come from outside the game API. In deployment the internal proxy (`config/nginx.docker.conf`) refuses a body over 128 KiB with 413 and an HTML page. An unknown path answers 404 `{"detail": "API route not found"}`, a wrong method 405 `{"detail": "Method Not Allowed"}`, and a server failure 500.
+A call checks its path, `X-Install-Id` and the shape of its body first, then the key in the table's order: 401, a master key, Web Demo access where needed, the minute. The call's own checks come after those.
+
+Other answers come from outside the game API. In deployment the internal proxy (`config/nginx.docker.conf`) refuses a body over 128 KiB with 413 and an HTML page, or over 1 MiB on the notes paths, so any note the Web Demo stores fits. An unknown path answers 404 `{"detail": "API route not found"}`, a wrong method 405 `{"detail": "Method Not Allowed"}`, and a server failure 500.
 
 ## Slowing wrong passwords
 
