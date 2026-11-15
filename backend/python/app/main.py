@@ -7,9 +7,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from .compression import GZipMiddleware
 from .config import get_settings
 from .database import initialize_database
 from .dependencies import AccessRefused, access_refused_response

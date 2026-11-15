@@ -95,8 +95,13 @@ SELECT k.knowledge_id FROM knowledge k JOIN section s ON s.section_id = k.sectio
 WHERE s.grimoire_id = %s AND k.is_active
 """
 
+# Since 0.0.17 the texts carry each object's source label: the label its source prints for it, as
+# Kaicenat read it ("Theorem 2.4.1", "Example 2", "Proposition"), which the game shows beside the
+# name so that a reference such as "by Theorem 2.4.1" can be followed. The Web Demo's answer keeps
+# "label", the name or else that label, as before.
 _TEXTS = """
-SELECT k.knowledge_id AS id, lk.statement, lk.working, lk.working_summary
+SELECT k.knowledge_id AS id, lk.statement, lk.working, lk.working_summary,
+       NULLIF(btrim(lk.label), '') AS source_label
 FROM knowledge k
 JOIN section s ON s.section_id = k.section_id
 JOIN language_knowledge lk ON lk.knowledge_id = k.knowledge_id AND lk.language_id = 1
@@ -333,10 +338,11 @@ def _image(row: Mapping[str, Any]) -> dict[str, Any]:
 def build_game(cur, grimoire_id: int) -> BuiltBookRead:
     """The game's answer: the Web Demo's with each object's texts, figures and page scans.
 
-    Each object gains statement, working ("" when none), working_summary, figures
-    [{image, url, caption, page, updated_at}] and pages, the ids of its page scans in page
-    order. The top-level pages table describes every scan an object names once:
-    {image: {url, page, printed_page, updated_at}}. counts gains figures (links in all) and
+    Each object gains statement, working ("" when none), working_summary, source_label (since
+    0.0.17: language_knowledge.label trimmed, null when blank), figures [{image, url, caption,
+    page, updated_at}] and pages, the ids of its page scans in page order. The top-level pages
+    table describes every scan an object names once: {image: {url, page, printed_page,
+    updated_at}}. counts gains figures (links in all) and
     pages (scans in all). An image's updated_at changes on every upload, so a new upload
     always gives a new version, which is how the game learns an image's bytes changed.
     """
@@ -374,6 +380,7 @@ def build_game(cur, grimoire_id: int) -> BuiltBookRead:
         item["statement"] = text["statement"]
         item["working"] = text["working"] or ""
         item["working_summary"] = text["working_summary"]
+        item["source_label"] = text["source_label"]
         item["figures"] = figures.get(int(item["id"]), [])
         item["pages"] = pages.get(int(item["id"]), [])
     answer["pages"] = table
@@ -528,7 +535,14 @@ def accepts_gzip(header: str | None) -> bool:
 
 
 def served(version: str, body_gzip: bytes, accept_encoding: str | None, vary: str) -> tuple[bytes, dict[str, str]]:
-    """A 200's body and headers: the stored gzip as it is to a client that accepts gzip, else the JSON."""
+    """A 200's body and headers: the stored gzip as it is to a client that accepts gzip, else the JSON.
+
+    Nothing is compressed here or after. A client that accepts gzip gets the stored bytes, which
+    name their Content-Encoding. One that refuses it gets the JSON, which the application's gzip
+    middleware (app.compression) leaves alone, since it reads Accept-Encoding with accepts_gzip
+    too. Before 0.0.17 Starlette's own middleware gzipped that JSON again for a header such as
+    "gzip;q=0", which cost about 0.8 s of CPU for Boyce's answer.
+    """
     headers = cache_headers(version, vary)
     if accepts_gzip(accept_encoding):
         # GZipMiddleware passes a response that already names its Content-Encoding through untouched.

@@ -118,7 +118,7 @@ class Rows:
             if self.texts is not None:
                 return list(self.texts)
             return [{"id": row["id"], "statement": f"Statement {row['id']}", "working": "",
-                     "working_summary": None} for row in self.objects]
+                     "working_summary": None, "source_label": None} for row in self.objects]
         if "link_type = 'figure'" in sql:
             return list(self.figures)
         if "link_type = 'page'" in sql:
@@ -217,10 +217,11 @@ def scan(knowledge_id, image, page, printed, **extra):
 def game_rows(**options):
     rows = book_rows(**options)
     rows.texts = [
-        {"id": 1, "statement": r"Let $X$ be a space.", "working": r"Take $U \\subseteq X$.", "working_summary": "Open."},
-        {"id": 2, "statement": "A statement.", "working": None, "working_summary": None},
-        {"id": 3, "statement": "Three.", "working": "", "working_summary": ""},
-        {"id": 4, "statement": "Four.", "working": "w", "working_summary": None},
+        {"id": 1, "statement": r"Let $X$ be a space.", "working": r"Take $U \\subseteq X$.", "working_summary": "Open.",
+         "source_label": "Theorem 2.4.1"},
+        {"id": 2, "statement": "A statement.", "working": None, "working_summary": None, "source_label": None},
+        {"id": 3, "statement": "Three.", "working": "", "working_summary": "", "source_label": "Example 1 <part 2>"},
+        {"id": 4, "statement": "Four.", "working": "w", "working_summary": None, "source_label": "Proposition"},
     ]
     rows.figures = [
         figure(1, "fig-2", "books/18/images/fig 2.png"),
@@ -243,7 +244,7 @@ def test_the_game_answer_is_the_web_demos_with_texts_figures_and_pages():
     assert set(game) == set(web) | {"pages"}
     for key in ("format", "grimoire_id", "graph_capability", "sections", "relations", "crystals"):
         assert game[key] == web[key], key
-    added = {"statement", "working", "working_summary", "figures", "pages"}
+    added = {"statement", "working", "working_summary", "source_label", "figures", "pages"}
     assert [item["id"] for item in game["objects"]] == [3, 1, 2, 4]  # the Web Demo's order
     for item, plain in zip(game["objects"], web["objects"]):
         assert set(item) == set(plain) | added
@@ -255,6 +256,9 @@ def test_the_game_answer_is_the_web_demos_with_texts_figures_and_pages():
         r"Let $X$ be a space.", r"Take $U \\subseteq X$.", "Open.")
     assert by_id[2]["working"] == "" and by_id[2]["working_summary"] is None
     assert by_id[3]["working_summary"] == ""  # as stored
+    # Since 0.0.17 the source's own label, as Kaicenat read it, beside the Web Demo's label.
+    assert [by_id[n]["source_label"] for n in (1, 2, 3, 4)] == [
+        "Theorem 2.4.1", None, "Example 1 <part 2>", "Proposition"]
     assert by_id[1]["figures"] == [
         {"image": "fig-2", "url": "/api/v1/storage/books/18/images/fig%202.png", "caption": "Figure fig-2",
          "page": 4, "updated_at": "2026-11-12T00:00:00Z"},
@@ -284,6 +288,7 @@ def test_the_game_answer_reads_texts_figures_and_pages_with_one_query_each():
     assert len(queries) == 7  # the book, sections, objects, relations; texts, figures, pages
     texts, figures, pages = queries[4:]
     assert "lk.statement" in texts[0] and texts[1] == (18,)
+    assert "NULLIF(btrim(lk.label), '') AS source_label" in texts[0]  # blank labels are null
     assert "link_type = 'figure'" in figures[0] and figures[1] == (18, 18)
     assert "b.knowledge_id IN" in figures[0]  # a figure linked before migration 012
     assert "link_type = 'page'" in pages[0] and pages[1] == (18,)

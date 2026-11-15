@@ -8,7 +8,9 @@ per-minute allowance; the book and notes calls (0.0.16) count as 'book', shared
 with /api/v1. Master keys are refused.
 
 Since 0.0.16 the game reads whole books here, once per book version, and keeps
-the account's Web Demo notes. Reading a book and its notes needs Web Demo
+the account's Web Demo notes. Since 0.0.17 POST /master-key says whether a key is a
+master key, the one call that takes one, so a debug export can unlock its debug
+powers; it answers nothing about the key's account. Reading a book and its notes needs Web Demo
 access, as the Web Demo and /api/v1 do (0.0.13); the list of grimoires does not,
 so an account without it learns that it may not read.
 
@@ -24,8 +26,12 @@ response shapes.
 from __future__ import annotations
 
 import json
+import math
 import re
+import threading
+import time
 import unicodedata
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -37,8 +43,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..database import transaction
-from ..dependencies import DEMO_ACCESS_POINT, AccessRefused, authenticate_api_key
+from ..dependencies import DEMO_ACCESS_POINT, AccessRefused, _raw_api_key, authenticate_api_key
 from ..schemas import GameNoteCreate, GameNoteDelete, GameNoteUpdate
+from ..security import hash_secret
 from ..services import book_read, sign_in_attempts
 from ..services.api_keys import GAME_CLIENT, create_regular_key, revoke_game_keys
 
@@ -887,3 +894,91 @@ def delete_book_note(grimoire_id: int, note_id: int, body: GameNoteDelete, reque
         _unchanged(row, body.if_updated_at)
         cur.execute("DELETE FROM demo_note WHERE demo_note_id = %s AND user_id = %s", (note_id, key["user_id"]))
     return {"deleted": True, "demo_note_id": note_id}
+
+
+# --- master keys (0.0.17) -------------------------------------------------------------
+
+# The game's debug powers (a debug export's time scale and its skip to a breakthrough) stay locked
+# until theumst.com says the key typed into the game is a master key. Every other game call refuses
+# master keys; this one only says whether a key is one. Guessing a key is hopeless, but the checks
+# are limited all the same, in this process (COM runs one): MASTER_CHECKS_PER_ADDRESS from one public
+# address, and MASTER_CHECKS_IN_ALL from everyone, in any MASTER_CHECK_SECONDS. A request without a
+# key is refused before it is counted.
+MASTER_CHECKS_PER_ADDRESS = 10
+MASTER_CHECKS_IN_ALL = 60
+MASTER_CHECK_SECONDS = 600
+
+
+class MasterChecks:
+    """When the recent master-key checks were made, per public address and in all."""
+
+    def __init__(self, clock: Any = time.monotonic):
+        self.clock = clock
+        self._lock = threading.Lock()
+        self._by_address: dict[str, deque[float]] = defaultdict(deque)
+        self._all: deque[float] = deque()
+
+    def take(self, address: str | None) -> int:
+        """Count one check from address (None when it is not a public one, so only the total
+        counts it). 0 when it may go ahead, else the seconds until it may."""
+        now = self.clock()
+        start = now - MASTER_CHECK_SECONDS
+        with self._lock:
+            for times in [self._all, *self._by_address.values()]:
+                while times and times[0] <= start:
+                    times.popleft()
+            for address_key in [key for key, times in self._by_address.items() if not times]:
+                del self._by_address[address_key]
+            waits = []
+            if len(self._all) >= MASTER_CHECKS_IN_ALL:
+                waits.append(self._all[0] - start)
+            mine = self._by_address[address] if address else None
+            if mine is not None and len(mine) >= MASTER_CHECKS_PER_ADDRESS:
+                waits.append(mine[0] - start)
+            if waits:
+                if mine is not None and not mine:
+                    del self._by_address[address]
+                return max(1, math.ceil(max(waits)))
+            self._all.append(now)
+            if mine is not None:
+                mine.append(now)
+            return 0
+
+
+master_checks = MasterChecks()
+
+
+@router.post("/master-key")
+def check_master_key(request: Request):
+    """{"master": true} when the key sent is an active master key; nothing about its account.
+
+    401 invalid_key without a key, or for one that is unknown, revoked or of an unconfirmed account;
+    403 not_master_key for a regular key; 429 rate_limited past the limits above. It reads one row,
+    writes nothing and counts nothing against the key, and the key is never logged or returned.
+    """
+    try:
+        raw = _raw_api_key(request)
+    except HTTPException:
+        raw = ""
+    if not raw:  # "Authorization: Bearer " names no key either
+        raise GameError(401, "invalid_key", "API key required")
+    wait = master_checks.take(sign_in_attempts.public_address(request))
+    if wait:
+        raise GameError(429, "rate_limited", "Too many master key checks; try again later",
+                        headers={"Retry-After": str(wait)}, retry_after=wait)
+    with transaction() as (_, cur):
+        cur.execute(
+            """
+            SELECT k.key_type
+            FROM api_key k
+            JOIN "user" u ON u.user_id = k.user_id
+            WHERE k.key_hash = %s AND k.revoked_at IS NULL AND u.email_verified_at IS NOT NULL
+            """,
+            (hash_secret(raw),),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise GameError(401, "invalid_key", "Invalid or revoked API key")
+    if row["key_type"] != "master":
+        raise GameError(403, "not_master_key", "This is not a master key")
+    return {"master": True}

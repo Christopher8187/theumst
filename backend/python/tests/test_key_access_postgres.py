@@ -1,5 +1,6 @@
 """Opt-in real PostgreSQL checks of 0.0.13: book reads need the Web Demo's access,
-one key cannot open a character on two installs, and migration 015.
+one key cannot open a character on two installs, and migration 015. Since 0.0.17 also
+the game's master-key check against PostgreSQL's own keys.
 
 Set THEUMST_KEY_ACCESS_DB_TESTS=1 with LOCAL loopback database settings and a
 PostgreSQL account that may create a database. The fixtures build UUID-named
@@ -235,6 +236,32 @@ def test_the_game_stays_open_to_an_account_outside_the_web_demo(client):
     assert made.status_code == 201, made.text
     assert client.post(f"/api/game/characters/{made.json()['character']['character_id']}/open", headers=headers).status_code == 200
     assert counted(player["key"]) == ({"character": 3}, {"character": 3})
+
+
+# --- the master-key check (0.0.17) --------------------------------------------------------
+
+def test_the_master_key_check_knows_master_keys_by_postgresqls_own_rows(client, monkeypatch):
+    from app.routers import game
+
+    monkeypatch.setattr(game, "master_checks", game.MasterChecks())
+    owner, unconfirmed = account("user"), account("user")
+    with database.transaction() as (_, cur):
+        cur.execute('UPDATE "user" SET email_verified_at = NULL WHERE user_id = %s', (unconfirmed["user_id"],))
+
+    def check(key):
+        return client.post("/api/game/master-key", headers={**key_header(key), "X-Install-Id": HERE})
+
+    confirmed = check(owner["master"])
+    assert confirmed.status_code == 200 and confirmed.json() == {"master": True}
+    assert check(owner["key"]).json()["code"] == "not_master_key"
+    assert check(unconfirmed["master"]).json()["code"] == "invalid_key"
+    with database.transaction() as (_, cur):
+        cur.execute("UPDATE api_key SET revoked_at = now() WHERE api_key_id = %s", (owner["master"]["api_key_id"],))
+    assert check(owner["master"]).status_code == 401
+    # The check counts nothing against either key and changes no row of theirs.
+    assert counted(owner["master"]) == ({}, {}) and counted(owner["key"]) == ({}, {})
+    assert sql_one("SELECT last_used_at FROM api_key WHERE api_key_id = %s",
+                   (owner["key"]["api_key_id"],))["last_used_at"] is None
 
 
 # --- one key on two installs ---------------------------------------------------------------

@@ -745,6 +745,12 @@ def test_an_upload_stores_the_game_answer_the_route_returns(client, player, book
         "X-API-Key", "Authorization", "Accept-Encoding"}
     with database.transaction() as (_, cur):
         assert book_read.build_game(cur, book["grimoire_id"]).body == body  # a fresh build gives the same bytes
+    # A client refusing gzip gets the JSON once, not gzipped again by the application (0.0.17).
+    with client.stream("GET", f"/api/game/grimoires/{book['grimoire_id']}/book",
+                       headers={**player["headers"], "Accept-Encoding": "gzip;q=0"}) as response:
+        raw = b"".join(response.iter_raw())
+    assert response.status_code == 200 and raw == body
+    assert "content-encoding" not in response.headers
 
 
 def test_the_game_answer_is_the_web_demos_with_each_objects_route(client, reader, player, illustrated):
@@ -788,6 +794,10 @@ def test_the_game_answer_is_the_web_demos_with_each_objects_route(client, reader
     assert game["counts"]["figures"] == 3 and game["counts"]["pages"] == 3
     assert by_id[ids["def-open"]]["statement"] == "A set is open when ..."
     assert by_id[ids["def-open"]]["working"] == "" and by_id[ids["def-open"]]["working_summary"] is None
+    # Since 0.0.17 each object carries its source label beside the name, which "label" prefers.
+    assert (by_id[ids["thm-union"]]["source_label"], by_id[ids["thm-union"]]["label"]) == (
+        "Theorem 1.2", "Unions of open sets")
+    assert by_id[ids["def-open"]]["source_label"] == by_id[ids["def-open"]]["label"] == "Open set"
 
 
 def test_finalizing_the_images_gives_the_game_a_new_version(illustrated):

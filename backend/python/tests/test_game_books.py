@@ -336,6 +336,57 @@ def test_a_client_refusing_gzip_gets_the_json(api):
     assert_book_headers(response, row.version)
 
 
+def with_the_applications_gzip():
+    """The routes behind the application's own gzip middleware, as create_app installs it."""
+    from app.compression import GZipMiddleware
+
+    application = FastAPI()
+    application.add_middleware(GZipMiddleware, minimum_size=1_000)
+    application.include_router(game.router)
+    game.install_error_handlers(application)
+
+    @application.get("/large")
+    def large():
+        return {"text": "x" * 5_000}
+
+    return TestClient(application)
+
+
+def raw_get(client, path, accept):
+    with client.stream("GET", path, headers={**KEY, "Accept-Encoding": accept}) as response:
+        return response, b"".join(response.iter_raw())
+
+
+@pytest.mark.parametrize("accept", ["gzip;q=0", "gzip; q=0.0, identity", "identity", "br", "x-gzip;q=0, *;q=0"])
+def test_a_client_refusing_gzip_gets_the_json_from_the_application_uncompressed(api, accept):
+    # Before 0.0.17 Starlette's middleware gzipped this JSON again for "gzip;q=0" (0.0.16's Known).
+    client, row = with_the_applications_gzip(), api.store.books[18]["row"]
+    response, raw = raw_get(client, "/api/game/grimoires/18/book", accept)
+    assert response.status_code == 200 and raw == row.body
+    assert "content-encoding" not in response.headers
+    response, raw = raw_get(client, "/large", accept)
+    assert raw == b'{"text":"' + b"x" * 5_000 + b'"}' and "content-encoding" not in response.headers
+
+
+@pytest.mark.parametrize("accept", ["gzip", "gzip, deflate, br", "br;q=1, gzip;q=0.5", "*"])
+def test_a_client_accepting_gzip_gets_one_layer_from_the_application(api, accept):
+    client, row = with_the_applications_gzip(), api.store.books[18]["row"]
+    response, raw = raw_get(client, "/api/game/grimoires/18/book", accept)
+    assert raw == row.body_gzip and response.headers["content-encoding"] == "gzip"
+    response, raw = raw_get(client, "/large", accept)
+    assert response.headers["content-encoding"] == "gzip"
+    assert json.loads(gzip.decompress(raw)) == {"text": "x" * 5_000}
+
+
+def test_the_application_uses_the_gzip_middleware_that_reads_accept_encoding_as_the_book_routes_do():
+    from app.compression import GZipMiddleware
+    from app.main import create_app
+
+    application = create_app(initialize_services=False)
+    gzips = [entry for entry in application.user_middleware if "GZip" in entry.cls.__name__]
+    assert [entry.cls for entry in gzips] == [GZipMiddleware]
+
+
 @pytest.mark.parametrize("value", ['"{v}"', 'W/"{v}"', '"other", "{v}"', "*"])
 def test_the_kept_version_answers_304_without_reading_the_body(api, value):
     row = api.store.books[18]["row"]

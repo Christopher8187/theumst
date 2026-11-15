@@ -4,6 +4,16 @@ Theumst 0.0.16 is the current release, published as [v0.0.16](https://github.com
 
 Christopher selected 0.0.7 for that delivery, superseding the previously proposed 0.0.4 and correcting the earlier 0.2.x numbering. 0.0.8 and 0.0.9 continue it. Historical tags remain unchanged. API compatibility metadata and third-party package versions remain independent.
 
+## 0.0.17 release notes (draft)
+
+0.0.17 is in progress on the `game-master-key-0.0.17` branch, from v0.0.16, and is not published, tagged or deployed. It needs no migration. It changes three things the game uses:
+
+- `POST /api/game/master-key` says whether a key is an active master key, and nothing about its account, so a debug export of the game unlocks its debug powers only for a master key. It reads one row, counts nothing, never logs the key, and allows 10 checks per public address and 60 in all in any 10 minutes. [Game accounts](game-accounts.md#master-keys) owns it. A game that asks 0.0.16 gets 404 and stays locked.
+- Each object of the game's whole-book read adds `source_label`, the label its source prints (`Theorem 2.4.1`), from `language_knowledge.label`, so the game can show it beside the name. The stored answers gain it only when rebuilt, so straight after 0.0.17 starts run `dev/sh/agent_build_book_reads.sh COM`, then with `--check`, as for 0.0.16. Every book gets a new game version, which the game downloads once; the Web Demo's row is unchanged.
+- The application's gzip middleware reads `Accept-Encoding` as the whole-book reads do (`app/compression.py`), so a client refusing gzip with `gzip;q=0` gets the JSON once instead of a second gzip, the Known item of 0.0.16. A header allowing only `*` now gets gzip.
+
+[Security](security.md) also corrects its sentence on the proxy's body limit: 128 KiB, or 1 MiB on the notes paths. Going back to 0.0.16 needs nothing undone; the game's answers then keep `source_label` until a rebuild under 0.0.16 removes it.
+
 ## 0.0.16 release notes
 
 Migration 017 can run while 0.0.15 is still serving. It creates the empty table `book_game_read` and changes no row, and 0.0.15 never reads it. 0.0.16 does not start until the runner has applied 017. Straight after 0.0.16 starts, run `dev/sh/agent_build_book_reads.sh COM`, then the same with `--check`, which must exit 0 with every book `current` in both rows. Each line gives the row's seconds; record the largest book's. [Operations](operations.md#whole-book-reads) describes the command, which now prints a line per book for `book_read` and for `book_game_read`. Until it has run, the game's book answers 409. From then on every Whole-book upload and single-object submission rebuilds both rows, and the upload rebuilds the game's once more after storing its images.

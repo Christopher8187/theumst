@@ -4,7 +4,7 @@ UMST signs in to theumst.com with a username and password, then keeps its charac
 
 ## Keys and limits
 
-`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Signing in again on the same computer revokes that computer's earlier game key first. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active regular key of the account works, so a key pasted into the game's settings works too; master keys are refused. The account and character calls and the list of grimoires need no Web Demo access, so every confirmed account plays. A book and its notes need it, as reading books under `/api/v1` has since 0.0.13 ([security](security.md)). Another account's key gets 403 `demo_access_required` there, and the call counts nowhere. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`. A password reset revokes all the account's game keys.
+`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Signing in again on the same computer revokes that computer's earlier game key first. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active regular key of the account works, so a key pasted into the game's settings works too; master keys are refused, except by [the master-key check](#master-keys). The account and character calls and the list of grimoires need no Web Demo access, so every confirmed account plays. A book and its notes need it, as reading books under `/api/v1` has since 0.0.13 ([security](security.md)). Another account's key gets 403 `demo_access_required` there, and the call counts nowhere. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`. A password reset revokes all the account's game keys.
 
 A call may name its game install in `X-Install-Id`, the short id the game keeps per install and puts in its key names, `UMST · <computer> · <install id>`. The value is 1 to 64 ASCII letters, digits, hyphens or underscores, such as `k7m2qx`. A malformed or repeated header gets 422 `invalid_request` naming `X-Install-Id`, before the key is looked up or the call counted. Only the leases read it, and the game in players' hands sends none yet.
 
@@ -34,6 +34,7 @@ Paths are under `/api/game`.
 | `POST /grimoires/{id}/notes` | `note_type`, `knowledge_id` when attached, optional `tag`, `content` | 201 `{note}` |
 | `PUT /grimoires/{id}/notes/{note_id}` | `tag`, `content`, `if_updated_at` | 200 `{note}` |
 | `DELETE /grimoires/{id}/notes/{note_id}` | `if_updated_at` | 200 `{deleted: true, demo_note_id}` |
+| `POST /master-key` | | 200 `{master: true}` |
 
 The sign-in `key`, and `/me`'s without `key`:
 
@@ -71,7 +72,7 @@ Since 0.0.16 the game downloads a whole book once per version and lays it out it
 
 `title` is the language-1 title. `author` is the book's `source_metadata.author` when that is a non-empty string, else the title's last parenthesis less its `, YYYY`, else null. `version`, `objects` and `bytes`, the stored gzip's size, are those of the book's stored game answer, and null while it has none. `may_read` says whether the account has Web Demo access. Every row's value equals the top-level one today.
 
-`GET /grimoires/{id}/book` sends that answer: the Web Demo's whole-book read of format 1 with each object's statement, working, summary, figures and page scans, as [data architecture](architecture/data.md) explains. It is served as the [Web Demo's](web-demo.md#whole-book-read) is. A 200 or 304 carries `ETag: "<version>"`, `Cache-Control: private, max-age=1209600` and `Vary: X-API-Key, Authorization, Accept-Encoding`, never `no-store`. `If-None-Match` matches when any listed tag equals the ETag, with or without `W/`, or is `*`, and the answer is then 304 with no body. A client whose `Accept-Encoding` allows gzip gets the stored gzip bytes with `Content-Encoding: gzip`, and any other the JSON. No request builds the answer: until ingestion or the [manual run](operations.md#whole-book-reads) has stored one, the book gets 409 `book_read_not_computed`.
+`GET /grimoires/{id}/book` sends that answer: the Web Demo's whole-book read of format 1 with each object's statement, working, summary, figures and page scans, as [data architecture](architecture/data.md) explains. It is served as the [Web Demo's](web-demo.md#whole-book-read) is. A 200 or 304 carries `ETag: "<version>"`, `Cache-Control: private, max-age=1209600` and `Vary: X-API-Key, Authorization, Accept-Encoding`, never `no-store`. `If-None-Match` matches when any listed tag equals the ETag, with or without `W/`, or is `*`, and the answer is then 304 with no body. A client whose `Accept-Encoding` allows gzip gets the stored gzip bytes with `Content-Encoding: gzip`, and any other the JSON. Since 0.0.17 the JSON is sent as it is: before, a header such as `gzip;q=0` got the JSON gzipped again by the application's middleware, which now reads `Accept-Encoding` as the book route does. No request builds the answer: until ingestion or the [manual run](operations.md#whole-book-reads) has stored one, the book gets 409 `book_read_not_computed`.
 
 Figures and page scans come from `GET /api/v1/storage/{storage_key}`, the `url` each one names. That route serves any active image of a visible book to a key whose account has Web Demo access, counts as `book` and answers `Cache-Control: private, no-store`. Its refusals are `/api/v1`'s: 401 and 404 as `{"detail"}`, 403 `demo_access_required`, and 429 with `Retry-After`.
 
@@ -85,6 +86,12 @@ The notes are the Web Demo's own `demo_note` rows, so a note made in the game sh
 
 The list gives the account's notes in one book, attached and scribbles, most recently changed first. Only the account's own notes are ever read or changed, and another account's note answers as a missing one. An `attached` note names an active object of the book in `knowledge_id`, and a `scribble` names none. `tag` holds at most 120 characters, stored without surrounding whitespace, and `content` at most 50,000, as in the Web Demo; neither may hold NUL or a lone surrogate. Unlike the Web Demo's, making a note needs no book in My grimoires and adds none. A PUT gives both `tag` and `content` and changes nothing else. A PUT or DELETE sends the `updated_at` it read as `if_updated_at`, with any UTC offset. When the note has changed since, the answer is 409 `note_changed` with the current `note`, so the game never overwrites an edit made on the website. The Web Demo's own edits have no such check. Notes carry no ETag.
 
+## Master keys
+
+Since 0.0.17 `POST /master-key` says whether the key it is sent, in `X-API-Key` or `Authorization: Bearer`, is an active master key of a confirmed account. A debug export of the game asks it before unlocking its debug powers, such as its time scale. It is the one game call that takes a master key, and it answers 200 `{"master": true}` and nothing about the key's account. A regular key gets 403 `not_master_key`, and a missing, unknown or revoked key, or one of an unconfirmed account, 401 `invalid_key`. The check reads one row and writes nothing: it counts nowhere, neither in the key's minute nor in `api_usage_daily`, and it never logs or returns the key.
+
+Checks are limited in the backend's process, which COM runs as one worker: 10 from one public address and 60 in all in any 10 minutes, past which the answer is 429 `rate_limited` with `retry_after` and `Retry-After`. A request without a key is refused before it counts. The counts start again when the backend restarts.
+
 ## Errors
 
 Errors answer `{"code", "detail"}` and the listed fields.
@@ -95,9 +102,10 @@ Errors answer `{"code", "detail"}` and the listed fields.
 | 403 | `email_unverified` | sign-in | right password, email not confirmed |
 | 429 | `too_many_attempts` | sign-in | too many wrong passwords; `retry_after` and `Retry-After` |
 | 401 | `invalid_key` | all others | key missing, unknown or revoked, revoked during the call, or its account unconfirmed |
-| 403 | `master_key_not_allowed` | all others | a master key |
+| 403 | `master_key_not_allowed` | all others but the master-key check | a master key |
+| 403 | `not_master_key` | master-key check | a regular key |
 | 403 | `demo_access_required` | book, notes | the account has no Web Demo access; nothing counted |
-| 429 | `rate_limited` | all others | key over its minute, or a tier without allowance; `retry_after` and `Retry-After` |
+| 429 | `rate_limited` | all others | key over its minute, or a tier without allowance, or too many [master-key checks](#master-keys); `retry_after` and `Retry-After` |
 | 404 | `book_not_found` | book, notes | unknown or hidden grimoire |
 | 404 | `object_not_found` | make note | `knowledge_id` is no active object of the book |
 | 404 | `note_not_found` | change or delete note | no such note of this account in this book |
