@@ -10,7 +10,9 @@ with /api/v1. Master keys are refused.
 Since 0.0.16 the game reads whole books here, once per book version, and keeps
 the account's Web Demo notes. Since 0.0.17 POST /master-key says whether a key is a
 master key, the one call that takes one, so a debug export can unlock its debug
-powers; it answers nothing about the key's account. Reading a book and its notes needs Web Demo
+powers; it answers nothing about the key's account. Since 0.0.18 POST
+/grimoires/{id}/figures sends a book's figures many at a time. Reading a book, its
+figures and its notes needs Web Demo
 access, as the Web Demo and /api/v1 do (0.0.13); the list of grimoires does not,
 so an account without it learns that it may not read.
 
@@ -25,6 +27,7 @@ response shapes.
 """
 from __future__ import annotations
 
+import base64
 import json
 import math
 import re
@@ -32,8 +35,10 @@ import threading
 import time
 import unicodedata
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
+from urllib.parse import unquote
 
 import psycopg2
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
@@ -46,7 +51,7 @@ from ..database import transaction
 from ..dependencies import DEMO_ACCESS_POINT, AccessRefused, _raw_api_key, authenticate_api_key
 from ..schemas import GameNoteCreate, GameNoteDelete, GameNoteUpdate
 from ..security import hash_secret
-from ..services import book_read, sign_in_attempts
+from ..services import book_read, sign_in_attempts, storage
 from ..services.api_keys import GAME_CLIENT, create_regular_key, revoke_game_keys
 
 
@@ -755,6 +760,112 @@ def get_book(grimoire_id: int, request: Request):
         stored["version"], bytes(stored["body_gzip"]), request.headers.get("accept-encoding"), BOOK_VARY,
     )
     return Response(content=content, media_type="application/json", headers=headers)
+
+
+# --- figures (0.0.18) -----------------------------------------------------------------
+#
+# The game keeps a book's figures with its copy. Fetched one request each from /api/v1/storage
+# they cost a round trip apiece, and Boyce names 267, so the game asks for them here many at a
+# time, by the urls its answer names. Only the book's own figures are served: active images linked
+# as figures to its active objects, in a book the Web Demo shows, to a key that may read books, as
+# /api/v1/storage serves them. An answer holds at most FIGURE_BATCH_BYTES of images (a single figure
+# larger than that goes alone) and names the rest as `later`, so a large book takes several
+# requests and the backend never holds more than one answer's images and FIGURE_READERS read ahead.
+
+FIGURE_BATCH_URLS = 64
+FIGURE_BATCH_BYTES = 4 * 1024 * 1024
+FIGURE_URL_MAX_CHARACTERS = 1024
+FIGURE_READERS = 8
+STORAGE_PATH = "/api/v1/storage/"
+
+
+class FigureBatchBody(BaseModel):
+    urls: list[Annotated[str, Field(min_length=1, max_length=FIGURE_URL_MAX_CHARACTERS)]] = Field(
+        min_length=1, max_length=FIGURE_BATCH_URLS,
+    )
+
+
+def _figure_key(url: str) -> str | None:
+    """The storage key a figure's url names ("/api/v1/storage/<key>", as the game's answer writes it,
+    percent-encoded), or None for any other url."""
+    path = url.split("?", 1)[0].split("#", 1)[0]
+    if not path.startswith(STORAGE_PATH):
+        return None
+    try:
+        key = storage.clean_key(unquote(path[len(STORAGE_PATH):]))
+    except HTTPException:
+        return None
+    return key or None
+
+
+def _read_batch(found: list[tuple[str, str, str | None]]) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+    """The figures of found ([(url, key, updated_at)], in the order asked) read from storage, up to
+    FIGURE_READERS at once and within FIGURE_BATCH_BYTES: (sent, missing, later)."""
+    sent: list[dict[str, Any]] = []
+    missing: list[str] = []
+    later: list[str] = []
+    total = 0
+    waiting = iter(found)
+    reading: deque = deque()
+    with ThreadPoolExecutor(max_workers=FIGURE_READERS) as pool:
+        def read_next() -> None:
+            item = next(waiting, None)
+            if item is not None:
+                reading.append((item, pool.submit(storage.read_optional, item[1])))
+
+        for _ in range(FIGURE_READERS):
+            read_next()
+        full = False
+        while reading:
+            (url, key, updated_at), future = reading.popleft()
+            if full:
+                future.cancel()
+                later.append(url)
+                continue
+            data = future.result()
+            if data is None:
+                missing.append(url)
+            elif sent and total + len(data) > FIGURE_BATCH_BYTES:
+                full = True
+                later.append(url)
+                continue
+            else:
+                total += len(data)
+                sent.append({
+                    "url": url,
+                    "updated_at": updated_at,
+                    "content_type": storage.media_type_for(key),
+                    "bytes": len(data),
+                    "data": base64.b64encode(data).decode("ascii"),
+                })
+            read_next()
+    later.extend(url for url, _, _ in waiting)
+    return sent, missing, later
+
+
+@router.post("/grimoires/{grimoire_id}/figures")
+def get_figures(grimoire_id: int, body: FigureBatchBody, request: Request):
+    """Many of a book's figures in one answer: each one asked for that the book's game answer names
+    goes in `figures`, its bytes in base64, until the answer holds FIGURE_BATCH_BYTES; the rest asked
+    are `later`, to ask again, and a url that is no figure of the book, or whose bytes storage does
+    not hold, is `missing`. Counts as one `book` request."""
+    _reader_key(request)
+    asked: list[str] = []
+    for url in body.urls:
+        if url not in asked:
+            asked.append(url)
+    keys = {url: _figure_key(url) for url in asked}
+    with transaction() as (_, cur):
+        _visible_book(cur, grimoire_id)
+        figures = book_read.figure_keys(cur, grimoire_id, sorted({key for key in keys.values() if key}))
+    found = [(url, keys[url], figures[keys[url]]) for url in asked if keys[url] in figures]
+    sent, missing, later = _read_batch(found)
+    known = {url for url, _, _ in found}
+    missing = [url for url in asked if url not in known or url in missing]
+    return JSONResponse(
+        {"figures": sent, "missing": missing, "later": later},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # --- notes (0.0.16) -------------------------------------------------------------------

@@ -73,3 +73,52 @@ def test_cloud_signed_read_url_uses_private_bucket(monkeypatch):
         )
     finally:
         get_settings.cache_clear()
+
+
+def test_read_optional_gives_none_only_for_an_absent_object(tmp_path, monkeypatch):
+    # The game's figure batches (0.0.18) answer a figure storage does not hold as missing.
+    monkeypatch.setenv("SERVER", "LOCAL")
+    monkeypatch.setenv("LOCAL_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    try:
+        storage.write_bytes("books/18/images/a.png", b"png")
+        assert storage.read_optional("books/18/images/a.png") == b"png"
+        assert storage.read_optional("books/18/images/none.png") is None
+        with pytest.raises(HTTPException):
+            storage.read_optional("../secret")
+    finally:
+        get_settings.cache_clear()
+
+
+class _ClientError(Exception):
+    def __init__(self, code):
+        super().__init__(code)
+        self.response = {"Error": {"Code": code}}
+
+
+class _OssError(Exception):
+    def __init__(self, status):
+        super().__init__(status)
+        self.status = status
+
+
+@pytest.mark.parametrize(("error", "absent"), [
+    (HTTPException(404, "File not found"), True),
+    (HTTPException(400, "Invalid path"), False),
+    (_ClientError("NoSuchKey"), True),
+    (_ClientError("404"), True),
+    (_ClientError("AccessDenied"), False),
+    (_OssError(404), True),
+    (_OssError(503), False),
+    (RuntimeError("down"), False),
+])
+def test_read_optional_tells_absence_from_failure_in_every_mode(monkeypatch, error, absent):
+    def failing(key):
+        raise error
+
+    monkeypatch.setattr(storage, "read_bytes", failing)
+    if absent:
+        assert storage.read_optional("books/18/images/a.png") is None
+    else:
+        with pytest.raises(type(error)):
+            storage.read_optional("books/18/images/a.png")

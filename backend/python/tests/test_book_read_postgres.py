@@ -7,11 +7,12 @@ afterwards; the configured database is untouched. Books arrive through the maste
 upload and single-object submission, and are read through the Web Demo's routes with a session and
 through /api/game with a regular key, so the queries, the advisory lock, the savepoints and the
 transactions are PostgreSQL's own. No book has embeddings, so nothing reaches Qdrant. Image rows
-are written through ingestion's own _finalize_images; the one image read through /api/v1/storage
-has its bytes from a stand-in for storage.
+are written through ingestion's own _finalize_images; the images read through /api/v1/storage and the
+game's figure batches (0.0.18) have their bytes from a stand-in for storage.
 """
 from __future__ import annotations
 
+import base64
 import gzip
 import hashlib
 import io
@@ -21,6 +22,7 @@ import threading
 import zipfile
 from contextlib import contextmanager
 from datetime import timezone
+from urllib.parse import unquote
 from uuid import uuid4
 
 import psycopg2
@@ -822,6 +824,42 @@ def test_a_page_scan_comes_through_the_game_key_and_counts_as_a_book_read(client
     refused = client.get(url, headers=stranger["headers"])
     assert refused.status_code == 403 and refused.json()["code"] == "demo_access_required"
     assert client.get(url).status_code == 401
+
+
+def test_the_books_figures_come_in_one_batch_through_the_game_key(client, player, stranger, book, illustrated,
+                                                                  monkeypatch):
+    # POST /api/game/grimoires/{id}/figures (0.0.18): the figures the game's answer names, read by the same links.
+    grimoire_id = illustrated["grimoire_id"]
+    answer = game_book(client, player, grimoire_id).json()
+    named = {}
+    for item in answer["objects"]:
+        for figure in item["figures"]:
+            named[figure["url"]] = figure["updated_at"]
+    assert len(named) == 2  # fig-a (linked twice) and fig-legacy
+    old = f"/api/v1/storage/books/{grimoire_id}/figures/fig-old%20scan.png"  # inactive
+    scan = answer["pages"]["p-3"]["url"]  # a page scan is no figure
+    monkeypatch.setattr(storage, "read_bytes", lambda key: b"\x89PNG figure " + key.encode())
+    before = usage(player).get("book", 0)
+    path = f"/api/game/grimoires/{grimoire_id}/figures"
+    response = client.post(path, headers=player["headers"], json={"urls": [*named, old, scan]})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [figure["url"] for figure in body["figures"]] == list(named)
+    for figure in body["figures"]:
+        key = unquote(figure["url"].removeprefix("/api/v1/storage/"))
+        assert base64.b64decode(figure["data"]) == b"\x89PNG figure " + key.encode()
+        assert figure["updated_at"] == named[figure["url"]] and figure["content_type"] == "image/png"
+    assert body["missing"] == [old, scan] and body["later"] == []
+    assert usage(player)["book"] == before + 1
+    # Another book's figures are missing from this one, and the route keeps the book reads' access.
+    other = client.post(f"/api/game/grimoires/{book['grimoire_id']}/figures", headers=player["headers"],
+                        json={"urls": list(named)})
+    assert other.status_code == 200 and other.json() == {"figures": [], "missing": list(named), "later": []}
+    refused = client.post(path, headers=stranger["headers"], json={"urls": list(named)})
+    assert refused.status_code == 403 and refused.json()["code"] == "demo_access_required"
+    assert client.post(path, json={"urls": list(named)}).status_code == 401
+    assert client.post(f"/api/game/grimoires/{grimoire_id + 100000}/figures", headers=player["headers"],
+                       json={"urls": list(named)}).json()["code"] == "book_not_found"
 
 
 @pytest.mark.parametrize("tag", ['"{v}"', 'W/"{v}"', '"stale", "{v}"', "*"])

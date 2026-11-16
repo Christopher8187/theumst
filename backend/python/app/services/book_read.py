@@ -125,6 +125,36 @@ WHERE bi.is_active
 ORDER BY link.knowledge_id, bi.book_image_id
 """
 
+# Since 0.0.18 the game fetches a book's figures many at a time (game.py, POST
+# /api/game/grimoires/{id}/figures). These are the asked storage keys that are figures the game's
+# answer names: active images linked as figures to the book's active objects, by the same links
+# as _FIGURES, and stored under a book the Web Demo shows, as /api/v1/storage/{key} requires of
+# an image it serves.
+_FIGURE_KEYS = f"""
+SELECT bi.storage_key, max(bi.updated_at) AS updated_at
+FROM (
+    SELECT b.book_image_id FROM book_image b
+    WHERE b.knowledge_id IN ({_BOOK_OBJECTS})
+    UNION
+    SELECT l.book_image_id FROM book_image_knowledge l
+    WHERE l.link_type = 'figure' AND l.knowledge_id IN ({_BOOK_OBJECTS})
+) link
+JOIN book_image bi ON bi.book_image_id = link.book_image_id
+JOIN grimoire g ON g.grimoire_id = bi.grimoire_id
+WHERE bi.is_active AND bi.storage_key = ANY(%s) AND g.source_metadata->>'demo' = 'true'
+GROUP BY bi.storage_key
+"""
+
+
+def figure_keys(cur, grimoire_id: int, keys: Sequence[str]) -> dict[str, str | None]:
+    """Of keys, the storage keys of the book's figures as its game answer names them, with each
+    one's updated_at as the answer writes it; a key that is no active figure of the book is absent."""
+    if not keys:
+        return {}
+    cur.execute(_FIGURE_KEYS, (grimoire_id, grimoire_id, list(keys)))
+    return {str(row["storage_key"]): _iso(row["updated_at"]) for row in cur.fetchall()}
+
+
 # demo._object_images(cur, id, "page") for every object: the scans of the pages it appeared on,
 # by page number, then book_image_id.
 _PAGES = f"""

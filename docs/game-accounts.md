@@ -1,14 +1,14 @@
 # Game accounts
 
-UMST signs in to theumst.com with a username and password, then keeps its characters here. Since 0.0.16 it also downloads whole books here and keeps the account's Web Demo notes. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables, 014 deletes a character's save with it, 015 keeps the install that has a character open, and 017 holds the books the game reads. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, apart from a book's 200 and 304, and times are UTC, such as `2026-11-05T10:00:00Z`. A note's times also give microseconds.
+UMST signs in to theumst.com with a username and password, then keeps its characters here. Since 0.0.16 it also downloads whole books here and keeps the account's Web Demo notes, and since 0.0.18 it fetches a book's figures here many at a time. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables, 014 deletes a character's save with it, 015 keeps the install that has a character open, and 017 holds the books the game reads. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, apart from a book's 200 and 304, and times are UTC, such as `2026-11-05T10:00:00Z`. A note's times also give microseconds.
 
 ## Keys and limits
 
-`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Signing in again on the same computer revokes that computer's earlier game key first. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active regular key of the account works, so a key pasted into the game's settings works too; master keys are refused, except by [the master-key check](#master-keys). The account and character calls and the list of grimoires need no Web Demo access, so every confirmed account plays. A book and its notes need it, as reading books under `/api/v1` has since 0.0.13 ([security](security.md)). Another account's key gets 403 `demo_access_required` there, and the call counts nowhere. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`. A password reset revokes all the account's game keys.
+`POST /api/game/sign-in` checks the password and makes a regular key at the `standard` tier named `UMST · <computer>`, with `api_key.client = 'umst'`. Signing in again on the same computer revokes that computer's earlier game key first. Every other call sends a key in `X-API-Key` or `Authorization: Bearer`. Any active regular key of the account works, so a key pasted into the game's settings works too; master keys are refused, except by [the master-key check](#master-keys). The account and character calls and the list of grimoires need no Web Demo access, so every confirmed account plays. A book, its figures and its notes need it, as reading books under `/api/v1` has since 0.0.13 ([security](security.md)). Another account's key gets 403 `demo_access_required` there, and the call counts nowhere. `GET /api/game/me` names the account behind a key. Sign-out revokes the key only when its client is `umst`. A password reset revokes all the account's game keys.
 
 A call may name its game install in `X-Install-Id`, the short id the game keeps per install and puts in its key names, `UMST · <computer> · <install id>`. The value is 1 to 64 ASCII letters, digits, hyphens or underscores, such as `k7m2qx`. A malformed or repeated header gets 422 `invalid_request` naming `X-Install-Id`, before the key is looked up or the call counted. Only the leases read it, and the game in players' hands sends none yet.
 
-A regular key gets its tier's `requests_per_minute` (600 for `standard`) for each kind of request in a one-minute window. Account and character calls count as `character`. The list of grimoires, books and notes under `/api/game`, and calls under `/api/v1`, count as `book` and share one window. Past the limit the answer is 429 with `Retry-After` in seconds; a tier without allowance answers 429 with `Retry-After: 60`. Master keys have no limit on `/api/v1`. `api_usage_daily` counts every accepted request by key, UTC day and kind, master keys included. A refused request counts nowhere.
+A regular key gets its tier's `requests_per_minute` (600 for `standard`) for each kind of request in a one-minute window. Account and character calls count as `character`. The list of grimoires, books, figure batches and notes under `/api/game`, and calls under `/api/v1`, count as `book` and share one window. Past the limit the answer is 429 with `Retry-After` in seconds; a tier without allowance answers 429 with `Retry-After: 60`. Master keys have no limit on `/api/v1`. `api_usage_daily` counts every accepted request by key, UTC day and kind, master keys included. A refused request counts nowhere.
 
 The Default key comes only from the signed-in API Keys page. When an account without one opens it, `POST /api/api-keys/default` makes a regular `standard` key named `Default` and answers 201 with its full text, once; otherwise it answers 200 `{"created": false}`. Confirming an email makes no key, because its link works without a session and could reach a mail scanner or anyone the email is forwarded to. Any key named `Default` without a client counts, revoked ones too, so revoking it never brings another.
 
@@ -30,6 +30,7 @@ Paths are under `/api/game`.
 | `DELETE /characters/{id}` | `name` | 200 `{deleted: true, character_id}` |
 | `GET /grimoires` | | 200 `{may_read, grimoires: [grimoire]}` |
 | `GET /grimoires/{id}/book` | | 200 the book, or 304 |
+| `POST /grimoires/{id}/figures` | `urls`, 1 to 64 | 200 `{figures, missing, later}` |
 | `GET /grimoires/{id}/notes` | | 200 `{notes: [note]}` |
 | `POST /grimoires/{id}/notes` | `note_type`, `knowledge_id` when attached, optional `tag`, `content` | 201 `{note}` |
 | `PUT /grimoires/{id}/notes/{note_id}` | `tag`, `content`, `if_updated_at` | 200 `{note}` |
@@ -76,6 +77,17 @@ Since 0.0.16 the game downloads a whole book once per version and lays it out it
 
 Figures and page scans come from `GET /api/v1/storage/{storage_key}`, the `url` each one names. That route serves any active image of a visible book to a key whose account has Web Demo access, counts as `book` and answers `Cache-Control: private, no-store`. Its refusals are `/api/v1`'s: 401 and 404 as `{"detail"}`, 403 `demo_access_required`, and 429 with `Retry-After`.
 
+Since 0.0.18 the game fetches a book's figures many at a time with `POST /grimoires/{id}/figures`, so a book of hundreds of figures takes a few requests instead of one each. The body names 1 to 64 urls as the book's answer gives them, `{"urls": ["/api/v1/storage/books/18/images/a.png", ...]}`, each of at most 1,024 characters; an empty, longer or malformed list is 422 `invalid_request` before the key is looked up. It needs Web Demo access and counts once as `book`, like the book. Only the book's own figures are served: active images linked as figures to its active objects, by the links its game answer names them by, in a book the Web Demo shows and stored under a book it shows, as `/api/v1/storage` requires of an image. A hidden or unknown book is 404 `book_not_found`. The answer keeps the order asked and names each url once:
+
+```json
+{"figures": [{"url": "/api/v1/storage/books/18/images/a.png", "updated_at": "2026-11-12T08:00:00Z",
+              "content_type": "image/png", "bytes": 35120, "data": "<base64>"}],
+ "missing": ["/api/v1/storage/books/18/images/page-3.jpg"],
+ "later": ["/api/v1/storage/books/18/images/b.png"]}
+```
+
+`data` is the figure's bytes in base64, `bytes` their count, and `updated_at` the time the book's answer gives it. A url that is no figure of this book (a page scan, another book's figure, an inactive image, one stored under a hidden book, any url outside `/api/v1/storage/`), or whose bytes storage does not hold, is `missing`; the answer is still 200. An answer holds at most 4 MiB of figures, read from storage up to eight at once, and names the rest as `later`, for the game to ask again; a single figure larger than that comes alone. The backend therefore holds one answer's figures, and at most eight read ahead, whatever the book's size. Any other storage failure is a 500, as on the single route. Before 0.0.18 the path is 404 `{"detail": "API route not found"}`, and the game falls back to fetching each figure from `/api/v1/storage`.
+
 The notes are the Web Demo's own `demo_note` rows, so a note made in the game shows in the Web Demo's notebook and one made there shows in the game. A note:
 
 ```json
@@ -104,9 +116,9 @@ Errors answer `{"code", "detail"}` and the listed fields.
 | 401 | `invalid_key` | all others | key missing, unknown or revoked, revoked during the call, or its account unconfirmed |
 | 403 | `master_key_not_allowed` | all others but the master-key check | a master key |
 | 403 | `not_master_key` | master-key check | a regular key |
-| 403 | `demo_access_required` | book, notes | the account has no Web Demo access; nothing counted |
+| 403 | `demo_access_required` | book, figures, notes | the account has no Web Demo access; nothing counted |
 | 429 | `rate_limited` | all others | key over its minute, or a tier without allowance, or too many [master-key checks](#master-keys); `retry_after` and `Retry-After` |
-| 404 | `book_not_found` | book, notes | unknown or hidden grimoire |
+| 404 | `book_not_found` | book, figures, notes | unknown or hidden grimoire |
 | 404 | `object_not_found` | make note | `knowledge_id` is no active object of the book |
 | 404 | `note_not_found` | change or delete note | no such note of this account in this book |
 | 409 | `book_read_not_computed` | book | no stored answer in format 1 |

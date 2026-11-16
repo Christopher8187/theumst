@@ -165,6 +165,28 @@ def read_bytes(key: str) -> bytes:
     raise HTTPException(status_code=400, detail="SERVER must be LOCAL, COM, or CN")
 
 
+def _absent(exc: Exception) -> bool:
+    """Whether a storage error says the object is not there: LOCAL's 404, Spaces' NoSuchKey
+    (botocore's ClientError) or OSS's NoSuchKey (status 404)."""
+    if isinstance(exc, HTTPException):
+        return exc.status_code == 404
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        error = response.get("Error") if isinstance(response.get("Error"), dict) else {}
+        return str(error.get("Code", "")) in {"NoSuchKey", "404", "NotFound"}
+    return getattr(exc, "status", None) == 404
+
+
+def read_optional(key: str) -> bytes | None:
+    """read_bytes, or None when the object is not there; any other failure is raised."""
+    try:
+        return read_bytes(key)
+    except Exception as exc:
+        if _absent(exc):
+            return None
+        raise
+
+
 def write_bytes(key: str, data: bytes) -> str:
     key = clean_key(key)
     if not key:

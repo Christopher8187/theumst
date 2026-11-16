@@ -1,4 +1,4 @@
-"""The game's book and notes routes (0.0.16) against an in-memory stand-in for PostgreSQL.
+"""The game's book, figures (0.0.18) and notes routes (0.0.16) against an in-memory stand-in for PostgreSQL.
 
 The stand-in answers each query by its text, so these establish the order of the checks,
 the refusals and their shapes, the headers, and which rows each call reads or changes.
@@ -7,6 +7,7 @@ Web Demo's per-object route, counting, and notes shared with the Web Demo.
 """
 from __future__ import annotations
 
+import base64
 import gzip
 import json
 from contextlib import contextmanager
@@ -52,6 +53,22 @@ class Store:
             40: {"visible": False, "title": "Hidden (Somebody, 2020)", "author": None, "row": built_book(40)},
         }
         self.objects = {1801: 18, 1802: 18, 802: 8}  # active objects and their books
+        # Book images by storage key: the book whose active object links it as a figure (None for a
+        # page scan), whether it is active, and its time, with "home" the book it is stored under when
+        # that is another; the stored bytes are in `stored`.
+        self.images = {
+            "books/18/images/a.png": {"book": 18, "active": True, "updated_at": CLOCK},
+            "books/18/images/b c.png": {"book": 18, "active": True, "updated_at": CLOCK + timedelta(seconds=1)},
+            "books/18/images/c.svg": {"book": 18, "active": True, "updated_at": CLOCK + timedelta(seconds=2)},
+            "books/18/images/old.png": {"book": 18, "active": False, "updated_at": CLOCK},
+            "books/18/images/page-3.jpg": {"book": None, "active": True, "updated_at": CLOCK},
+            "books/18/images/lost.png": {"book": 18, "active": True, "updated_at": CLOCK},
+            "books/8/images/boyce.png": {"book": 8, "active": True, "updated_at": CLOCK},
+            "books/40/images/kept.png": {"book": 18, "active": True, "updated_at": CLOCK, "home": 40},
+        }
+        self.stored = {key: f"<{key}>".encode() for key in self.images if not key.endswith("lost.png")}
+        self.stored["books/18/images/c.svg"] = b"<svg xmlns='http://www.w3.org/2000/svg'/>"
+        self.reads: list[str] = []
         self.notes: dict[int, dict] = {}
         self.next_id = 1
         self.clock = CLOCK
@@ -107,6 +124,18 @@ class Cursor:
             row = store.books[params[0]]["row"]
             self.result = None if store.deleted_after_check or row is None else {
                 "version": row.version, "body_gzip": memoryview(row.body_gzip)}
+        elif "GROUP BY bi.storage_key" in text:
+            # book_read.figure_keys: the asked keys that are active figures of the book's active objects
+            # stored under a book the Web Demo shows, as /api/v1/storage requires
+            grimoire_id, again, keys = params
+            assert grimoire_id == again and "link_type = 'figure'" in text and "bi.is_active" in text
+            assert "JOIN grimoire g ON g.grimoire_id = bi.grimoire_id" in text and "g.source_metadata->>'demo' = 'true'" in text
+            self.result = [
+                {"storage_key": key, "updated_at": image["updated_at"]}
+                for key, image in store.images.items()
+                if key in keys and image["active"] and image["book"] == grimoire_id
+                and store.books[image.get("home", image["book"])]["visible"]
+            ]
         elif text.startswith("SELECT 1 FROM grimoire WHERE grimoire_id = %s"):
             book = store.books.get(params[0])
             self.result = {"?column?": 1} if book and book["visible"] else None
@@ -167,8 +196,13 @@ def api(monkeypatch):
             raise AccessRefused(access_point)
         return dict(state.key)
 
+    def fake_read_optional(key):
+        store.reads.append(key)
+        return store.stored.get(key)
+
     monkeypatch.setattr(game, "transaction", store.transaction)
     monkeypatch.setattr(game, "authenticate_api_key", fake_authenticate)
+    monkeypatch.setattr(game.storage, "read_optional", fake_read_optional)
     application = FastAPI()
     application.include_router(game.router)
     game.install_error_handlers(application)
@@ -578,6 +612,165 @@ def test_a_delete_removes_the_note_once_its_token_matches(api):
     assert_refused(api.client.request("DELETE", path, headers=KEY), 422, "invalid_request")
 
 
+# --- figures (0.0.18) --------------------------------------------------------------------------
+
+STORAGE = "/api/v1/storage/"
+FIGURE_A = STORAGE + "books/18/images/a.png"
+FIGURE_B = STORAGE + "books/18/images/b%20c.png"  # as quote() writes the key "b c.png"
+FIGURE_C = STORAGE + "books/18/images/c.svg"
+
+
+def figures_of(api, urls, grimoire_id=18):
+    return api.client.post(f"/api/game/grimoires/{grimoire_id}/figures", headers=KEY, json={"urls": urls})
+
+
+def test_the_books_figures_come_in_one_answer_in_the_order_asked(api):
+    response = figures_of(api, [FIGURE_C, FIGURE_A, FIGURE_B])
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-type"] == "application/json"
+    body = response.json()
+    assert body["missing"] == [] and body["later"] == []
+    assert [figure["url"] for figure in body["figures"]] == [FIGURE_C, FIGURE_A, FIGURE_B]
+    stored = api.store.stored
+    for figure, key in zip(body["figures"], ["books/18/images/c.svg", "books/18/images/a.png", "books/18/images/b c.png"]):
+        assert base64.b64decode(figure["data"]) == stored[key]
+        assert figure["bytes"] == len(stored[key])
+        assert figure["updated_at"] == book_read._iso(api.store.images[key]["updated_at"])
+    assert [figure["content_type"] for figure in body["figures"]] == ["image/svg+xml", "image/png", "image/png"]
+    # One book read with Web Demo access, one query for the keys, and nothing written.
+    assert api.calls == [{"kind": "book", "master_allowed": False, "access_point": "demo"}]
+    assert sorted(api.store.reads) == ["books/18/images/a.png", "books/18/images/b c.png", "books/18/images/c.svg"]
+    assert writes(api.store) == []
+
+
+def test_a_url_asked_twice_comes_once(api):
+    body = figures_of(api, [FIGURE_A, FIGURE_A, FIGURE_B, FIGURE_A]).json()
+    assert [figure["url"] for figure in body["figures"]] == [FIGURE_A, FIGURE_B]
+    assert api.store.reads.count("books/18/images/a.png") == 1
+
+
+@pytest.mark.parametrize("url", [
+    STORAGE + "books/8/images/boyce.png",       # another book's figure
+    STORAGE + "books/18/images/old.png",        # an inactive figure
+    STORAGE + "books/18/images/page-3.jpg",     # a page scan, not a figure
+    STORAGE + "books/18/images/none.png",       # no such image
+    STORAGE + "books/18/images/lost.png",       # a figure whose bytes storage does not hold
+    STORAGE + "books/40/images/kept.png",       # linked to this book, stored under a hidden one
+    STORAGE + "books/18/../8/images/boyce.png",  # a path out of the key
+    "https://example.com/figure.png",           # not a storage url
+    "/api/v1/knowledge/1801",
+])
+def test_a_url_that_is_no_figure_of_this_book_is_missing_and_the_rest_come(api, url):
+    body = figures_of(api, [FIGURE_A, url, FIGURE_B]).json()
+    assert [figure["url"] for figure in body["figures"]] == [FIGURE_A, FIGURE_B]
+    assert body["missing"] == [url] and body["later"] == []
+    # Only a figure of the book is ever read from storage.
+    assert set(api.store.reads) <= {"books/18/images/a.png", "books/18/images/b c.png", "books/18/images/lost.png"}
+
+
+def test_a_batch_of_missing_figures_answers_200_with_all_of_them_missing(api):
+    urls = [STORAGE + "books/18/images/none.png", STORAGE + "books/8/images/boyce.png"]
+    body = figures_of(api, urls).json()
+    assert body == {"figures": [], "missing": urls, "later": []}
+    assert api.store.reads == []
+
+
+@pytest.mark.parametrize("body", [
+    {"urls": []},
+    {"urls": [FIGURE_A] * 65},
+    {"urls": [""]},
+    {"urls": ["/" + "x" * 1024]},
+    {"urls": "books/18/images/a.png"},
+    {"urls": [7]},
+    {},
+    None,
+])
+def test_an_empty_or_malformed_batch_is_422_before_the_key(api, body):
+    response = api.client.post("/api/game/grimoires/18/figures", headers=KEY, json=body)
+    assert_refused(response, 422, "invalid_request")
+    assert api.calls == [] and api.store.statements == [] and api.store.reads == []
+
+
+def test_sixty_four_urls_are_the_most_one_batch_asks(api):
+    body = figures_of(api, [STORAGE + f"books/18/images/{n}.png" for n in range(64)]).json()
+    assert len(body["missing"]) == 64
+
+
+@pytest.mark.parametrize(("refusal", "status", "code"), KEY_REFUSALS)
+def test_the_figures_keys_refusals(api, refusal, status, code):
+    api.refusal = refusal
+    body = assert_refused(figures_of(api, [FIGURE_A]), status, code)
+    if code == "rate_limited":
+        assert body["retry_after"] == 17
+    assert api.store.statements == [] and api.store.reads == []
+
+
+def test_figures_need_web_demo_access(api):
+    api.key = reader_key(access_points=["api-keys", "profile"])
+    refused = assert_refused(figures_of(api, [FIGURE_A]), 403, "demo_access_required")
+    assert refused["detail"] == "Reading books needs Web Demo access; request it from the dashboard"
+    assert api.store.statements == [] and api.store.reads == []
+
+
+@pytest.mark.parametrize("grimoire_id", [40, 404])
+def test_figures_of_a_hidden_or_unknown_book_are_404_book_not_found(api, grimoire_id):
+    assert_refused(figures_of(api, [FIGURE_A], grimoire_id), 404, "book_not_found")
+    assert api.store.reads == []
+
+
+def test_an_answer_holds_its_bound_and_names_the_rest_later(api, monkeypatch):
+    for n in range(20):
+        key = f"books/18/images/f{n:02}.png"
+        api.store.images[key] = {"book": 18, "active": True, "updated_at": CLOCK}
+        api.store.stored[key] = bytes([n]) * 100
+    urls = [STORAGE + f"books/18/images/f{n:02}.png" for n in range(20)]
+    monkeypatch.setattr(game, "FIGURE_BATCH_BYTES", 350)
+    body = figures_of(api, urls).json()
+    assert [figure["url"] for figure in body["figures"]] == urls[:3]
+    assert body["later"] == urls[3:] and body["missing"] == []
+    assert sum(figure["bytes"] for figure in body["figures"]) <= 350
+    # Storage is read at most FIGURE_READERS figures past what the answer holds.
+    assert len(api.store.reads) <= 3 + 1 + game.FIGURE_READERS
+    # Asking again for what came later gets the next ones, until none is left.
+    got = [figure["url"] for figure in body["figures"]]
+    left = body["later"]
+    requests = 1
+    while left:
+        answer = figures_of(api, left).json()
+        assert answer["figures"] and answer["missing"] == []
+        got += [figure["url"] for figure in answer["figures"]]
+        left = answer["later"]
+        requests += 1
+    assert got == urls and requests == 7
+
+
+def test_a_figure_larger_than_the_bound_comes_alone(api, monkeypatch):
+    api.store.stored["books/18/images/a.png"] = b"x" * 1000
+    monkeypatch.setattr(game, "FIGURE_BATCH_BYTES", 100)
+    body = figures_of(api, [FIGURE_A, FIGURE_B]).json()
+    assert [figure["url"] for figure in body["figures"]] == [FIGURE_A] and body["later"] == [FIGURE_B]
+    body = figures_of(api, [FIGURE_B, FIGURE_A]).json()
+    assert [figure["url"] for figure in body["figures"]] == [FIGURE_B] and body["later"] == [FIGURE_A]
+
+
+def test_missing_figures_take_no_room_in_the_bound(api, monkeypatch):
+    monkeypatch.setattr(game, "FIGURE_BATCH_BYTES", len(api.store.stored["books/18/images/a.png"]))
+    lost = STORAGE + "books/18/images/lost.png"
+    body = figures_of(api, [lost, FIGURE_A, FIGURE_B]).json()
+    assert [figure["url"] for figure in body["figures"]] == [FIGURE_A]
+    assert body["missing"] == [lost] and body["later"] == [FIGURE_B]
+
+
+def test_a_storage_failure_other_than_absence_is_not_answered_as_missing(api, monkeypatch):
+    def broken(key):
+        raise RuntimeError("storage is down")
+
+    monkeypatch.setattr(game.storage, "read_optional", broken)
+    with pytest.raises(RuntimeError):
+        figures_of(api, [FIGURE_A])
+
+
 def test_every_book_and_notes_call_counts_as_a_book_read_with_web_demo_access(api):
     row = api.store.note(USER_ID, 18, 1801)
     api.client.get("/api/game/grimoires/18/book", headers=KEY)
@@ -587,7 +780,8 @@ def test_every_book_and_notes_call_counts_as_a_book_read_with_web_demo_access(ap
                    json={"tag": "", "content": "x", "if_updated_at": stamp(row)})
     api.client.request("DELETE", f"/api/game/grimoires/18/notes/{row['demo_note_id']}", headers=KEY,
                        json={"if_updated_at": stamp(api.store.notes[row["demo_note_id"]])})
-    assert api.calls == [{"kind": "book", "master_allowed": False, "access_point": "demo"}] * 5
+    api.client.post("/api/game/grimoires/18/figures", headers=KEY, json={"urls": [FIGURE_A, FIGURE_B]})
+    assert api.calls == [{"kind": "book", "master_allowed": False, "access_point": "demo"}] * 6
 
 
 def test_the_routes_are_registered_with_their_methods():
@@ -602,6 +796,7 @@ def test_the_routes_are_registered_with_their_methods():
     assert routes == {
         "/api/game/grimoires": {"GET"},
         "/api/game/grimoires/{grimoire_id}/book": {"GET"},
+        "/api/game/grimoires/{grimoire_id}/figures": {"POST"},
         "/api/game/grimoires/{grimoire_id}/notes": {"GET", "POST"},
         "/api/game/grimoires/{grimoire_id}/notes/{note_id}": {"PUT", "DELETE"},
     }

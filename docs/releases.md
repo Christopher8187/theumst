@@ -4,6 +4,14 @@ Theumst 0.0.16 is the current release, published as [v0.0.16](https://github.com
 
 Christopher selected 0.0.7 for that delivery, superseding the previously proposed 0.0.4 and correcting the earlier 0.2.x numbering. 0.0.8 and 0.0.9 continue it. Historical tags remain unchanged. API compatibility metadata and third-party package versions remain independent.
 
+## 0.0.18 release notes (draft)
+
+0.0.18 is in progress on the `game-figures-0.0.17` branch, made from `game-master-key-0.0.17` and to be released after 0.0.17, and is not published, tagged or deployed. It needs no migration. It adds one thing the game uses:
+
+- `POST /api/game/grimoires/{id}/figures` sends up to 64 of a book's figures in one answer, in base64, within 4 MiB, naming the rest `later` and any url that is no active figure of the book `missing`. It counts once as `book` and needs Web Demo access, as the book does. [Game accounts](game-accounts.md#books-and-notes) owns it. The game asked one request per figure before, four at a time, so a book such as Boyce, with 267 figures, now takes a handful of requests. A game that asks 0.0.17 or earlier gets 404 and fetches each figure from `/api/v1/storage` as before, which 0.0.18 leaves unchanged.
+
+Going back to 0.0.17 needs nothing undone: the game then gets 404 from the route and fetches each figure alone again.
+
 ## 0.0.17 release notes (draft)
 
 0.0.17 is in progress on the `game-master-key-0.0.17` branch, from v0.0.16, and is not published, tagged or deployed. It needs no migration. It changes three things the game uses:
