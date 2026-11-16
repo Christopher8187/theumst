@@ -2,7 +2,9 @@
 
 A debug export of the game unlocks its debug powers only once theumst.com says the key typed
 into it is a master key. These establish the answers and their shapes, that the check reads
-one row and writes nothing, that it never logs or returns the key, and its limits.
+one row and writes nothing, that it never logs or returns the key, and its limit: per public
+address, an IPv6 address with its /64, and none on everyone together, so strangers cannot keep an
+admin's master key out (0.0.18).
 test_key_access_postgres.py checks the same route against PostgreSQL's own keys.
 """
 from __future__ import annotations
@@ -172,16 +174,42 @@ def test_refused_checks_do_not_extend_the_wait(api):
     assert api.check(MASTER).status_code == 200
 
 
-def test_everyone_together_has_sixty_checks_in_ten_minutes(api):
-    for n in range(game.MASTER_CHECKS_IN_ALL):
-        api.address = f"203.0.113.{n + 10}" if n % 2 else None  # some through private proxies
-        assert api.check(REGULAR).status_code == 403
+def test_strangers_cannot_keep_an_admin_out(api):
+    # 0.0.17 allowed 60 checks from everyone together, so 60 guesses from other addresses held the
+    # admin's own master key back for ten minutes. Each address now spends only its own checks.
+    for n in range(200):
+        api.address = f"203.0.113.{n % 250}" if n < 120 else f"2001:db8:{n:x}::1"
+        assert api.check(UNKNOWN if n % 2 else REGULAR).status_code in (401, 403)
     api.address = "198.51.100.1"
-    assert_refused(api.check(MASTER), 429, "rate_limited")
-    api.address = None
-    assert_refused(api.check(MASTER), 429, "rate_limited")
-    api.clock.now += game.MASTER_CHECK_SECONDS
     assert api.check(MASTER).status_code == 200
+    api.address = "2001:db8:ffff::7"
+    assert api.check(MASTER).status_code == 200
+
+
+def test_an_address_that_is_not_public_is_not_counted(api):
+    api.address = None  # a local tool, or a proxy that passed on no client, as sign-in treats it
+    for _ in range(game.MASTER_CHECKS_PER_ADDRESS * 3):
+        assert api.check(REGULAR).status_code == 403
+    assert api.check(MASTER).status_code == 200
+    assert not game.master_checks._by_address
+
+
+def test_an_ipv6_address_counts_with_its_slash_64(api):
+    for n in range(game.MASTER_CHECKS_PER_ADDRESS):
+        api.address = f"2001:db8:1:2:{n:x}::{n + 1:x}"  # one /64, a new address each time
+        assert api.check(REGULAR).status_code == 403
+    api.address = "2001:db8:1:2:ffff:ffff:ffff:fffe"
+    assert_refused(api.check(MASTER), 429, "rate_limited")
+    api.address = "2001:db8:1:3::1"  # the next /64
+    assert api.check(MASTER).status_code == 200
+
+
+def test_an_address_counts_as_one_group():
+    assert game.master_check_group(None) is None and game.master_check_group("") is None
+    assert game.master_check_group("203.0.113.5") == "203.0.113.5"
+    assert game.master_check_group("::ffff:203.0.113.5") == "203.0.113.5"
+    assert game.master_check_group("2001:db8:1:2:3:4:5:6") == "2001:db8:1:2::/64"
+    assert game.master_check_group("2001:DB8:1:2::9") == game.master_check_group("2001:db8:1:2:ffff::1")
 
 
 def test_the_limiter_forgets_addresses_once_their_window_passes():
@@ -192,7 +220,7 @@ def test_the_limiter_forgets_addresses_once_their_window_passes():
     clock.now += game.MASTER_CHECK_SECONDS
     assert checks.take("198.51.100.1") == 0
     assert set(checks._by_address) == {"198.51.100.1"}
-    assert len(checks._all) == 1
+    assert not hasattr(checks, "_all")  # nothing counts everyone together
 
 
 def test_only_post_is_registered():

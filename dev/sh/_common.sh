@@ -649,6 +649,21 @@ remote_external_health() {
     done
 }
 
+# Builds the whole-book reads again in the started backend, then checks them (0.0.18). A release
+# whose answer changes, as 0.0.17's source_label did, would otherwise go on serving the answers
+# stored before it under their old versions. The command writes only the books whose answer
+# changed, each under a new version that the game and the Web Demo download once, and leaves the
+# rest; --check exits 2 when a book is still stale and 1 when one failed, which stops the deploy.
+remote_build_book_reads() {
+    remote_context "$1"
+    [ -n "$REMOTE_ROOT" ] || { echo "Missing REMOTE_ROOT_$TARGET_SERVER in .env" >&2; return 1; }
+    SUDO="$(remote_sudo)"
+    echo "Building and checking the whole-book reads on $REMOTE..."
+    ssh "${SSH_OPTIONS[@]}" -i "$KEY" "$REMOTE" "cd '$REMOTE_ROOT' && \
+        $SUDO docker compose --env-file .env -f compose.deploy.yml exec -T backend python -m scripts.build_book_reads && \
+        $SUDO docker compose --env-file .env -f compose.deploy.yml exec -T backend python -m scripts.build_book_reads --check"
+}
+
 remote_full_deploy() {
     target="$1"
     backup_sha256="${2:-}"
@@ -656,6 +671,7 @@ remote_full_deploy() {
     remote_apply_reviewed_migrations "$target" "$backup_sha256"
     remote_start "$target"
     remote_wait_for_application "$target"
+    remote_build_book_reads "$target"
     remote_check "$target"
     remote_external_health "$target"
     echo

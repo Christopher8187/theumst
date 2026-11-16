@@ -25,6 +25,7 @@ response shapes.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import math
 import re
@@ -902,46 +903,58 @@ def delete_book_note(grimoire_id: int, note_id: int, body: GameNoteDelete, reque
 # until theumst.com says the key typed into the game is a master key. Every other game call refuses
 # master keys; this one only says whether a key is one. Guessing a key is hopeless, but the checks
 # are limited all the same, in this process (COM runs one): MASTER_CHECKS_PER_ADDRESS from one public
-# address, and MASTER_CHECKS_IN_ALL from everyone, in any MASTER_CHECK_SECONDS. A request without a
-# key is refused before it is counted.
+# address in any MASTER_CHECK_SECONDS, an IPv6 address counted with the rest of its /64, which one
+# host or one home usually holds whole. Nothing limits everyone together: 0.0.17's 60 in all let
+# strangers spend the limit and keep an admin from their own debug powers (0.0.18). As at sign-in, an
+# address that is not public (a local tool, or a proxy that passed on no client) is not counted. A
+# request without a key is refused before it is counted.
 MASTER_CHECKS_PER_ADDRESS = 10
-MASTER_CHECKS_IN_ALL = 60
 MASTER_CHECK_SECONDS = 600
+MASTER_CHECK_IPV6_PREFIX = 64
+
+
+def master_check_group(address: str | None) -> str | None:
+    """What one address counts as for the limit: an IPv4 address itself (an IPv4-mapped IPv6 one
+    too), an IPv6 address its /64, and None (no public address) nothing."""
+    if not address:
+        return None
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return address
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.IPv6Network((ip, MASTER_CHECK_IPV6_PREFIX), strict=False))
+    return str(ip)
 
 
 class MasterChecks:
-    """When the recent master-key checks were made, per public address and in all."""
+    """When the recent master-key checks were made, per public address (an IPv6 address's /64)."""
 
     def __init__(self, clock: Any = time.monotonic):
         self.clock = clock
         self._lock = threading.Lock()
         self._by_address: dict[str, deque[float]] = defaultdict(deque)
-        self._all: deque[float] = deque()
 
     def take(self, address: str | None) -> int:
-        """Count one check from address (None when it is not a public one, so only the total
-        counts it). 0 when it may go ahead, else the seconds until it may."""
+        """Count one check from address (None when it is not a public one, which is not counted).
+        0 when it may go ahead, else the seconds until it may."""
+        group = master_check_group(address)
+        if group is None:
+            return 0
         now = self.clock()
         start = now - MASTER_CHECK_SECONDS
         with self._lock:
-            for times in [self._all, *self._by_address.values()]:
+            for times in self._by_address.values():
                 while times and times[0] <= start:
                     times.popleft()
             for address_key in [key for key, times in self._by_address.items() if not times]:
                 del self._by_address[address_key]
-            waits = []
-            if len(self._all) >= MASTER_CHECKS_IN_ALL:
-                waits.append(self._all[0] - start)
-            mine = self._by_address[address] if address else None
-            if mine is not None and len(mine) >= MASTER_CHECKS_PER_ADDRESS:
-                waits.append(mine[0] - start)
-            if waits:
-                if mine is not None and not mine:
-                    del self._by_address[address]
-                return max(1, math.ceil(max(waits)))
-            self._all.append(now)
-            if mine is not None:
-                mine.append(now)
+            mine = self._by_address[group]
+            if len(mine) >= MASTER_CHECKS_PER_ADDRESS:
+                return max(1, math.ceil(mine[0] - start))
+            mine.append(now)
             return 0
 
 
@@ -953,7 +966,7 @@ def check_master_key(request: Request):
     """{"master": true} when the key sent is an active master key; nothing about its account.
 
     401 invalid_key without a key, or for one that is unknown, revoked or of an unconfirmed account;
-    403 not_master_key for a regular key; 429 rate_limited past the limits above. It reads one row,
+    403 not_master_key for a regular key; 429 rate_limited past the limit above. It reads one row,
     writes nothing and counts nothing against the key, and the key is never logged or returned.
     """
     try:

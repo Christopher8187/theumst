@@ -869,6 +869,19 @@ def test_the_command_reads_its_options(monkeypatch):
     assert seen == {"requested": [], "check": False}
 
 
+def test_the_full_deploy_builds_and_checks_the_book_reads_once_the_backend_answers():
+    # 0.0.18: a release whose answer changes (0.0.17's source_label) must not go on serving the
+    # answers stored before it, so the deploy itself builds them again and then checks them.
+    common = (ROOT / "dev/sh/_common.sh").read_text(encoding="utf-8").replace("\r\n", "\n")
+    build = common.split("remote_build_book_reads() {", 1)[1].split("\n}\n", 1)[0]
+    release = common.split("remote_full_deploy() {", 1)[1].split("\n}\n", 1)[0]
+    command = "exec -T backend python -m scripts.build_book_reads"
+    assert build.index(command + " && \\\n") < build.index(command + ' --check"')
+    assert build.count(command) == 2 and "--book" not in build
+    assert release.index("remote_start") < release.index("remote_wait_for_application") \
+        < release.index('remote_build_book_reads "$target"') < release.index("remote_check")
+
+
 def test_the_wrapper_runs_only_the_command_and_removes_its_key_copy():
     script = (ROOT / "dev/sh/agent_build_book_reads.sh").read_text(encoding="utf-8")
     assert "exec -T \\\n        backend python -m scripts.build_book_reads$COMMAND_ARGS" in script

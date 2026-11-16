@@ -90,7 +90,7 @@ The list gives the account's notes in one book, attached and scribbles, most rec
 
 Since 0.0.17 `POST /master-key` says whether the key it is sent, in `X-API-Key` or `Authorization: Bearer`, is an active master key of a confirmed account. A debug export of the game asks it before unlocking its debug powers, such as its time scale. It is the one game call that takes a master key, and it answers 200 `{"master": true}` and nothing about the key's account. A regular key gets 403 `not_master_key`, and a missing, unknown or revoked key, or one of an unconfirmed account, 401 `invalid_key`. The check reads one row and writes nothing: it counts nowhere, neither in the key's minute nor in `api_usage_daily`, and it never logs or returns the key.
 
-Checks are limited in the backend's process, which COM runs as one worker: 10 from one public address and 60 in all in any 10 minutes, past which the answer is 429 `rate_limited` with `retry_after` and `Retry-After`. A request without a key is refused before it counts. The counts start again when the backend restarts.
+Checks are limited in the backend's process, which COM runs as one worker: 10 from one public address in any 10 minutes, past which that address gets 429 `rate_limited` with `retry_after` and `Retry-After`. An IPv6 address counts with the rest of its /64, which one host or one home usually holds whole. Since 0.0.18 nothing limits everyone together: 0.0.17's 60 checks in all let anyone spend them from other addresses and keep an admin's own master key out. An address that is not public, such as a local tool's or a proxy's that passed on no client, is not counted, as at sign-in. A request without a key is refused before it counts. The counts start again when the backend restarts.
 
 ## Errors
 

@@ -4,6 +4,15 @@ Theumst 0.0.17 is the current release, published as [v0.0.17](https://github.com
 
 Christopher selected 0.0.7 for that delivery, superseding the previously proposed 0.0.4 and correcting the earlier 0.2.x numbering. 0.0.8 and 0.0.9 continue it. Historical tags remain unchanged. API compatibility metadata and third-party package versions remain independent.
 
+## 0.0.18 release notes (draft)
+
+0.0.18 is in progress on the `game-master-key-0.0.17` branch, from v0.0.17, and is not published, tagged or deployed. It needs no migration and changes no answer's shape. It changes two things:
+
+- `POST /api/game/master-key` limits checks per public address only: 10 in any 10 minutes, an IPv6 address counted with the rest of its /64. 0.0.17 also allowed only 60 checks in all, so anyone could spend those 60 from other addresses and keep an admin's own master key out for ten minutes. An address that is not public, such as a local tool's, is no longer counted, as at sign-in. [Game accounts](game-accounts.md#master-keys) owns the rule.
+- The deploy builds and checks the whole-book reads itself. Once the new backend answers, `remote_full_deploy` (`dev/sh/agent_deploy.sh`) runs `python -m scripts.build_book_reads` in the backend container, then the same with `--check`, and stops if a book failed or is still stale. A release that changes the answer can no longer go on serving the answers stored before it, as 0.0.17's did until the manual run gave every book `source_label`. Each book whose answer changed gets a new version, which the game sees in its list and downloads once, and unchanged books keep theirs. [Operations](operations.md#whole-book-reads) describes the command.
+
+Going back to 0.0.17 brings back its limit of 60 in all. The stored answers are unchanged.
+
 ## 0.0.17 release notes
 
 0.0.17 needs no migration. It changes three things the game uses:

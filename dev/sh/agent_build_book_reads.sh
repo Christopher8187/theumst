@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Build (or with --check, compare) the whole-book reads of every stored book on
 # the target, in its running backend container: book_read for the Web Demo
-# (Theumst 0.0.15) and book_game_read for the game (0.0.16). Run it once right
-# after deploying a release that adds or raises one, and after any change to
-# book facts made outside ingestion, such as a restore. It is idempotent.
+# (Theumst 0.0.15) and book_game_read for the game (0.0.16). Since 0.0.18 the
+# full deploy runs both itself (remote_build_book_reads in _common.sh); run this
+# after any change to book facts made outside ingestion, such as a restore, or
+# to check a book. It is idempotent.
 #   dev/sh/agent_build_book_reads.sh COM [--check] [--book ID ...]
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
