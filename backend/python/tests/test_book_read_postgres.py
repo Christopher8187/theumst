@@ -32,6 +32,7 @@ from psycopg2.extras import RealDictCursor
 
 from app import database, reviewed_migrations
 from app.config import get_settings
+from app.dependencies import authenticate_api_key, return_api_requests
 from app.main import create_app
 from app.security import hash_password, hash_secret
 from app.services import book_ingestion, book_read, storage
@@ -850,7 +851,8 @@ def test_the_books_figures_come_in_one_batch_through_the_game_key(client, player
         assert base64.b64decode(figure["data"]) == b"\x89PNG figure " + key.encode()
         assert figure["updated_at"] == named[figure["url"]] and figure["content_type"] == "image/png"
     assert body["missing"] == [old, scan] and body["later"] == []
-    assert usage(player)["book"] == before + 1
+    # Each url counts, as fetching it alone from /api/v1/storage would.
+    assert usage(player)["book"] == before + 4
     # Another book's figures are missing from this one, and the route keeps the book reads' access.
     other = client.post(f"/api/game/grimoires/{book['grimoire_id']}/figures", headers=player["headers"],
                         json={"urls": list(named)})
@@ -860,6 +862,56 @@ def test_the_books_figures_come_in_one_batch_through_the_game_key(client, player
     assert client.post(path, json={"urls": list(named)}).status_code == 401
     assert client.post(f"/api/game/grimoires/{grimoire_id + 100000}/figures", headers=player["headers"],
                        json={"urls": list(named)}).json()["code"] == "book_not_found"
+
+
+def test_a_figure_batch_counts_each_url_in_the_minute_and_gives_back_what_it_never_read(client, player, illustrated,
+                                                                                       monkeypatch):
+    # 0.0.18: a batch costs the key what its figures cost fetched alone, in PostgreSQL's own window.
+    grimoire_id = illustrated["grimoire_id"]
+    answer = game_book(client, player, grimoire_id).json()
+    named = list(dict.fromkeys(figure["url"] for item in answer["objects"] for figure in item["figures"]))
+    monkeypatch.setattr(storage, "read_bytes", lambda key: b"\x89PNG figure " + key.encode())
+    path = f"/api/game/grimoires/{grimoire_id}/figures"
+    key_id = player["api_key_id"]
+
+    def window():
+        return sql_one("SELECT request_count, window_started_at FROM api_rate_window WHERE api_key_id = %s"
+                       " AND kind = 'book'", (key_id,))
+
+    def set_window(count, age="0 seconds"):
+        sql_one("UPDATE api_rate_window SET request_count = %s, window_started_at = now() - %s::interval"
+                " WHERE api_key_id = %s AND kind = 'book' RETURNING 1", (count, age, key_id))
+
+    try:
+        # Two left in the minute: three urls (one a second spelling of the same figure) are refused, nothing counted.
+        set_window(598)
+        before = usage(player)["book"]
+        refused = client.post(path, headers=player["headers"], json={"urls": [*named, named[0] + "?again"]})
+        assert refused.status_code == 429 and refused.json()["code"] == "rate_limited"
+        assert int(refused.headers["retry-after"]) >= 1
+        assert window()["request_count"] == 598 and usage(player)["book"] == before
+        # Two urls take the last two.
+        assert client.post(path, headers=player["headers"], json={"urls": named}).status_code == 200
+        assert window()["request_count"] == 600 and usage(player)["book"] == before + 2
+        assert client.post(path, headers=player["headers"], json={"urls": named[:1]}).status_code == 429
+
+        # What a request did not use goes back to the window it was counted in and to its day.
+        set_window(10)
+        request = type("Request", (), {"headers": {"x-api-key": player["headers"]["X-API-Key"]}})()
+        counted = authenticate_api_key(request, kind="book", access_point="demo", cost=5)
+        assert window()["request_count"] == 15 and usage(player)["book"] == before + 7
+        return_api_requests(counted, 3)
+        assert window()["request_count"] == 12 and usage(player)["book"] == before + 4
+        # A window that started since keeps its count.
+        set_window(4, "2 minutes")
+        counted = authenticate_api_key(request, kind="book", access_point="demo", cost=2)
+        assert window()["request_count"] == 2
+        sql_one("UPDATE api_rate_window SET window_started_at = window_started_at - interval '1 second'"
+                " WHERE api_key_id = %s AND kind = 'book' RETURNING 1", (key_id,))
+        return_api_requests(counted, 2)
+        assert window()["request_count"] == 2 and usage(player)["book"] == before + 4
+    finally:
+        set_window(0)
 
 
 @pytest.mark.parametrize("tag", ['"{v}"', 'W/"{v}"', '"stale", "{v}"', "*"])

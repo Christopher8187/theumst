@@ -130,6 +130,7 @@ def authenticate_api_key(
     master_required: bool = False,
     master_allowed: bool = True,
     access_point: str | None = None,
+    cost: int = 1,
 ) -> dict[str, Any]:
     """Resolve an active key and count this request as `kind`.
 
@@ -143,9 +144,17 @@ def authenticate_api_key(
     keys pass it. Every accepted request, master keys included, adds one to
     api_usage_daily for the key, UTC day and kind; a refused request rolls back
     and is counted nowhere.
+
+    `cost` is how many requests this one counts as, in the window and in
+    api_usage_daily: a figure batch counts one for each figure it asks for, as
+    fetching each alone would (0.0.18). A regular key is refused when the
+    window's count would pass its limit. return_api_requests gives back what a
+    request did not use.
     """
     if kind not in API_REQUEST_KINDS:
         raise ValueError(f"Unknown API request kind: {kind}")
+    if cost < 1:
+        raise ValueError(f"An API request counts at least once, not {cost}")
     raw = _raw_api_key(request)
     with transaction() as (_, cur):
         cur.execute(
@@ -193,22 +202,24 @@ def authenticate_api_key(
                     detail="This API key has no active rate allowance",
                     headers={"Retry-After": str(RATE_WINDOW_SECONDS)},
                 )
+            # now() is the transaction's start, so usage_day is the day api_usage_daily counts this in below.
             cur.execute(
                 """
                 INSERT INTO api_rate_window (api_key_id, kind, window_started_at, request_count)
-                VALUES (%s, %s, now(), 1)
+                VALUES (%s, %s, now(), %s)
                 ON CONFLICT (api_key_id, kind) DO UPDATE SET
                     window_started_at = CASE
                         WHEN api_rate_window.window_started_at <= now() - interval '1 minute'
                         THEN now() ELSE api_rate_window.window_started_at END,
                     request_count = CASE
                         WHEN api_rate_window.window_started_at <= now() - interval '1 minute'
-                        THEN 1 ELSE api_rate_window.request_count + 1 END
-                RETURNING request_count,
+                        THEN EXCLUDED.request_count
+                        ELSE api_rate_window.request_count + EXCLUDED.request_count END
+                RETURNING request_count, window_started_at, (now() AT TIME ZONE 'UTC')::date AS usage_day,
                     GREATEST(1, ceil(extract(epoch FROM
                         window_started_at + interval '1 minute' - now())))::int AS retry_after
                 """,
-                (key["api_key_id"], kind),
+                (key["api_key_id"], kind, cost),
             )
             window = cur.fetchone()
             count = int(window["request_count"])
@@ -220,6 +231,8 @@ def authenticate_api_key(
                 )
             key["rate_limit"] = limit
             key["rate_remaining"] = max(0, limit - count)
+            key["rate_window_started_at"] = window.get("window_started_at")
+            key["usage_day"] = window.get("usage_day")
         else:
             key["rate_limit"] = None
             key["rate_remaining"] = None
@@ -227,12 +240,39 @@ def authenticate_api_key(
         cur.execute(
             """
             INSERT INTO api_usage_daily (api_key_id, day, kind, request_count)
-            VALUES (%s, (now() AT TIME ZONE 'UTC')::date, %s, 1)
+            VALUES (%s, (now() AT TIME ZONE 'UTC')::date, %s, %s)
             ON CONFLICT (api_key_id, day, kind)
-            DO UPDATE SET request_count = api_usage_daily.request_count + 1
+            DO UPDATE SET request_count = api_usage_daily.request_count + EXCLUDED.request_count
             """,
-            (key["api_key_id"], kind),
+            (key["api_key_id"], kind, cost),
         )
         cur.execute("UPDATE api_key SET last_used_at = now() WHERE api_key_id = %s", (key["api_key_id"],))
         key["kind"] = kind
         return key
+
+
+def return_api_requests(key: dict[str, Any], count: int) -> None:
+    """Give back count of what authenticate_api_key counted for a regular key's request (key as it
+    returned it), for work the request did not do: a figure batch's figures it named `later` without
+    reading them (0.0.18). The window gets them back while it is still the window they were counted in,
+    and api_usage_daily's day loses them. A master key's request, which no window counts, is left as
+    counted."""
+    window_started_at = key.get("rate_window_started_at")
+    day = key.get("usage_day")
+    if count <= 0 or window_started_at is None or day is None:
+        return
+    with transaction() as (_, cur):
+        cur.execute(
+            """
+            UPDATE api_rate_window SET request_count = GREATEST(0, request_count - %s)
+            WHERE api_key_id = %s AND kind = %s AND window_started_at = %s
+            """,
+            (count, key["api_key_id"], key["kind"], window_started_at),
+        )
+        cur.execute(
+            """
+            UPDATE api_usage_daily SET request_count = GREATEST(0, request_count - %s)
+            WHERE api_key_id = %s AND kind = %s AND day = %s
+            """,
+            (count, key["api_key_id"], key["kind"], day),
+        )

@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import gzip
 import json
+import random
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -185,16 +186,28 @@ def reader_key(**overrides):
 @pytest.fixture
 def api(monkeypatch):
     store = Store()
-    state = SimpleNamespace(store=store, calls=[], key=reader_key(), refusal=None)
+    state = SimpleNamespace(store=store, calls=[], costs=[], returned=[], left=None, key=reader_key(), refusal=None)
 
-    def fake_authenticate(request, *, kind, master_required=False, master_allowed=True, access_point=None):
+    def fake_authenticate(request, *, kind, master_required=False, master_allowed=True, access_point=None, cost=1):
         # The order of authenticate_api_key's own checks: the key, a master key, the access point, the minute.
         state.calls.append({"kind": kind, "master_allowed": master_allowed, "access_point": access_point})
+        state.costs.append(cost)
         if state.refusal is not None:
             raise state.refusal
         if access_point is not None and access_point not in state.key["access_points"]:
             raise AccessRefused(access_point)
+        if state.left is not None:
+            # The minute's window: refused, and nothing counted, when the request would pass it.
+            if cost > state.left:
+                raise HTTPException(status_code=429, detail="Rate limit exceeded: 600 book requests per minute",
+                                    headers={"Retry-After": "17"})
+            state.left -= cost
         return dict(state.key)
+
+    def fake_return(key, count):
+        state.returned.append(count)
+        if state.left is not None:
+            state.left += count
 
     def fake_read_optional(key):
         store.reads.append(key)
@@ -202,6 +215,7 @@ def api(monkeypatch):
 
     monkeypatch.setattr(game, "transaction", store.transaction)
     monkeypatch.setattr(game, "authenticate_api_key", fake_authenticate)
+    monkeypatch.setattr(game, "return_api_requests", fake_return)
     monkeypatch.setattr(game.storage, "read_optional", fake_read_optional)
     application = FastAPI()
     application.include_router(game.router)
@@ -638,8 +652,9 @@ def test_the_books_figures_come_in_one_answer_in_the_order_asked(api):
         assert figure["bytes"] == len(stored[key])
         assert figure["updated_at"] == book_read._iso(api.store.images[key]["updated_at"])
     assert [figure["content_type"] for figure in body["figures"]] == ["image/svg+xml", "image/png", "image/png"]
-    # One book read with Web Demo access, one query for the keys, and nothing written.
+    # A book read with Web Demo access counted once for each url, one query for the keys, and nothing written.
     assert api.calls == [{"kind": "book", "master_allowed": False, "access_point": "demo"}]
+    assert api.costs == [3] and api.returned == [0]
     assert sorted(api.store.reads) == ["books/18/images/a.png", "books/18/images/b c.png", "books/18/images/c.svg"]
     assert writes(api.store) == []
 
@@ -648,6 +663,19 @@ def test_a_url_asked_twice_comes_once(api):
     body = figures_of(api, [FIGURE_A, FIGURE_A, FIGURE_B, FIGURE_A]).json()
     assert [figure["url"] for figure in body["figures"]] == [FIGURE_A, FIGURE_B]
     assert api.store.reads.count("books/18/images/a.png") == 1
+    assert api.costs == [2]
+
+
+def test_two_urls_naming_one_figure_are_read_once_and_each_answered(api):
+    again = FIGURE_A + "?again"
+    encoded = STORAGE + "books/18/images/%61.png"  # the same key, percent-encoded
+    body = figures_of(api, [FIGURE_A, FIGURE_B, again, encoded]).json()
+    assert [figure["url"] for figure in body["figures"]] == [FIGURE_A, FIGURE_B, again, encoded]
+    same = [figure for figure in body["figures"] if figure["url"] != FIGURE_B]
+    assert {figure["data"] for figure in same} == {base64.b64encode(api.store.stored["books/18/images/a.png"]).decode()}
+    assert sorted(api.store.reads) == ["books/18/images/a.png", "books/18/images/b c.png"]
+    # Each url still counts, as it would fetched alone.
+    assert api.costs == [4]
 
 
 @pytest.mark.parametrize("url", [
@@ -726,12 +754,16 @@ def test_an_answer_holds_its_bound_and_names_the_rest_later(api, monkeypatch):
         api.store.stored[key] = bytes([n]) * 100
     urls = [STORAGE + f"books/18/images/f{n:02}.png" for n in range(20)]
     monkeypatch.setattr(game, "FIGURE_BATCH_BYTES", 350)
+    api.left = 600
     body = figures_of(api, urls).json()
     assert [figure["url"] for figure in body["figures"]] == urls[:3]
     assert body["later"] == urls[3:] and body["missing"] == []
     assert sum(figure["bytes"] for figure in body["figures"]) <= 350
     # Storage is read at most FIGURE_READERS figures past what the answer holds.
     assert len(api.store.reads) <= 3 + 1 + game.FIGURE_READERS
+    # All 20 were counted; those named later that were never read are given back, and each one read counts.
+    assert api.costs == [20] and api.returned == [20 - len(set(api.store.reads))]
+    assert api.left == 600 - len(set(api.store.reads))
     # Asking again for what came later gets the next ones, until none is left.
     got = [figure["url"] for figure in body["figures"]]
     left = body["later"]
@@ -771,6 +803,72 @@ def test_a_storage_failure_other_than_absence_is_not_answered_as_missing(api, mo
         figures_of(api, [FIGURE_A])
 
 
+def test_a_key_with_fewer_requests_left_than_urls_asked_gets_429_and_nothing_is_read(api):
+    api.left = 2
+    body = assert_refused(figures_of(api, [FIGURE_A, FIGURE_B, FIGURE_C]), 429, "rate_limited")
+    assert body["retry_after"] == 17
+    assert api.store.statements == [] and api.store.reads == [] and api.left == 2
+    # Asked twice, a url counts once.
+    assert figures_of(api, [FIGURE_A, FIGURE_B, FIGURE_A]).status_code == 200 and api.left == 0
+
+
+def test_each_url_asked_counts_as_its_single_fetch_would_so_boyce_fits_one_minute(api):
+    figures_of(api, [FIGURE_A, STORAGE + "books/18/images/none.png", "https://example.com/figure.png"])
+    # A url that is no figure of the book counts too: /api/v1/storage counts its 404.
+    assert api.costs == [3] and api.returned == [0]
+    # Boyce's 267 figures, five batches, within the standard tier's 600 a minute.
+    assert 267 <= reader_key()["requests_per_minute"]
+
+
+def large_figures(api, count, size):
+    """count figures of size random bytes, which compress no further, as a PNG's or JPEG's do not."""
+    urls = []
+    for n in range(count):
+        key = f"books/18/images/large{n:02}.png"
+        api.store.images[key] = {"book": 18, "active": True, "updated_at": CLOCK}
+        api.store.stored[key] = random.Random(n).randbytes(size)
+        urls.append(STORAGE + key)
+    return urls
+
+
+def raw_figures(client, urls, accept):
+    with client.stream("POST", "/api/game/grimoires/18/figures", json={"urls": urls},
+                       headers={**KEY, "Accept-Encoding": accept}) as response:
+        return response, b"".join(response.iter_raw())
+
+
+@pytest.mark.parametrize("accept", ["gzip", "gzip, deflate, br", "br;q=1, gzip;q=0.5", "*"])
+def test_a_full_batch_is_gzipped_by_the_route_and_the_middleware_sends_it_as_it_is(api, monkeypatch, accept):
+    # Before, Starlette's middleware gzipped a full answer of 5.6 MB at level 9 on the event loop (about 140 ms).
+    from starlette.middleware.gzip import GZipResponder
+
+    urls = large_figures(api, 15, 300_000)
+    packed, squeezed = [], []
+    route_gzip, middleware_gzip = game._gzip_answer, GZipResponder.apply_compression
+    monkeypatch.setattr(game, "_gzip_answer", lambda content: packed.append(len(content)) or route_gzip(content))
+    monkeypatch.setattr(GZipResponder, "apply_compression",
+                        lambda self, body, *, more_body: squeezed.append(len(body)) or middleware_gzip(
+                            self, body, more_body=more_body))
+    response, raw = raw_figures(with_the_applications_gzip(), urls, accept)
+    assert response.status_code == 200
+    assert response.headers["content-encoding"] == "gzip" and response.headers["content-type"] == "application/json"
+    assert response.headers["cache-control"] == "no-store" and response.headers["vary"] == "Accept-Encoding"
+    body = json.loads(gzip.decompress(raw))  # one layer, the route's
+    assert [figure["url"] for figure in body["figures"]] == urls[:13] and body["later"] == urls[13:]
+    assert len(packed) == 1 and squeezed == []
+    # Huffman coding alone takes back base64's overhead.
+    assert len(raw) < 0.78 * packed[0]
+
+
+@pytest.mark.parametrize("accept", ["gzip;q=0", "identity", "br", "x-gzip;q=0, *;q=0"])
+def test_a_client_refusing_gzip_gets_the_figures_json_uncompressed(api, monkeypatch, accept):
+    urls = large_figures(api, 2, 3_000)
+    monkeypatch.setattr(game, "_gzip_answer", lambda content: pytest.fail("compressed for a client refusing gzip"))
+    response, raw = raw_figures(with_the_applications_gzip(), urls, accept)
+    assert response.status_code == 200 and "content-encoding" not in response.headers
+    assert [figure["url"] for figure in json.loads(raw)["figures"]] == urls
+
+
 def test_every_book_and_notes_call_counts_as_a_book_read_with_web_demo_access(api):
     row = api.store.note(USER_ID, 18, 1801)
     api.client.get("/api/game/grimoires/18/book", headers=KEY)
@@ -782,6 +880,7 @@ def test_every_book_and_notes_call_counts_as_a_book_read_with_web_demo_access(ap
                        json={"if_updated_at": stamp(api.store.notes[row["demo_note_id"]])})
     api.client.post("/api/game/grimoires/18/figures", headers=KEY, json={"urls": [FIGURE_A, FIGURE_B]})
     assert api.calls == [{"kind": "book", "master_allowed": False, "access_point": "demo"}] * 6
+    assert api.costs == [1, 1, 1, 1, 1, 2]
 
 
 def test_the_routes_are_registered_with_their_methods():

@@ -110,7 +110,8 @@ def api(monkeypatch):
             raise
         cursor.outcome = "committed"
 
-    def fake_authenticate(request, *, kind, master_required=False, master_allowed=True, access_point=None):
+    def fake_authenticate(request, *, kind, master_required=False, master_allowed=True, access_point=None, cost=1):
+        assert cost == 1  # only a figure batch counts as more than one
         state.kinds.append(kind)
         state.master_allowed.append(master_allowed)
         state.access_points.append(access_point)

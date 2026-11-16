@@ -142,7 +142,7 @@ def test_a_key_whose_account_the_web_demo_admits_reads_books_counted_as_book_rea
     books.db.key = demo_key_row()
     response = books.client.get(path, headers={"Authorization": "Bearer umst_read_x"})
     assert response.status_code == 200, response.text
-    assert books.db.ran("INSERT INTO api_usage_daily") == [(5, "book")]
+    assert books.db.ran("INSERT INTO api_usage_daily") == [(5, "book", 1)]
 
 
 def test_reads_through_a_key_keep_their_answers(books):
@@ -165,7 +165,7 @@ def test_master_keys_keep_their_book_access(books, path):
     books.db.key = key_row("admin", (), key_type="master")
     response = books.client.get(path, headers={"X-API-Key": "umst_mstr_x"})
     assert response.status_code == 200, response.text
-    assert books.db.ran("INSERT INTO api_usage_daily") == [(5, "book")]
+    assert books.db.ran("INSERT INTO api_usage_daily") == [(5, "book", 1)]
     assert not books.db.ran("api_rate_window")
     if books.listed:
         assert books.listed[0]["include_hidden"] is True

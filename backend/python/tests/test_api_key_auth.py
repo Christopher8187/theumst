@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -74,11 +75,11 @@ def test_regular_book_read_counts_in_its_own_minute_window_and_daily_usage(monke
     assert cursor.statements[0][1] == (hash_secret("secret"),)
     assert "r.requests_per_minute" in cursor.statements[0][0]
     window_sql, window_params = cursor.sql_containing("INSERT INTO api_rate_window")[0]
-    assert window_params == (5, "book")
+    assert window_params == (5, "book", 1)
     assert "ON CONFLICT (api_key_id, kind)" in window_sql
     assert "interval '1 minute'" in window_sql and "interval '1 hour'" not in window_sql
     usage_sql, usage_params = cursor.sql_containing("INSERT INTO api_usage_daily")[0]
-    assert usage_params == (5, "book")
+    assert usage_params == (5, "book", 1)
     assert "ON CONFLICT (api_key_id, day, kind)" in usage_sql
     assert "AT TIME ZONE 'UTC'" in usage_sql
     assert cursor.sql_containing("UPDATE api_key SET last_used_at")
@@ -90,8 +91,8 @@ def test_regular_book_read_counts_in_its_own_minute_window_and_daily_usage(monke
 def test_character_calls_use_a_separate_window_from_book_reads(monkeypatch):
     cursor = Cursor(regular_key(), {"request_count": 1, "retry_after": 60})
     result = authenticate(monkeypatch, cursor, kind="character")
-    assert cursor.sql_containing("INSERT INTO api_rate_window")[0][1] == (5, "character")
-    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (5, "character")
+    assert cursor.sql_containing("INSERT INTO api_rate_window")[0][1] == (5, "character", 1)
+    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (5, "character", 1)
     assert result["rate_remaining"] == 599
 
 
@@ -146,7 +147,7 @@ def test_master_key_is_unlimited_but_its_usage_is_recorded(monkeypatch):
     )
     assert result["rate_remaining"] is None and result["rate_limit"] is None
     assert not cursor.sql_containing("api_rate_window")
-    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (6, "book")
+    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (6, "book", 1)
 
 
 def test_regular_key_cannot_use_a_master_route_and_is_not_counted(monkeypatch):
@@ -212,8 +213,8 @@ def test_a_key_whose_account_the_web_demo_admits_reads_books_and_is_counted(monk
     cursor = Cursor(demo_reader_key(), {"request_count": 3, "retry_after": 50})
     result = authenticate(monkeypatch, cursor, kind="book", access_point="demo")
     assert result["rate_remaining"] == 597
-    assert cursor.sql_containing("INSERT INTO api_rate_window")[0][1] == (5, "book")
-    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (5, "book")
+    assert cursor.sql_containing("INSERT INTO api_rate_window")[0][1] == (5, "book", 1)
+    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (5, "book", 1)
 
 
 @pytest.mark.parametrize("access_points", [[], ["api-keys", "profile"], None])
@@ -221,7 +222,7 @@ def test_a_master_key_keeps_its_book_access_whatever_its_account(monkeypatch, ac
     cursor = Cursor(master_key(access_points=access_points))
     result = authenticate(monkeypatch, cursor, kind="book", access_point="demo")
     assert result["key_type"] == "master"
-    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (6, "book")
+    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (6, "book", 1)
 
 
 def test_without_an_access_point_any_account_passes(monkeypatch):
@@ -229,7 +230,7 @@ def test_without_an_access_point_any_account_passes(monkeypatch):
     cursor = Cursor(regular_key(access_points=[]), {"request_count": 1, "retry_after": 60})
     result = authenticate(monkeypatch, cursor, kind="character", master_allowed=False)
     assert result["key_type"] == "regular"
-    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (5, "character")
+    assert cursor.sql_containing("INSERT INTO api_usage_daily")[0][1] == (5, "character", 1)
 
 
 def test_a_regular_key_on_a_master_route_is_told_it_needs_a_master_key(monkeypatch):
@@ -246,3 +247,64 @@ def test_has_api_key_looks_where_the_key_is_read():
     assert not dependencies.has_api_key(SimpleNamespace(headers={"x-api-key": "  "}))
     assert not dependencies.has_api_key(SimpleNamespace(headers={"authorization": "Basic abc"}))
     assert not dependencies.has_api_key(SimpleNamespace(headers={}))
+
+
+# --- a request counting as several (0.0.18) -------------------------------------
+
+WINDOW_STARTED = datetime(2026, 11, 16, 12, 0, 0, 123456, tzinfo=timezone.utc)
+
+
+def test_a_figure_batch_counts_as_many_requests_as_it_asks_for(monkeypatch):
+    window = {"request_count": 70, "retry_after": 30, "window_started_at": WINDOW_STARTED, "usage_day": date(2026, 11, 16)}
+    cursor = Cursor(demo_reader_key(), window)
+    result = authenticate(monkeypatch, cursor, kind="book", access_point="demo", cost=64)
+    window_sql, window_params = cursor.sql_containing("INSERT INTO api_rate_window")[0]
+    assert window_params == (5, "book", 64)
+    # A new window starts at the cost, and a running one adds it.
+    assert "THEN EXCLUDED.request_count" in window_sql
+    assert "ELSE api_rate_window.request_count + EXCLUDED.request_count END" in window_sql
+    usage_sql, usage_params = cursor.sql_containing("INSERT INTO api_usage_daily")[0]
+    assert usage_params == (5, "book", 64)
+    assert "api_usage_daily.request_count + EXCLUDED.request_count" in usage_sql
+    assert result["rate_remaining"] == 530
+    assert result["rate_window_started_at"] == WINDOW_STARTED and result["usage_day"] == date(2026, 11, 16)
+
+
+def test_a_request_counting_past_the_minute_is_refused_and_counts_nothing(monkeypatch):
+    # 598 counted before, and 3 more asked: refused, though 2 were left.
+    cursor = Cursor(demo_reader_key(), {"request_count": 601, "retry_after": 12})
+    with pytest.raises(HTTPException) as refused:
+        authenticate(monkeypatch, cursor, kind="book", access_point="demo", cost=3)
+    assert refused.value.status_code == 429 and refused.value.headers == {"Retry-After": "12"}
+    assert not cursor.sql_containing("api_usage_daily")
+    assert not cursor.sql_containing("last_used_at")
+
+
+@pytest.mark.parametrize("cost", [0, -1])
+def test_a_request_counts_at_least_once(monkeypatch, cost):
+    cursor = Cursor(regular_key())
+    with pytest.raises(ValueError, match="at least once"):
+        authenticate(monkeypatch, cursor, kind="book", cost=cost)
+    assert cursor.statements == []
+
+
+def test_what_a_request_did_not_use_goes_back_to_its_window_and_day(monkeypatch):
+    cursor = Cursor(None)
+    monkeypatch.setattr(dependencies, "transaction", make_transaction(cursor))
+    key = demo_reader_key(kind="book", rate_window_started_at=WINDOW_STARTED, usage_day=date(2026, 11, 16))
+    dependencies.return_api_requests(key, 17)
+    window_sql, window_params = cursor.sql_containing("UPDATE api_rate_window")[0]
+    # Only to the window it was counted in: a window that started since keeps its count.
+    assert "window_started_at = %s" in window_sql and "GREATEST(0, request_count - %s)" in window_sql
+    assert window_params == (17, 5, "book", WINDOW_STARTED)
+    usage_sql, usage_params = cursor.sql_containing("UPDATE api_usage_daily")[0]
+    assert "day = %s" in usage_sql and usage_params == (17, 5, "book", date(2026, 11, 16))
+
+
+@pytest.mark.parametrize(("count", "known"), [(0, True), (-3, True), (5, False)])
+def test_nothing_goes_back_when_nothing_is_unused_or_no_window_counted_it(monkeypatch, count, known):
+    cursor = Cursor(None)
+    monkeypatch.setattr(dependencies, "transaction", make_transaction(cursor))
+    extra = {"rate_window_started_at": WINDOW_STARTED, "usage_day": date(2026, 11, 16)} if known else {}
+    dependencies.return_api_requests(master_key(kind="book", **extra) if not known else regular_key(kind="book", **extra), count)
+    assert cursor.statements == []
