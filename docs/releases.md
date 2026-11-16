@@ -6,12 +6,13 @@ Christopher selected 0.0.7 for that delivery, superseding the previously propose
 
 ## 0.0.18 release notes (draft)
 
-0.0.18 is in progress on the `game-master-key-0.0.17` branch, from v0.0.17, and is not published, tagged or deployed. It needs no migration and changes no answer's shape. It changes two things:
+0.0.18 is in progress on the `game-master-key-0.0.17` branch, from v0.0.17, with the game's figure batches on `game-figures-0.0.17` after it, and is not published, tagged or deployed. It needs no migration and changes no existing answer's shape. It changes three things:
 
 - `POST /api/game/master-key` limits checks per public address only: 10 in any 10 minutes, an IPv6 address counted with the rest of its /64. 0.0.17 also allowed only 60 checks in all, so anyone could spend those 60 from other addresses and keep an admin's own master key out for ten minutes. An address that is not public, such as a local tool's, is no longer counted, as at sign-in. [Game accounts](game-accounts.md#master-keys) owns the rule.
 - The deploy builds and checks the whole-book reads itself. Once the new backend answers, `remote_full_deploy` (`dev/sh/agent_deploy.sh`) runs `python -m scripts.build_book_reads` in the backend container, then the same with `--check`, and stops if a book failed or is still stale. A release that changes the answer can no longer go on serving the answers stored before it, as 0.0.17's did until the manual run gave every book `source_label`. Each book whose answer changed gets a new version, which the game sees in its list and downloads once, and unchanged books keep theirs. [Operations](operations.md#whole-book-reads) describes the command.
+- `POST /api/game/grimoires/{id}/figures` sends up to 64 of a book's figures in one answer, in base64, within 4 MiB, naming the rest `later` and any url that is no active figure of the book `missing`. It counts as `book` once for each distinct url asked, as fetching each figure alone would, answers 429 counting nothing when fewer are left in the minute, gives back the `later` figures it never read, reads urls naming one stored object once, and needs Web Demo access, as the book does. It gzips its own answer in a worker thread (Huffman coding alone, about 35 ms for a full answer) for a client accepting gzip and sends plain JSON to one that does not. [Game accounts](game-accounts.md#books-and-notes) owns it. The game asked one request per figure before, four at a time, so a book such as Boyce, with 267 figures, now takes a handful of requests. A game that asks 0.0.17 or earlier gets 404 and fetches each figure from `/api/v1/storage` as before, which 0.0.18 leaves unchanged.
 
-Going back to 0.0.17 brings back its limit of 60 in all. The stored answers are unchanged.
+Going back to 0.0.17 brings back its limit of 60 in all, and the game then gets 404 from the figures route and fetches each figure alone again. The stored answers are unchanged.
 
 ## 0.0.17 release notes
 

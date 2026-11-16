@@ -10,7 +10,9 @@ with /api/v1. Master keys are refused.
 Since 0.0.16 the game reads whole books here, once per book version, and keeps
 the account's Web Demo notes. Since 0.0.17 POST /master-key says whether a key is a
 master key, the one call that takes one, so a debug export can unlock its debug
-powers; it answers nothing about the key's account. Reading a book and its notes needs Web Demo
+powers; it answers nothing about the key's account. Since 0.0.18 POST
+/grimoires/{id}/figures sends a book's figures many at a time. Reading a book, its
+figures and its notes needs Web Demo
 access, as the Web Demo and /api/v1 do (0.0.13); the list of grimoires does not,
 so an account without it learns that it may not read.
 
@@ -25,6 +27,7 @@ response shapes.
 """
 from __future__ import annotations
 
+import base64
 import ipaddress
 import json
 import math
@@ -32,9 +35,12 @@ import re
 import threading
 import time
 import unicodedata
+import zlib
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
+from urllib.parse import unquote
 
 import psycopg2
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
@@ -44,10 +50,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..database import transaction
-from ..dependencies import DEMO_ACCESS_POINT, AccessRefused, _raw_api_key, authenticate_api_key
+from ..dependencies import DEMO_ACCESS_POINT, AccessRefused, _raw_api_key, authenticate_api_key, return_api_requests
 from ..schemas import GameNoteCreate, GameNoteDelete, GameNoteUpdate
 from ..security import hash_secret
-from ..services import book_read, sign_in_attempts
+from ..services import book_read, sign_in_attempts, storage
 from ..services.api_keys import GAME_CLIENT, create_regular_key, revoke_game_keys
 
 
@@ -193,14 +199,15 @@ def _game_key(request: Request) -> dict[str, Any]:
     return _key(request, kind="character")
 
 
-def _reader_key(request: Request, *, demo_access: bool = True) -> dict[str, Any]:
-    """A key reading books or notes, counted as 'book'; it needs Web Demo access unless told otherwise."""
-    return _key(request, kind="book", access_point=DEMO_ACCESS_POINT if demo_access else None)
+def _reader_key(request: Request, *, demo_access: bool = True, cost: int = 1) -> dict[str, Any]:
+    """A key reading books or notes, counted as `cost` 'book' requests; it needs Web Demo access unless told
+    otherwise."""
+    return _key(request, kind="book", access_point=DEMO_ACCESS_POINT if demo_access else None, cost=cost)
 
 
-def _key(request: Request, *, kind: str, access_point: str | None = None) -> dict[str, Any]:
+def _key(request: Request, *, kind: str, access_point: str | None = None, cost: int = 1) -> dict[str, Any]:
     try:
-        return authenticate_api_key(request, kind=kind, master_allowed=False, access_point=access_point)
+        return authenticate_api_key(request, kind=kind, master_allowed=False, access_point=access_point, cost=cost)
     except AccessRefused as exc:
         # 403 <access point>_access_required, checked after a master key and before anything is counted.
         raise GameError(403, exc.code, str(exc.detail)) from None
@@ -755,6 +762,153 @@ def get_book(grimoire_id: int, request: Request):
     content, headers = book_read.served(
         stored["version"], bytes(stored["body_gzip"]), request.headers.get("accept-encoding"), BOOK_VARY,
     )
+    return Response(content=content, media_type="application/json", headers=headers)
+
+
+# --- figures (0.0.18) -----------------------------------------------------------------
+#
+# The game keeps a book's figures with its copy. Fetched one request each from /api/v1/storage
+# they cost a round trip apiece, and Boyce names 267, so the game asks for them here many at a
+# time, by the urls its answer names. Only the book's own figures are served: active images linked
+# as figures to its active objects, in a book the Web Demo shows, to a key that may read books, as
+# /api/v1/storage serves them. An answer holds at most FIGURE_BATCH_BYTES of images (a single figure
+# larger than that goes alone) and names the rest as `later`, so a large book takes several
+# requests and the backend never holds more than one answer's images and FIGURE_READERS read ahead.
+# A batch costs the key what fetching its figures alone would: one `book` request per url asked,
+# less those named `later` that were never read. The route builds and compresses its own answer, in
+# the threadpool it runs in, so the gzip middleware never compresses megabytes on the event loop.
+
+FIGURE_BATCH_URLS = 64
+FIGURE_BATCH_BYTES = 4 * 1024 * 1024
+FIGURE_URL_MAX_CHARACTERS = 1024
+FIGURE_READERS = 8
+STORAGE_PATH = "/api/v1/storage/"
+
+
+class FigureBatchBody(BaseModel):
+    urls: list[Annotated[str, Field(min_length=1, max_length=FIGURE_URL_MAX_CHARACTERS)]] = Field(
+        min_length=1, max_length=FIGURE_BATCH_URLS,
+    )
+
+
+def _figure_key(url: str) -> str | None:
+    """The storage key a figure's url names ("/api/v1/storage/<key>", as the game's answer writes it,
+    percent-encoded), or None for any other url."""
+    path = url.split("?", 1)[0].split("#", 1)[0]
+    if not path.startswith(STORAGE_PATH):
+        return None
+    try:
+        key = storage.clean_key(unquote(path[len(STORAGE_PATH):]))
+    except HTTPException:
+        return None
+    return key or None
+
+
+def _read_batch(found: list[tuple[str, str, str | None]]) -> tuple[list[dict[str, Any]], list[str], list[str], int]:
+    """The figures of found ([(url, key, updated_at)], in the order asked) read from storage, up to
+    FIGURE_READERS at once and within FIGURE_BATCH_BYTES: (sent, missing, later, unread). Urls naming
+    one storage key share one read, and each is answered. unread counts the urls named later whose
+    figure was never read: those past the bound that no reader had started."""
+    sent: list[dict[str, Any]] = []
+    missing: list[str] = []
+    later: list[str] = []
+    unread = 0
+    total = 0
+    by_key: dict[str, list[tuple[str, str | None]]] = {}
+    for url, key, updated_at in found:
+        by_key.setdefault(key, []).append((url, updated_at))
+    waiting = iter(by_key.items())
+    reading: deque = deque()
+    with ThreadPoolExecutor(max_workers=FIGURE_READERS) as pool:
+        def read_next() -> None:
+            item = next(waiting, None)
+            if item is not None:
+                reading.append((item, pool.submit(storage.read_optional, item[0])))
+
+        for _ in range(FIGURE_READERS):
+            read_next()
+        full = False
+        while reading:
+            (key, urls), future = reading.popleft()
+            if full:
+                if future.cancel():
+                    unread += len(urls)
+                later.extend(url for url, _ in urls)
+                continue
+            data = future.result()
+            if data is None:
+                missing.extend(url for url, _ in urls)
+                read_next()
+                continue
+            encoded = None
+            for url, updated_at in urls:
+                if full or (sent and total + len(data) > FIGURE_BATCH_BYTES):
+                    full = True
+                    later.append(url)
+                    continue
+                encoded = encoded or base64.b64encode(data).decode("ascii")
+                total += len(data)
+                sent.append({
+                    "url": url,
+                    "updated_at": updated_at,
+                    "content_type": storage.media_type_for(key),
+                    "bytes": len(data),
+                    "data": encoded,
+                })
+            if not full:
+                read_next()
+    for _, urls in waiting:
+        unread += len(urls)
+        later.extend(url for url, _ in urls)
+    order = {url: index for index, (url, _, _) in enumerate(found)}
+    sent.sort(key=lambda figure: order[figure["url"]])
+    later.sort(key=order.__getitem__)
+    return sent, missing, later, unread
+
+
+def _gzip_answer(content: bytes) -> bytes:
+    """content in gzip by Huffman coding alone. Base64 holds 6 bits in each 8, and a figure's PNG or
+    JPEG bytes are compressed already, so that alone takes back base64's overhead: a full answer of
+    5.6 MB comes to 75% in about 35 ms, where level 9's search for repeats gains under 1% more in four
+    or five times as long. zlib lets go of the GIL while it works."""
+    packer = zlib.compressobj(1, zlib.DEFLATED, 16 + zlib.MAX_WBITS, 9, zlib.Z_HUFFMAN_ONLY)
+    return packer.compress(content) + packer.flush()
+
+
+@router.post("/grimoires/{grimoire_id}/figures")
+def get_figures(grimoire_id: int, body: FigureBatchBody, request: Request):
+    """Many of a book's figures in one answer: each one asked for that the book's game answer names
+    goes in `figures`, its bytes in base64, until the answer holds FIGURE_BATCH_BYTES; the rest asked
+    are `later`, to ask again, and a url that is no figure of the book, or whose bytes storage does
+    not hold, is `missing`.
+
+    Each url asked counts as one `book` request, as fetching it alone from /api/v1/storage would, so
+    a key with fewer left in its minute than it asks for gets 429 and nothing is read; those named
+    `later` that were never read are given back. The answer is built and, for a client that accepts
+    gzip, compressed here, in the threadpool this route runs in; it names its Content-Encoding, so the
+    application's gzip middleware passes it through instead of compressing it on the event loop. A
+    client refusing gzip gets the JSON, which that middleware leaves alone too (app.compression)."""
+    asked = list(dict.fromkeys(body.urls))
+    reader = _reader_key(request, cost=len(asked))
+    keys = {url: _figure_key(url) for url in asked}
+    with transaction() as (_, cur):
+        _visible_book(cur, grimoire_id)
+        figures = book_read.figure_keys(cur, grimoire_id, sorted({key for key in keys.values() if key}))
+    found = [(url, keys[url], figures[keys[url]]) for url in asked if keys[url] in figures]
+    sent, lost, later, unread = _read_batch(found)
+    return_api_requests(reader, unread)
+    known = {url for url, _, _ in found}
+    lost = set(lost)
+    missing = [url for url in asked if url not in known or url in lost]
+    content = json.dumps(
+        {"figures": sent, "missing": missing, "later": later},
+        ensure_ascii=False, allow_nan=False, separators=(",", ":"),
+    ).encode("utf-8")
+    del sent
+    headers = {"Cache-Control": "no-store", "Vary": "Accept-Encoding"}
+    if book_read.accepts_gzip(request.headers.get("accept-encoding")):
+        content = _gzip_answer(content)
+        headers["Content-Encoding"] = "gzip"
     return Response(content=content, media_type="application/json", headers=headers)
 
 
