@@ -341,6 +341,98 @@ class QdrantService:
         })
         return response.get('result', {}).get('points', [])
 
+    # --- the game's search (0.0.19): raw queries, and the word store's sparse collection ---------------
+
+    def query_raw(self, *, collection: str, body: dict[str, Any]) -> list[dict[str, Any]]:
+        """POST /points/query with a body the caller built (a vector, a sparse vector or a point id as
+        `query`, an optional `using`, `filter` with must/must_not, `limit`). Never asks for vectors back."""
+        if not str(collection).strip():
+            raise ValueError("collection must not be empty")
+        limit = body.get("limit")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1024:
+            raise ValueError("limit must be between 1 and 1024")
+        name = quote(collection, safe="")
+        response = self._request("POST", f"/collections/{name}/points/query",
+                                 json={**body, "with_vector": False})
+        return [
+            {"id": point.get("id"), "score": point.get("score"), "payload": point.get("payload") or {}}
+            for point in response.get("result", {}).get("points", [])
+        ]
+
+    def ensure_sparse_collection(
+        self, *, collection: str, sparse_name: str, payload_indexes: dict[str, str],
+    ) -> bool:
+        """Create a collection with one sparse vector under `sparse_name`, its IDF computed by Qdrant
+        (the `idf` modifier), kept on disk, and the payload indexes; True when it was created. An
+        existing collection keeps its data; missing payload indexes are added."""
+        encoded = quote(collection, safe="")
+        response = self._client.get(f"/collections/{encoded}")
+        created = False
+        if response.status_code == 404:
+            self._request("PUT", f"/collections/{encoded}", json={
+                "sparse_vectors": {sparse_name: {"modifier": "idf", "index": {"on_disk": True}}},
+            })
+            existing: set[str] = set()
+            created = True
+        else:
+            try:
+                response.raise_for_status()
+                result = response.json().get("result", {})
+            except (httpx.HTTPError, ValueError) as exc:
+                raise HTTPException(status_code=502, detail=f"Qdrant collection inspection failed: {exc}") from exc
+            sparse = (result.get("config", {}).get("params", {}).get("sparse_vectors") or {})
+            if sparse_name not in sparse:
+                raise HTTPException(status_code=409,
+                                    detail=f"Qdrant collection {collection!r} has no sparse vector {sparse_name!r}")
+            existing = set((result.get("payload_schema") or {}).keys())
+        for field_name, field_schema in payload_indexes.items():
+            if field_name not in existing:
+                self._request("PUT", f"/collections/{encoded}/index?wait=true",
+                              json={"field_name": field_name, "field_schema": field_schema})
+        return created
+
+    def upsert_raw(self, *, collection: str, points: Sequence[dict[str, Any]], chunk_size: int = 512) -> None:
+        """Upsert points as Qdrant takes them ({"id", "vector", "payload"}), chunk by chunk."""
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        name = quote(collection, safe="")
+        for start in range(0, len(points), chunk_size):
+            chunk = list(points[start:start + chunk_size])
+            if chunk:
+                self._request("PUT", f"/collections/{name}/points?wait=true", json={"points": chunk})
+
+    def scroll_points(
+        self, *, collection: str, filter: dict[str, Any] | None = None, limit: int = 1024,
+        offset: Any = None, with_payload: bool | list[str] = False,
+    ) -> tuple[list[dict[str, Any]], Any]:
+        """One page of points in id order ({"id", "payload"}, never a vector) and the offset of the next
+        page, or None after the last."""
+        if not 1 <= limit <= 4096:
+            raise ValueError("limit must be between 1 and 4096")
+        name = quote(collection, safe="")
+        body: dict[str, Any] = {"limit": limit, "with_payload": with_payload, "with_vector": False}
+        if filter:
+            body["filter"] = filter
+        if offset is not None:
+            body["offset"] = offset
+        result = self._request("POST", f"/collections/{name}/points/scroll", json=body).get("result", {})
+        points = [{"id": point.get("id"), "payload": point.get("payload") or {}}
+                  for point in result.get("points", [])]
+        return points, result.get("next_page_offset")
+
+    def delete_ids(self, *, collection: str, point_ids: Sequence[int | str], chunk_size: int = 1024) -> None:
+        """Delete points by id as given: integer ids stay integers (delete_many sends every id as text)."""
+        name = quote(collection, safe="")
+        for start in range(0, len(point_ids), chunk_size):
+            chunk = list(point_ids[start:start + chunk_size])
+            if chunk:
+                self._request("POST", f"/collections/{name}/points/delete?wait=true", json={"points": chunk})
+
+    def count_points(self, *, collection: str) -> int:
+        name = quote(collection, safe="")
+        result = self._request("POST", f"/collections/{name}/points/count", json={"exact": True})
+        return int(result.get("result", {}).get("count") or 0)
+
     def upsert(
         self,
         *,
