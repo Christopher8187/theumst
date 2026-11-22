@@ -13,7 +13,7 @@ a point never needs rewriting when other books arrive.
 
 Every object of every book is indexed, hidden books included: what a reader may see is filtered at query
 time by `grimoire_id`, so switching a book's visibility rewrites nothing. The payload holds the ids the
-search needs (`knowledge_id`, `grimoire_id`, `crystal_id`) and `name_key`, the object's name in index
+search needs (`knowledge_id`, `grimoire_id`) and `name_key`, the object's name in index
 form, so the latcher's route can find names a text mentions through a keyword index. No text of an
 object is kept in the collection beyond that name key. `scripts/fill_word_index.py` fills it.
 
@@ -39,7 +39,6 @@ AVGDL = 18.0
 PAYLOAD_INDEXES = {
     "knowledge_id": "integer",
     "grimoire_id": "integer",
-    "crystal_id": "integer",
     "name_key": "keyword",
 }
 
@@ -66,7 +65,12 @@ def raw_words(text: str) -> list[str]:
     return _WORD.findall(_folded(text))
 
 
+_UNSTEMMED = frozenset({"series", "species"})
+
+
 def _stem(word: str) -> str:
+    if word in _UNSTEMMED:
+        return word
     if len(word) > 4 and word.endswith("ies"):
         return word[:-3] + "y"
     if len(word) > 4 and word.endswith(("sses", "xes", "ches", "shes")):
@@ -119,8 +123,8 @@ def query_vector(texts: Iterable[str]) -> dict[str, list]:
 
 
 def point(row: dict[str, Any], *, avgdl: float = AVGDL) -> dict[str, Any]:
-    """The word store's point for one object row (knowledge_id, grimoire_id, crystal_id, label, name,
-    statement)."""
+    """The word store's point for one object row (knowledge_id, grimoire_id, label, name, statement). A crystal
+    is not kept: an upload may move an object to another crystal, and the search reads crystals from PostgreSQL."""
     return {
         "id": int(row["knowledge_id"]),
         "vector": {SPARSE_NAME: document_vector(row.get("label"), row.get("name"), row.get("statement"),
@@ -128,7 +132,6 @@ def point(row: dict[str, Any], *, avgdl: float = AVGDL) -> dict[str, Any]:
         "payload": {
             "knowledge_id": int(row["knowledge_id"]),
             "grimoire_id": int(row["grimoire_id"]),
-            "crystal_id": int(row["crystal_id"]),
             "name_key": name_key(row.get("name") or ""),
         },
     }

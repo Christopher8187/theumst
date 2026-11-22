@@ -420,6 +420,16 @@ class QdrantService:
                   for point in result.get("points", [])]
         return points, result.get("next_page_offset")
 
+    def existing_ids(self, *, collection: str, point_ids: Sequence[int | str]) -> set[Any]:
+        """Which of the ids have a point (no payload, no vector)."""
+        if not point_ids:
+            return set()
+        name = quote(collection, safe="")
+        result = self._request("POST", f"/collections/{name}/points", json={
+            "ids": list(point_ids), "with_payload": False, "with_vector": False,
+        }).get("result", [])
+        return {point.get("id") for point in result}
+
     def delete_ids(self, *, collection: str, point_ids: Sequence[int | str], chunk_size: int = 1024) -> None:
         """Delete points by id as given: integer ids stay integers (delete_many sends every id as text)."""
         name = quote(collection, safe="")
