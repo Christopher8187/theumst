@@ -8,7 +8,8 @@ part "1. theumst-search".
 
 - `backend/python/app/services/discovery.py`: `find_neighbors`' reach (it reads every eligible row of every visible
   book for each request). Only the neighbour code; nothing the graph lane uses. Its test,
-  `backend/python/tests/test_similar_retrieval.py`, follows it.
+  `backend/python/tests/test_discovery.py`, follows it. `discovery.py` imports the scope filter from
+  `game_search.py`.
 - `backend/python/app/services/qdrant.py`: helpers for a sparse (word) store and a query by sparse vector, added
   beside the existing dense helpers. Existing functions keep their behaviour.
 
@@ -23,7 +24,10 @@ Nothing shared: router registration, the rate-limit kind, documents, the version
 - `backend/python/app/services/word_index.py`: the BM25 word index (tokenising label, name and statement into
   Qdrant sparse vectors with the IDF modifier, in a store of its own keyed by object).
 - `backend/python/scripts/fill_word_index.py`: fills the word index for the books already loaded; safe to run twice.
-- `backend/python/tests/test_game_search*.py`, `test_word_index.py`: unit tests with fakes, no database.
+- `backend/python/scripts/dump_vector_sample.py` and `compare_embeddings.py`: the 20-statement embedding check the
+  coordinator asked for at 13:40.
+- `backend/python/tests/test_game_search.py`, `test_word_index.py`, `test_embedding_check.py`: unit tests with
+  fakes, no database.
 - `LANE.md`, `ROUTES-search.md`, `STATUS.md`, `MERGE.md` at this folder's root.
 
 ## What I offer other lanes
