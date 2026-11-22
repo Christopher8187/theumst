@@ -14,3 +14,20 @@
      Exit 0: the pipeline's form (instruction + 'name. statement', which is also what the route sends) gives every cosine >= 0.99. Exit 2: only another form passes (it names it; the route must change to it, tell me). Exit 1: no form passes, or the provider failed. It tries the instruction form first and stops there if it passes; otherwise plain text, stored_text, a space after 'Query:', and the end-of-text token. The last 3 lines show the route's query form and the plain text against each object's own stored vector.
   Note for the reading: the pipeline embedded every STORED text with the instruction line before it (Kaic3 node/embed: model.encode(texts, prompt=...)), so the expected match is the instruction form, not the plain text.
   doing now: find_neighbors' reach (discovery.py), then MERGE.md. blocked by: nothing.
+- 13:27 finished: find_neighbors' reach fixed (discovery.py: the source's own projections, a Qdrant filter leaving out hidden books and the source, then only the hits' rows); test_discovery.py rewritten (11 pass). Whole backend suite: 753 pass, 11 fail, all in test_deployment_package.py, which needs a .env and the release tools (environmental, untouched by this lane). doing now: MERGE.md and ROUTES-search.md's status. blocked by: nothing.
+- 13:30 finished: MERGE.md (router registration, the kind 'search' with its migration SQL, three indexes for the million-books rule, the word index's fill on COM and after each upload, the documents to write); ROUTES-search.md matches the code; the latcher's name matching now covers a whole 20,000-character note. 77 lane tests pass. doing now: a last read of the code against the brief. blocked by: nothing.
+
+## Mine (choices his words do not settle)
+
+1. The query's text is the pipeline's own `name. statement` (Kaic3 `utils/statements.embedding_text`, spaces collapsed) after the instruction line, because the embed node put that instruction before every STORED text too (`model.encode(texts, prompt=...)`); so query and stored text have one form. Keywords join the word search only. The coordinator's 20-statement check decides it; MERGE.md says what changes if another form matches.
+2. A rate-limit kind of its own, `search` (the graph lane asks for `graph`), with the same per-minute allowance as the game's other kinds.
+3. A crystal's m counts its active members in every book the reader may see; the members shown are the crystal's best-ranked hits. Neighbours are not folded (a neighbour list is what is nearest); each hit still says its crystal and size.
+4. What a reader may see goes into Qdrant's filter as the hidden books (or the shown ones, whichever list is shorter, up to 1,000), and every hit is read again from PostgreSQL only from shown books.
+5. BM25 with k1 1.2, b 0.75 and a fixed AVGDL of 18 (a sample of 220 objects on COM gave 17.7), terms hashed to 32 bits, IDF by Qdrant's modifier; hidden books are indexed too; the word store keeps only ids and the name key, no other text.
+6. "keeps the original prefix" read as the record reads it (one cached prompt prefix for every latcher): the candidates' answer is deterministic, ties broken by id, so the fixed prompt comes first and the list after.
+7. The latcher's labels are looked up only in the note's own book (`grimoire_id`), with their prefix ("Lemma 2.1" is not "Theorem 2.1"); names across every shown book, a one-word name only from five letters.
+8. The website's `find_neighbors` keeps its answer; its `processing_faults` now counts incomplete projections among the hits only, not among every object of every book.
+9. OpenRouter's `qwen/qwen3-embedding-4b` is taken for the books' `Qwen/Qwen3-Embedding-4B` by the name after the last `/`, case ignored; another model turns search by meaning off and says so.
+
+- 13:30 finished: last read of the code against the brief. Done means holds: 77 lane tests pass with no database, ROUTES-search.md is true, MERGE.md lists the registration, the rate-limit kind, the index script's run and the documents. Not done by this lane (not its part): registration, migration, release, the fill on COM, the checks against the 28 books. blocked by: nothing.
+DONE
