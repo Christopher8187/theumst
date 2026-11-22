@@ -352,8 +352,9 @@ class QdrantService:
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1024:
             raise ValueError("limit must be between 1 and 1024")
         name = quote(collection, safe="")
+        sent = {key: value for key, value in body.items() if value is not None}
         response = self._request("POST", f"/collections/{name}/points/query",
-                                 json={**body, "with_vector": False})
+                                 json={**sent, "with_vector": False})
         return [
             {"id": point.get("id"), "score": point.get("score"), "payload": point.get("payload") or {}}
             for point in response.get("result", {}).get("points", [])

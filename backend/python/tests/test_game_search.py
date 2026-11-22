@@ -423,6 +423,14 @@ def test_latcher_finds_labels_in_its_book_names_anywhere_then_search(library):
     assert_read_only(library)
 
 
+def test_latcher_finds_a_name_at_the_end_of_a_long_note(library):
+    text = " ".join(f"filler{i}" for i in range(600)) + " so the Extreme value theorem applies."
+    answer = game_search.latcher_candidates(text=text, grimoire_id=None, count=5)
+    assert answer["results"][0]["knowledge_id"] == 6
+    assert answer["results"][0]["mentions"] == ["extreme value theorem"]
+    assert len(library.qdrant.scrolls) > 1
+
+
 def test_latcher_answers_from_labels_alone_when_no_ranking_runs(library):
     library.qdrant.word_store = False
     answer = game_search.latcher_candidates(text="Lemma 2.1 gives it.", grimoire_id=18, count=5)

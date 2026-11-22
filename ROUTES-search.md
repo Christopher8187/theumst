@@ -4,7 +4,7 @@ The door lane (3) builds its book tools for search, neighbours, the latcher's ca
 this file. Everything here is answered on theumst.com. The PC sends words or an object's id and gets objects back.
 No vector ever leaves theumst.com.
 
-Status: written before the code (13:10, 22 November). Each route below says whether it is built and tested.
+Status: written before the code (13:08, 22 November), kept true since. All four routes are built and unit tested (no database: `backend/python/tests/test_game_search.py`). Not yet merged, registered or released: until the release, theumst.com does not answer them.
 
 ## Common to every route
 
@@ -28,9 +28,10 @@ Status: written before the code (13:10, 22 November). Each route below says whet
 | 403 | `demo_access_required` | The key's account has no Web Demo access. |
 | 403 | `master_key_not_allowed` | A master key. |
 | 404 | `not_found` | The object does not exist, is inactive, or is in a book the reader may not see. |
+| 409 | `no_vector` | Neighbours only: the object has no stored statement vector. |
 | 422 | `invalid_request` | A field is missing, too long or out of range; `errors` names the field. |
 | 429 | `rate_limited` | Over the per-minute allowance; `retry_after` in seconds. |
-| 503 | `search_unavailable` | Neither ranking could answer (the vector store is down). |
+| 503 | `search_unavailable` | Neither ranking could run or answer (`detail` says why in one plain sentence). The latcher's route answers from labels alone when the text names one. |
 
 ### One hit
 
@@ -78,12 +79,13 @@ Every answer has `rankings` and `notice`:
 ```
 
 Each ranking is `used`, `off` (not configured: no embedding settings, or no word index yet) or `failed` (it was
-configured and did not answer this time). `notice` is one plain sentence when either is not `used`, else null.
-When both fail the answer is 503 `search_unavailable`.
+configured and did not answer this time). `notice` is plain sentences when either is not `used`, else null.
+When neither is `used` the answer is 503 `search_unavailable` (the latcher's route still answers when the text
+names a label of its book).
 
 ## 1. Search
 
-`POST /api/game/search/objects` (built: no, tested: no)
+`POST /api/game/search/objects` (built: yes, unit tested: yes)
 
 Request:
 
@@ -105,8 +107,10 @@ Request:
 | `count` | integer | 1 to 50. Default 10. Hits returned after the crystal hiding. |
 | `books` | list of integers | Optional, 1 to 100 book ids. Only these books, among those the reader may see. Omitted means every book the reader may see. |
 
-What it does: the name and statement become one text the way the pipeline built each object's stored text
-(`name. statement`, the instruction the pipeline put before every text in front). theumst.com turns it into a vector
+What it does: the name and statement become one text the way the pipeline built each object's stored text:
+`name. statement` with spaces collapsed, after the instruction the pipeline put in front of every text it embedded
+(`Instruct: Given a mathematical statement, retrieve statements of the same result\nQuery:`). Keywords join the word
+search only, since the stored texts have none. theumst.com turns it into a vector
 through its embedding settings (OpenRouter, `qwen/qwen3-embedding-4b`), and searches the store and model the books'
 vectors were made with (`embedding_model`: `Qwen/Qwen3-Embedding-4B`, 2,560 numbers). Name, statement and keywords
 also go to the word index (BM25). The two rankings are merged by rank, then grouped by crystal with the hiding.
@@ -122,9 +126,11 @@ Answer:
 }
 ```
 
+With `books` naming only books the reader may not see: `results` is empty and `notice` says so.
+
 ## 2. Neighbours
 
-`GET /api/game/search/neighbours?knowledge_id=3619&count=10` (built: no, tested: no)
+`GET /api/game/search/neighbours?knowledge_id=3619&count=10` (built: yes, unit tested: yes)
 or `GET /api/game/search/neighbours?source_key=scope-365af70d720fc2106831:138&count=10`
 
 | Parameter | Rule |
@@ -140,8 +146,8 @@ Answer:
 
 ```json
 {
-  "object": { /* the asked object, as a hit without rank, found_by and scores */ },
-  "results": [ /* hits; found_by ["meaning"]; scores.meaning the cosine */ ],
+  "object": { /* the asked object: a hit's fields up to crystal_size; no crystal_shown, found_by, rank or scores */ },
+  "results": [ /* hits without crystal_shown; found_by ["meaning"]; scores.meaning the cosine */ ],
   "count": 10
 }
 ```
@@ -150,7 +156,7 @@ Answer:
 
 ## 3. The latcher's candidates
 
-`POST /api/game/search/latcher-candidates` (built: no, tested: no)
+`POST /api/game/search/latcher-candidates` (built: yes, unit tested: yes)
 
 ```json
 {
@@ -171,13 +177,14 @@ What it does, in order, all on theumst.com:
 1. **Labels** the text mentions, like "Theorem 3.2", "Lemma 2.1", "Exercise 10.4(b)", "Definition 1.3", matched to
    the labels of `grimoire_id`'s objects, word for word with the label's own prefix ("Lemma 2.1" is not "Theorem
    2.1").
-2. **Names** the text mentions: an object of any visible book whose whole name appears in the text.
-3. **Search**: the text is cut into pieces of a few sentences each (at most 8), and each piece is searched by
-   meaning and by words as in route 1.
+2. **Names** the text mentions: an object of any visible book whose whole name appears in the text (a name of one
+   word counts only from five letters), longer names first. Needs the word index.
+3. **Search**: the text is cut at sentence ends into at most 8 pieces that together cover it, and each piece is
+   searched by meaning and by words as in route 1 (all pieces in one call to the embedding provider).
 4. Merged by rank (labels and names first), grouped by crystal with the same hiding as route 1.
 
-Answer: as route 1, and each hit has `mentions`, the words of the text that named it (`[]` when found by search
-only).
+Answer: as route 1, and each hit has `mentions`: the label as the text wrote it ("Lemma 2.1"), and the name in index
+form (lower case, words only: "heine borel theorem"); `[]` when found by search only.
 
 ```json
 {
@@ -190,7 +197,7 @@ only).
 
 ## 4. Which crystal
 
-`POST /api/game/search/crystals` (built: no, tested: no)
+`POST /api/game/search/crystals` (built: yes, unit tested: yes)
 
 How an object kept on the PC is matched to a crystal. Nothing of it is stored.
 
@@ -233,7 +240,8 @@ max(1, floor(log3 m)) members, its best matches.
 
 ## What the door should know
 
-- With the embedding settings empty (today), routes 1, 3 and 4 answer by words and labels and say so in `notice`.
+- While theumst.com's embedding settings are empty, routes 1, 3 and 4 answer by words and labels and say so in
+  `notice`.
   Route 2 works without them.
 - Until the word index is filled on the server (MERGE.md), `rankings.words` is `off` and the search answers by
   meaning only, or 503 when meaning is off too.

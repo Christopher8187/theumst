@@ -49,6 +49,10 @@ MAX_CANDIDATES = 250
 LATCHER_PIECES = 8
 LATCHER_PIECE_CHARACTERS = 600
 NAME_MATCH_LIMIT = 256
+# Every run of 1 to 8 words of a 20,000-character text is at most about 25,000 name keys; they go to Qdrant's
+# keyword index 2,000 a call.
+NAME_NGRAMS_MAX = 30000
+NAME_NGRAMS_A_CALL = 2000
 
 MEANING = "meaning"
 WORDS = "words"
@@ -636,22 +640,25 @@ def text_pieces(text: str, *, pieces: int = LATCHER_PIECES, size: int = LATCHER_
 
 def _name_matches(text: str, scope: Scope) -> tuple[Ranked, dict[int, str]]:
     """Objects of any visible book whose whole name the text mentions, longest names first."""
-    grams = word_index.name_ngrams(text)
-    if not grams:
-        return [], {}
-    points, _ = qdrant_service.scroll_points(
-        collection=word_index.COLLECTION,
-        filter=scope_filter(scope, [{"key": "name_key", "match": {"any": grams}}]),
-        limit=NAME_MATCH_LIMIT,
-        with_payload=["knowledge_id", "name_key"],
-    )
+    grams = word_index.name_ngrams(text, limit=NAME_NGRAMS_MAX)
     named: dict[int, str] = {}
-    for point in points:
-        payload = point.get("payload") or {}
-        try:
-            named.setdefault(int(payload.get("knowledge_id", point.get("id"))), str(payload.get("name_key") or ""))
-        except (TypeError, ValueError):
-            continue
+    for start in range(0, len(grams), NAME_NGRAMS_A_CALL):
+        if len(named) >= NAME_MATCH_LIMIT:
+            break
+        points, _ = qdrant_service.scroll_points(
+            collection=word_index.COLLECTION,
+            filter=scope_filter(scope, [{"key": "name_key",
+                                         "match": {"any": grams[start:start + NAME_NGRAMS_A_CALL]}}]),
+            limit=NAME_MATCH_LIMIT,
+            with_payload=["knowledge_id", "name_key"],
+        )
+        for point in points:
+            payload = point.get("payload") or {}
+            try:
+                named.setdefault(int(payload.get("knowledge_id", point.get("id"))),
+                                 str(payload.get("name_key") or ""))
+            except (TypeError, ValueError):
+                continue
     ordered = sorted(named, key=lambda kid: (-len(named[kid].split()), kid))
     return [(kid, 1.0) for kid in ordered], named
 
