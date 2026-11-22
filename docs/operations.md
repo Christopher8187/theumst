@@ -30,7 +30,7 @@ Create a PostgreSQL custom-format dump and restore it into a disposable verifica
 
 After [release verification and publication](releases.md), run `dev/sh/agent_deploy.sh COM <verified-backup-sha256>` from the exact published source. The Windows wrapper accepts the corresponding argument. The task selects the environment; do not deploy CN as part of COM work.
 
-The script transfers one compressed archive, retains the previous remote source tree, applies only missing reviewed migrations using the new image, starts backend/demo without recreating database/vector dependencies, then recreates the internal proxy so it resolves the current backend address. Since 0.0.18, once the backend answers, it builds the whole-book reads and checks them ([below](#whole-book-reads)), and stops if a book failed or is still stale. Read current `_common.sh` before relying on this sequence. A retained `.previous` tree blocks another update and must be resolved deliberately after verification.
+The script transfers one compressed archive, retains the previous remote source tree, applies only missing reviewed migrations using the new image, starts backend/demo without recreating database/vector dependencies, then recreates the internal proxy so it resolves the current backend address. Since 0.0.18, once the backend answers, it builds the whole-book reads and checks them ([below](#whole-book-reads)), and stops if a book failed or is still stale. It does not fill the [word index](#word-index) or snapshot Qdrant. Read current `_common.sh` before relying on this sequence. A retained `.previous` tree blocks another update and must be resolved deliberately after verification.
 
 Record the deployment artifact SHA-256 and source revision. Check root page, `/health`, `/health/db`, `/health/qdrant`, `/health/assets` and `/health/storage`, the protected demo access path and representative authenticated reading. Match the deployed revision to the annotated release tag. A static homepage check does not establish study persistence or visibility.
 
@@ -44,6 +44,34 @@ cd /var/www/theumst.com && sudo docker compose --env-file .env -f compose.deploy
 ```
 
 Without `--book` it covers every grimoire in id order, hidden ones included. Each book has its own transaction, so one failure leaves the others written, and a second run changes nothing. It prints `book_read format 1; book_game_read format 1`, a line per book for each row, and a last line with each row's totals, the gzip bytes in all and the seconds. A line starts `book <id>` and the row's name. A `book_read` line gives the book's objects, sections, relations by type and shared crystals, and a `book_game_read` line its objects, figure links and page scans. Both then give raw and gzip bytes, the version's first 12 hex characters, `written`, `unchanged` or `failed`, and the seconds the row took. Each row's build has its own savepoint, so one row can fail while the other is written. A failed line gives the error on that line, its whitespace collapsed and cut to 200 characters, and deletes that stored row, as a failed upload does; the backend's warning log says the same for uploads and submissions. `--check` writes nothing and says `current`, `stale` or `missing` instead. It exits 0 when all is well, 1 when a row failed, and 2 when `--check` found a stale or missing row. Until it has run, the Web Demo's route and the game's book answer 409, and clients fall back to what they keep or read per object.
+
+## Word index
+
+Since 0.0.19 the game agents' [search](game-agents.md#search) ranks by words in the Qdrant collection `knowledge-words-bm25`, one point per active object of every book, hidden books included ([data architecture](architecture/data.md)). The deploy does not fill it. Fill it by hand after the release that adds it, after a Qdrant snapshot of the books' vectors ([below](#qdrant-snapshot)), and again for each book uploaded later, until an upload fills its own words. On the server:
+
+```
+cd /var/www/theumst.com && sudo docker compose --env-file .env -f compose.deploy.yml exec -T backend \
+    python -m scripts.fill_word_index [--book ID ...] [--check]
+```
+
+Without `--book` it covers every grimoire. It creates the collection with its sparse vector `words` (Qdrant's `idf` modifier, kept on disk) and its payload indexes (`knowledge_id` and `grimoire_id` integer, `name_key` keyword) when they are missing, writes each object's point 1,000 objects at a time, so memory stays flat, and deletes the points of objects no longer active. It reads PostgreSQL and never writes it, and it never touches another collection. A second run changes nothing. It prints `<collection>: created` or `present`, a line every 10,000 objects, and a last line: `<objects> objects in <books> books; <n> written; <n> stale deleted; <t> terms an object on average (AVGDL 18.0); <s> s`. `--check` writes nothing and prints `<n> missing` and `<n> stale found` instead, or `knowledge-words-bm25: missing` when there is no collection. It exits 0 when all is well, 1 when something failed, and 2 when `--check` found a missing or stale point or no collection. `word_index.AVGDL` is a fixed 18, the average of a sample of COM's books, so no point is rewritten when books arrive; if the printed average drifts far from it, change the constant in a release and run the command again.
+
+Until it has run, the search answers by meaning only and says `"words": "off"`, or 503 `search_unavailable` when search by meaning is off too. A book uploaded after the run is found by meaning only until `--book <id>` runs for it, a re-uploaded book keeps its old words, and the search leaves out any hit whose object is no longer active.
+
+Search by meaning needs `EMBEDDING_API_URL`, `EMBEDDING_API_KEY` and `EMBEDDING_MODEL` in the server's `.env`, which the packager copies from the local `.env` ([security](security.md)). To check the provider against the books' stored vectors, search with the game's key for stored objects by their own name and statement: each must come back with `scores.meaning` of 0.99 or more, which is the cosine of the route's query vector and the object's stored vector. The route puts the pipeline's instruction line first, without which the cosine falls to about 0.93 ([game agents' reads](game-agents.md#search)).
+
+### Qdrant snapshot
+
+Take a snapshot of a Qdrant collection before the first change to the vector store, such as the word index's first fill. The snapshot is written inside the Qdrant container, outside its volume, so copy it out and remove it there. For the books' vectors:
+
+```
+cd /var/www/theumst.com && sudo docker compose --env-file .env -f compose.deploy.yml exec -T backend python -c \
+    "from app.services.qdrant import qdrant_service as q; print(q._request('POST', '/collections/knowledge-qwen3-embedding-4b/snapshots', params={'wait': 'true'}, timeout=1800))"
+sudo docker compose --env-file .env -f compose.deploy.yml cp \
+    qdrant:/qdrant/snapshots/knowledge-qwen3-embedding-4b/<name> /var/backups/theumst/<release folder>/
+```
+
+The answer names the snapshot, its size and its SHA-256 `checksum`; compare `sha256sum` of the copy with it before deleting the container's copy with `DELETE /collections/knowledge-qwen3-embedding-4b/snapshots/<name>`. `PUT /collections/<collection>/snapshots/recover` with `{"location": "file:///qdrant/snapshots/<collection>/<name>"}`, after copying the file back in, restores the collection. Record the collections and their point counts (`POST /collections/<collection>/points/count` with `{"exact": true}`) before and after the change.
 
 ## Recovery and troubleshooting
 

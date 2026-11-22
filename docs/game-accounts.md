@@ -1,6 +1,6 @@
 # Game accounts
 
-UMST signs in to theumst.com with a username and password, then keeps its characters here. Since 0.0.16 it also downloads whole books here and keeps the account's Web Demo notes, and since 0.0.18 it fetches a book's figures here many at a time. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables, 014 deletes a character's save with it, 015 keeps the install that has a character open, and 017 holds the books the game reads. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, apart from a book's 200 and 304, and times are UTC, such as `2026-11-05T10:00:00Z`. A note's times also give microseconds.
+UMST signs in to theumst.com with a username and password, then keeps its characters here. Since 0.0.16 it also downloads whole books here and keeps the account's Web Demo notes, and since 0.0.18 it fetches a book's figures here many at a time. Since 0.0.19 its agents search and read every book here, under `/api/game/search` and `/api/game/graph`, which [game agents' reads](game-agents.md) describes. `routers/game.py` serves the game under `/api/game`; migration 013 holds the tables, 014 deletes a character's save with it, 015 keeps the install that has a character open, and 017 holds the books the game reads. The game sends JSON with `Content-Type: application/json`. Answers are JSON with `Cache-Control: no-store`, apart from a book's 200 and 304, and times are UTC, such as `2026-11-05T10:00:00Z`. A note's times also give microseconds.
 
 ## Keys and limits
 
@@ -8,7 +8,7 @@ UMST signs in to theumst.com with a username and password, then keeps its charac
 
 A call may name its game install in `X-Install-Id`, the short id the game keeps per install and puts in its key names, `UMST · <computer> · <install id>`. The value is 1 to 64 ASCII letters, digits, hyphens or underscores, such as `k7m2qx`. A malformed or repeated header gets 422 `invalid_request` naming `X-Install-Id`, before the key is looked up or the call counted. Only the leases read it, and the game in players' hands sends none yet.
 
-A regular key gets its tier's `requests_per_minute` (600 for `standard`) for each kind of request in a one-minute window. Account and character calls count as `character`. The list of grimoires, books, figure batches and notes under `/api/game`, and calls under `/api/v1`, count as `book` and share one window. A figure batch counts once for each distinct url it asks, as many as fetching each from `/api/v1/storage` would; it is refused with 429 when fewer are left in the window, counting nothing, and the urls it names `later` without reading their bytes are given back to the window and the day. Past the limit the answer is 429 with `Retry-After` in seconds; a tier without allowance answers 429 with `Retry-After: 60`. Master keys have no limit on `/api/v1`. `api_usage_daily` counts every accepted request by key, UTC day and kind, master keys included. A refused request counts nowhere.
+A regular key gets its tier's `requests_per_minute` (600 for `standard`) for each kind of request in a one-minute window. Account and character calls count as `character`. The list of grimoires, books, figure batches and notes under `/api/game`, and calls under `/api/v1`, count as `book` and share one window. Since 0.0.19 the agents' search counts as `search` and their graph reads as `graph`, each in a window of its own ([game agents' reads](game-agents.md)). A figure batch counts once for each distinct url it asks, as many as fetching each from `/api/v1/storage` would; it is refused with 429 when fewer are left in the window, counting nothing, and the urls it names `later` without reading their bytes are given back to the window and the day. Past the limit the answer is 429 with `Retry-After` in seconds; a tier without allowance answers 429 with `Retry-After: 60`. Master keys have no limit on `/api/v1`. `api_usage_daily` counts every accepted request by key, UTC day and kind, master keys included. A refused request counts nowhere.
 
 The Default key comes only from the signed-in API Keys page. When an account without one opens it, `POST /api/api-keys/default` makes a regular `standard` key named `Default` and answers 201 with its full text, once; otherwise it answers 200 `{"created": false}`. Confirming an email makes no key, because its link works without a session and could reach a mail scanner or anyone the email is forwarded to. Any key named `Default` without a client counts, revoked ones too, so revoking it never brings another.
 
@@ -36,6 +36,8 @@ Paths are under `/api/game`.
 | `PUT /grimoires/{id}/notes/{note_id}` | `tag`, `content`, `if_updated_at` | 200 `{note}` |
 | `DELETE /grimoires/{id}/notes/{note_id}` | `if_updated_at` | 200 `{deleted: true, demo_note_id}` |
 | `POST /master-key` | | 200 `{master: true}` |
+
+The agents' thirteen routes under `/api/game/search` and `/api/game/graph` (0.0.19) are listed in [game agents' reads](game-agents.md), with their own errors.
 
 The sign-in `key`, and `/me`'s without `key`:
 

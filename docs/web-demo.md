@@ -24,7 +24,7 @@ Since 0.0.16 the game UMST reads and writes the same notes through an account's 
 
 ## Discovery and presentation
 
-Find neighbors searches across available books using stored semantic projections. Retrieve top k for each applicable projection, combine distinct candidates, obtain both scores for every complete pair and show the final top k. Absence from one result set is not a zero score. Compatible complete pairs use equal weighting. If exactly one object lacks workings, apply 0.8 to the available statement score; if both lack workings, retain it. Normalize signed cosine scores to [0,1] before the penalty so it cannot improve a negative score. Missing embeddings despite available workings are processing faults.
+Find neighbors searches across available books using stored semantic projections. Retrieve top k for each applicable projection, combine distinct candidates, obtain both scores for every complete pair and show the final top k. Absence from one result set is not a zero score. Compatible complete pairs use equal weighting. If exactly one object lacks workings, apply 0.8 to the available statement score; if both lack workings, retain it. Normalize signed cosine scores to [0,1] before the penalty so it cannot improve a negative score. Missing embeddings despite available workings are processing faults. Since 0.0.19 the search reads only the rows of the vector service's hits, not every object of every available book, so `processing_faults` counts such faults among the hits.
 
 Dependencies retrieves active objects connected to the selected object by incoming authored `dependency` edges in its available grimoire. Source order, outgoing edges and similarity do not qualify.
 

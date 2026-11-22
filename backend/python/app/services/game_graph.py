@@ -118,7 +118,7 @@ k.knowledge_crystal_id AS crystal_id, COALESCE(z.crystal_size, 0) AS crystal_siz
 def _objects_sql(where: str, *, working: bool = False, tail: str = "") -> str:
     """Object rows (OBJECT_KEYS) for the active objects of visible books that `where` picks (over k and s).
     Crystal sizes are counted once for the crystals picked, not once a row: one pass over the
-    knowledge_crystal_id index the merge adds (MERGE.md), or one scan before it."""
+    knowledge_active_crystal_idx (migration 018), or one scan of knowledge without it."""
     extra = ", lk.working, COALESCE(lk.working_summary, '') AS working_summary" if working else ""
     return f"""
     WITH chosen AS (
@@ -307,7 +307,7 @@ class SqlGraph:
 # --- the answers --------------------------------------------------------------------------
 
 def brief(row: Mapping[str, Any]) -> dict[str, Any]:
-    """An object as every answer gives it: ROUTES-search.md's hit without the search's fields."""
+    """An object as every answer gives it: the search's hit without the search's fields (docs/game-agents.md)."""
     out = {key: row.get(key) for key in OBJECT_KEYS}
     for key in ("label", "name", "book_title"):
         out[key] = out[key] or ""
