@@ -189,16 +189,19 @@ class SqlGraph:
         if not ends:
             return []
         end, other = ("target", "source") if side == "in" else ("source", "target")
+        # An arrow's two ends are in its book (the sidecar's nodes are per book), so the book is checked once an
+        # arrow; joining each far end's section instead made PostgreSQL compare every visible section with
+        # every arrow (1.9 s for 400 ends on COM, against milliseconds this way).
         return self._all(
             f"""
             SELECT e.{end}_knowledge_id AS end, e.{other}_knowledge_id AS other, k.type AS other_type,
                    k.knowledge_crystal_id AS other_crystal_id, e.grimoire_id
             FROM unnest(%s::int[], %s::int[]) AS t(grimoire_id, knowledge_id)
+            JOIN grimoire g ON g.grimoire_id = t.grimoire_id AND g.source_metadata->>'demo' = 'true'
             JOIN knowledge_graph_edge e
               ON e.grimoire_id = t.grimoire_id AND e.{end}_knowledge_id = t.knowledge_id
              AND e.relation_type = %s
             JOIN knowledge k ON k.knowledge_id = e.{other}_knowledge_id AND k.is_active
-            {_VISIBLE}
             ORDER BY 1, 2
             """,
             [[g for g, _ in ends], [i for _, i in ends], relation],
