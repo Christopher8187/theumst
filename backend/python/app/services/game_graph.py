@@ -111,19 +111,38 @@ _ORDER = """COALESCE((k.source_metadata->>'demo_order')::int, 2147483647),
 _OBJECT_COLUMNS = """
 k.knowledge_id, k.source_key, s.grimoire_id, COALESCE(lg.title, '') AS book_title, k.section_id,
 COALESCE(btrim(lk.label), '') AS label, COALESCE(btrim(k.name), '') AS name, lk.statement, k.type,
-k.knowledge_crystal_id AS crystal_id,
-(SELECT count(*) FROM knowledge m
-   JOIN section ms ON ms.section_id = m.section_id
-   JOIN grimoire mg ON mg.grimoire_id = ms.grimoire_id AND mg.source_metadata->>'demo' = 'true'
-  WHERE m.knowledge_crystal_id = k.knowledge_crystal_id AND m.is_active)::int AS crystal_size
+k.knowledge_crystal_id AS crystal_id, COALESCE(z.crystal_size, 0) AS crystal_size
 """
 
-_OBJECT_FROM = f"""
-FROM knowledge k
-{_VISIBLE}
-JOIN language_knowledge lk ON lk.knowledge_id = k.knowledge_id AND lk.language_id = 1
-LEFT JOIN language_grimoire lg ON lg.grimoire_id = g.grimoire_id AND lg.language_id = 1
-"""
+
+def _objects_sql(where: str, *, working: bool = False, tail: str = "") -> str:
+    """Object rows (OBJECT_KEYS) for the active objects of visible books that `where` picks (over k and s).
+    Crystal sizes are counted once for the crystals picked, not once a row: one pass over the
+    knowledge_crystal_id index the merge adds (MERGE.md), or one scan before it."""
+    extra = ", lk.working, COALESCE(lk.working_summary, '') AS working_summary" if working else ""
+    return f"""
+    WITH chosen AS (
+        SELECT k.knowledge_id, k.knowledge_crystal_id
+        FROM knowledge k
+        {_VISIBLE}
+        WHERE {where} AND k.is_active
+    ), sizes AS (
+        SELECT m.knowledge_crystal_id, count(*)::int AS crystal_size
+        FROM knowledge m
+        JOIN section ms ON ms.section_id = m.section_id
+        JOIN grimoire mg ON mg.grimoire_id = ms.grimoire_id AND mg.source_metadata->>'demo' = 'true'
+        WHERE m.is_active AND m.knowledge_crystal_id IN (SELECT knowledge_crystal_id FROM chosen)
+        GROUP BY m.knowledge_crystal_id
+    )
+    SELECT {_OBJECT_COLUMNS}{extra}
+    FROM chosen c
+    JOIN knowledge k ON k.knowledge_id = c.knowledge_id
+    {_VISIBLE}
+    JOIN language_knowledge lk ON lk.knowledge_id = k.knowledge_id AND lk.language_id = 1
+    LEFT JOIN language_grimoire lg ON lg.grimoire_id = g.grimoire_id AND lg.language_id = 1
+    LEFT JOIN sizes z ON z.knowledge_crystal_id = k.knowledge_crystal_id
+    {tail}
+    """
 
 _RANKED = f"""
 SELECT k.knowledge_id, k.section_id,
@@ -158,20 +177,12 @@ class SqlGraph:
             if grimoire_id is not None:
                 where += " AND s.grimoire_id = %s"
                 params.append(grimoire_id)
-        return self._all(
-            f"SELECT {_OBJECT_COLUMNS} {_OBJECT_FROM} WHERE {where} AND k.is_active "
-            "ORDER BY s.grimoire_id, k.knowledge_id LIMIT 2",
-            params,
-        )
+        return self._all(_objects_sql(where, tail="ORDER BY s.grimoire_id, k.knowledge_id LIMIT 2"), params)
 
     def objects(self, ids, *, working=False):
         if not ids:
             return {}
-        extra = ", lk.working, COALESCE(lk.working_summary, '') AS working_summary" if working else ""
-        rows = self._all(
-            f"SELECT {_OBJECT_COLUMNS}{extra} {_OBJECT_FROM} WHERE k.knowledge_id = ANY(%s) AND k.is_active",
-            [list(ids)],
-        )
+        rows = self._all(_objects_sql("k.knowledge_id = ANY(%s)", working=working), [list(ids)])
         return {int(row["knowledge_id"]): row for row in rows}
 
     def arrows(self, ends, relation, side):
@@ -346,7 +357,7 @@ def load(source: GraphSource, obj: Mapping[str, Any]) -> dict[str, Any]:
     head = full[start]
     answer_object = {**brief(head), "working": head.get("working") or "",
                      "working_summary": head.get("working_summary") or "",
-                     "position": places.get(start), "of": total}
+                     "position": places.get(start), "book_count": total}
 
     component = []
     for item in joined:
@@ -725,7 +736,7 @@ def around(source: GraphSource, obj: Mapping[str, Any], before: int, after: int)
     placed = list(zip(ids, range(max(1, at - before), at + after + 1)))
     return {
         "object": {**brief(obj), "position": at},
-        "of": total,
+        "book_count": total,
         "before": [{**brief(found[i]), "position": p} for i, p in placed if p < at and i in found],
         "after": [{**brief(found[i]), "position": p} for i, p in placed if p > at and i in found],
     }

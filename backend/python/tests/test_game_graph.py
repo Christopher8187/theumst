@@ -202,7 +202,7 @@ def test_load_gives_the_support_component_detached_proof_and_dependencies():
     answer = game_graph.load(g, game_graph.resolve(g, knowledge_id=13))
     assert answer["object"]["knowledge_id"] == 13
     assert answer["object"]["working"] == "*Proof.* w13"
-    assert (answer["object"]["position"], answer["object"]["of"]) == (4, 22)
+    assert (answer["object"]["position"], answer["object"]["book_count"]) == (4, 22)
     members = {m["knowledge_id"]: m for m in answer["component"]}
     assert [m["knowledge_id"] for m in answer["component"]] == [12, 31, 14]
     assert (members[12]["why"], members[12]["of"]) == ("supports", 13)
@@ -338,7 +338,7 @@ def test_around_crosses_sections():
     answer = game_graph.around(g, game_graph.resolve(g, knowledge_id=11), 2, 2)
     assert [o["knowledge_id"] for o in answer["before"]] == [10]
     assert [(o["knowledge_id"], o["position"]) for o in answer["after"]] == [(12, 3), (13, 4)]
-    assert answer["object"]["position"] == 2 and answer["of"] == 22
+    assert answer["object"]["position"] == 2 and answer["book_count"] == 22
 
 
 def test_pages_give_storage_urls_and_page_numbers():
