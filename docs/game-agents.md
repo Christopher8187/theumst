@@ -31,10 +31,10 @@ The key is checked in [game accounts'](game-accounts.md#errors) order: 401, a ma
 The routes give objects in one flat shape. A search hit:
 
 ```json
-{"knowledge_id": 3619, "source_key": "scope-365af70d720fc2106831:138", "grimoire_id": 7,
- "book_title": "Algebra", "label": "Exercise 10.4(b)", "name": "Degree of two consecutive thirteenth roots",
+{"knowledge_id": 3619, "source_key": "scope-365af70d720fc2106831:138", "grimoire_id": 5,
+ "book_title": "Algebra (Artin), Kaic4 test branch", "label": "Exercise 10.4(b)", "name": "Degree of two consecutive thirteenth roots",
  "statement": "Let $\\zeta=\\zeta_{13}$. Determine the degree of $\\zeta+\\zeta^2$ over $\\mathbb{Q}$.",
- "type": "exercise", "crystal_id": 841, "crystal_size": 3, "crystal_shown": 1,
+ "type": "exercise", "crystal_id": 841, "crystal_size": 1, "crystal_shown": 1,
  "found_by": ["meaning", "words"], "rank": 1, "scores": {"meaning": 0.8312, "words": 14.07, "fused": 0.03279}}
 ```
 
@@ -125,11 +125,11 @@ The answer is that of objects, and each hit adds `mentions`: the label as the te
 Every graph route reads PostgreSQL only and touches no vector. A route that takes an object takes `knowledge_id`, or `source_key` with an optional `grimoire_id`, exactly one of the two. Arrows are the stored `dependency` and `supports` rows of `knowledge_graph_edge`, never the legacy `relation` table ([data architecture](architecture/data.md)). A graph object:
 
 ```json
-{"knowledge_id": 44630, "source_key": "scope-192f3b0ecbe61ac6a56f:41", "grimoire_id": 18,
- "book_title": "Topological Spaces, Part IB lecture notes (Randal-Williams, 2026)", "section_id": 5120,
+{"knowledge_id": 44630, "source_key": "scope-d515e2c8d1b387c583d7:15", "grimoire_id": 18,
+ "book_title": "Topological Spaces, Part IB lecture notes (Randal-Williams, 2026)", "section_id": 1731,
  "label": "Proposition", "name": "Continuous surjections preserve connectedness",
  "statement": "If $f:X\\to Y$ is a continuous surjection and $X$ is connected, then $Y$ is connected.",
- "type": "theorem", "crystal_id": 30211, "crystal_size": 8}
+ "type": "theorem", "crystal_id": 26895, "crystal_size": 8}
 ```
 
 ### One object with its load
@@ -152,7 +152,7 @@ Every graph route reads PostgreSQL only and touches no vector. A route that take
 
 ### A crystal's members
 
-`GET /api/game/graph/crystal?crystal_id=30211`, or by one member's `knowledge_id` or `source_key`: `{"crystal_id", "crystal_size", "members": [object with "default"], "truncated"}`. Every active member in every book the reader may see: the crystal's preferred member first, then by book and book order, at most 500. The search's hidden members are all here.
+`GET /api/game/graph/crystal?crystal_id=26895`, or by one member's `knowledge_id` or `source_key`: `{"crystal_id", "crystal_size", "members": [object with "default"], "truncated"}`. Every active member in every book the reader may see: the crystal's preferred member first, then by book and book order, at most 500. The search's hidden members are all here.
 
 ### What an object uses, and what uses it
 
@@ -167,8 +167,8 @@ Every graph route reads PostgreSQL only and touches no vector. A route that take
 The walk's nodes are crystals, starting at the start's crystal. At each crystal it follows the arrows of the crystal's proper members (any type but `reference`) in the reader's book; where the reader's book has none, those in the book it came through; else those of one proper member. A crystal the reader's book holds only as a `reference` is listed and not walked below. Down follows what the followed members use, up what uses them. Crystals come nearest first, by depth, then in the order found. Each is given in full while the words so far (the name and statement of its shown object, a formula counted as one word) stay inside the budget; the rest are counted by depth. Past ten times the budget, or 4,000 crystals, the walk gives up and says so, keeping what it found.
 
 ```json
-{"object": { /* one object */ }, "direction": "down", "reader_grimoire_id": 18, "start_crystal_id": 30211,
- "crystals": [{"crystal_id": 30211, "crystal_size": 8, "depth": 0, "walked": true, "transfers": 0,
+{"object": { /* one object */ }, "direction": "down", "reader_grimoire_id": 18, "start_crystal_id": 26895,
+ "crystals": [{"crystal_id": 26895, "crystal_size": 8, "depth": 0, "walked": true, "transfers": 0,
                "shown": { /* one object */ }, "reader_members": [44630, 44631], "reader_reference": false,
                "followed": [44630, 44631], "next": [30188, 30107]}],
  "counted": [{"depth": 4, "crystals": 61, "words": 2140}],
@@ -181,12 +181,13 @@ The walk's nodes are crystals, starting at the start's crystal. At each crystal 
 
 ### A section, and the objects around one
 
-`GET /api/game/graph/section?section_id=5120`, or by one of its objects:
+`GET /api/game/graph/section?section_id=1731`, or by one of its objects:
 
 ```json
-{"section": {"section_id": 5120, "number": "4", "name": "Connectedness", "grimoire_id": 18, "book_title": "..."},
- "path": [{"section_id": 5100, "number": "2", "name": "..."}], "children": [{"section_id": 5121, "number": "1", "name": "..."}],
- "previous": {"section_id": 5119, "number": "3", "name": "..."}, "next": {"section_id": 5122, "number": "5", "name": "..."},
+{"section": {"section_id": 1731, "number": "001", "name": "2.1 Connectedness", "grimoire_id": 18, "book_title": "..."},
+ "path": [{"section_id": 1726, "number": "002", "name": "2 Connectedness and components"},
+          {"section_id": 1731, "number": "001", "name": "2.1 Connectedness"}], "children": [],
+ "previous": { /* a section, or null */ }, "next": { /* a section, or null */ },
  "objects": [{ /* one object */ "position": 190}], "truncated": false}
 ```
 
