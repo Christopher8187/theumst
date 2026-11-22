@@ -5,7 +5,9 @@ and what uses it, the closures, sections and book order, and the source's pages 
 answered on theumst.com from its database; nothing here touches a vector.
 
 Status: written before the code (13:10), aligned with `ROUTES-search.md` at 13:15 (same object fields, same error
-codes). Each route says whether it is built and tested.
+codes). Every route below is built and unit tested (`backend/python/tests/test_game_graph.py`, no database). Routes
+1, 2, 3 and 4 were also run read only against theumst.com's database through the service (STATUS.md). None is
+registered or live until the merge and release (MERGE.md).
 
 ## Common to every route
 
@@ -64,11 +66,12 @@ of `knowledge_id` and `source_key`.
 
 ## 1. One object with its load
 
-`GET /api/game/graph/object?knowledge_id=44630` or `?source_key=scope-...&grimoire_id=18` (built: no, tested: no)
+`GET /api/game/graph/object?knowledge_id=44630` or `?source_key=scope-...&grimoire_id=18`
 
 ```json
 {
-  "object": { /* one object */ "working": "*Proof.* ...", "working_summary": "...", "position": 193, "of": 1408 },
+  "object": { /* one object */ "working": "*Proof.* ...", "working_summary": "...", "position": 193,
+              "book_count": 1408 },
   "component": [
     { /* one object */ "working": "...", "working_summary": "",
       "why": "supports", "of": 44630,
@@ -84,7 +87,9 @@ of `knowledge_id` and `source_key`.
 
 - `component`: the object's support component, the object itself left out, each member in full (label, name,
   statement, workings). It is found in the object's book by the stored `supports` arrows, both ways, and the
-  detached proofs, until no more are found or 24 members are held (`component_truncated`).
+  detached proofs, until no more are found or 24 objects are held, the object included, as the game's tutor
+  stage reads it (`component_truncated`). Members come level by level: for each, what supports it, what it
+  supports, its detached proofs, then what it proves.
 - `why` and `of` say how a member joined: `supports` (it supports `of`), `supported_by` (`of` supports it),
   `proof_of` (it is a detached proof of `of`), `proved_by` (`of` is a detached proof of it).
 - A detached proof proves the last object before it in book order, among what it uses, that is a theorem, a
@@ -95,11 +100,11 @@ of `knowledge_id` and `source_key`.
 - `dependencies`: the union of what any member of the component, the object included, uses directly by the stored
   `dependency` arrows, less the members, in book order, with label, name and statement (no workings). `used_by`
   names the members that use it. At most 300 (`dependencies_truncated`).
-- `position` and `of`: the object's place in its book's reader order, from 1, and the book's count.
+- `position` and `book_count`: the object's place in its book's reader order, from 1, and the book's count.
 
 ## 2. A crystal's members, across books
 
-`GET /api/game/graph/crystal?knowledge_id=44630` (or `source_key`), or `?crystal_id=30211` (built: no, tested: no)
+`GET /api/game/graph/crystal?knowledge_id=44630` (or `source_key`), or `?crystal_id=30211`
 
 ```json
 {"crystal_id": 30211, "crystal_size": 8, "members": [ { /* one object */ "default": true } ]}
@@ -110,8 +115,7 @@ book order. At most 500 (`truncated`). The search's hidden members are all here.
 
 ## 3. What an object uses, and what uses it
 
-`GET /api/game/graph/uses?knowledge_id=44630` and `GET /api/game/graph/used-by?knowledge_id=44630` (built: no,
-tested: no)
+`GET /api/game/graph/uses?knowledge_id=44630` and `GET /api/game/graph/used-by?knowledge_id=44630`
 
 ```json
 {"object": { /* one object */ }, "results": [ { /* one object */ } ], "count": 6, "truncated": false}
@@ -122,8 +126,7 @@ steps to another book with route 2. At most 500.
 
 ## 4. Closures over crystals
 
-`GET /api/game/graph/closure?knowledge_id=44630&direction=down&reader_grimoire_id=18&words=3000` (built: no,
-tested: no)
+`GET /api/game/graph/closure?knowledge_id=44630&direction=down&reader_grimoire_id=18&words=3000`
 
 | Parameter | Rule |
 |---|---|
@@ -160,8 +163,11 @@ budget, or past 4,000 crystals, the walk gives up and says so.
 }
 ```
 
-- `shown`: the object that stands for the crystal: the reader's book's proper member if there is one, else the
-  first member the walk followed, else the member it reached.
+- `shown`: the object that stands for the crystal: the reader's book's proper member if there is one; for a
+  crystal the reader's book only references, that reference; else the first member the walk followed; else the
+  member it reached.
+- A crystal found when the walk gives up is counted, not walked: its arrows are not followed (`followed` and
+  `next` empty).
 - `reader_members`: the ids of the crystal's members in the reader's book, references included. The door joins
   these with the reader's marks (fully seen is known; seen and pseudoseen a reminder; unseen a gap). Empty: the
   reader's book lacks it. `reader_reference`: the reader's book holds it only as a reference.
@@ -173,8 +179,8 @@ budget, or past 4,000 crystals, the walk gives up and says so.
 
 ## 5. A section in book order, and the objects before and after one object
 
-`GET /api/game/graph/section?section_id=5120`, or `?knowledge_id=44630` for that object's section (built: no,
-tested: no)
+`GET /api/game/graph/section?section_id=5120`, or `?knowledge_id=44630` (or `source_key`) for that object's
+section
 
 ```json
 {
@@ -191,10 +197,10 @@ tested: no)
 The section's own objects (not its subsections') in reader order, at most 400. `path` runs from the top-level
 section down to this one. `previous` and `next` are its neighbours in the book's contents order, null at the ends.
 
-`GET /api/game/graph/around?knowledge_id=44630&before=5&after=5` (each 0 to 25, default 5) (built: no, tested: no)
+`GET /api/game/graph/around?knowledge_id=44630&before=5&after=5` (each 0 to 25, default 5)
 
 ```json
-{"object": { /* one object */ "position": 193 }, "of": 1408,
+{"object": { /* one object */ "position": 193 }, "book_count": 1408,
  "before": [ { /* one object */ "position": 188 } ], "after": [ { /* one object */ "position": 194 } ]}
 ```
 
@@ -202,7 +208,7 @@ The objects just before and after it in its book's reader order, across section 
 
 ## 6. The source's pages
 
-`GET /api/game/graph/pages?knowledge_id=44630` (built: no, tested: no)
+`GET /api/game/graph/pages?knowledge_id=44630`
 
 ```json
 {"object": { /* one object */ },
@@ -215,7 +221,7 @@ theumst.com holds no text of the pages: only these scans and `source_pages`, the
 
 ## 7. Matching objects by source key
 
-`POST /api/game/graph/match` (built: no, tested: no)
+`POST /api/game/graph/match`
 
 ```json
 {"objects": [{"source_key": "scope-...", "grimoire_id": 25}]}
