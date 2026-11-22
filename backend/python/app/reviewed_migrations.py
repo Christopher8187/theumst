@@ -174,6 +174,16 @@ REVIEWED_MIGRATIONS = (
         sha256="6c3b22216b2449369427a7ec82e18b631f0a2f5a5a549b500f10edb09a90a960",
         exclusive_markers=(Marker("relation", "public.book_game_read"),),
     ),
+    ReviewedMigration(
+        key="game_agent_reads_v1", filename="018_game_agent_reads.sql",
+        sha256="d4c6e43c845cd68ff572c0d4f116221d53d951d6d4823a0b291392fd36cbb55a",
+        # The kinds' checks leave no marker of their own; they ride in the same file as the indexes.
+        exclusive_markers=(
+            Marker("relation", "public.knowledge_active_crystal_idx"),
+            Marker("relation", "public.knowledge_active_source_key_idx"),
+            Marker("relation", "public.grimoire_hidden_idx"),
+        ),
+    ),
 )
 
 

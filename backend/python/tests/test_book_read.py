@@ -669,8 +669,10 @@ def test_the_pin_is_the_sha256_of_the_file_as_git_checks_it_out():
     data = MIGRATION_PATH.read_bytes()
     assert b"\r" not in data  # .gitattributes keeps *.sql at LF on every machine
     assert hashlib.sha256(data).hexdigest() == BOOK_READ_MIGRATION.sha256
-    assert reviewed_migrations.REVIEWED_MIGRATIONS[-2] is BOOK_READ_MIGRATION
-    assert reviewed_migrations.REVIEWED_MIGRATIONS[-3].key == "character_lease_install_v1"
+    migrations = reviewed_migrations.REVIEWED_MIGRATIONS
+    place = migrations.index(BOOK_READ_MIGRATION)
+    assert migrations[place - 1].key == "character_lease_install_v1"
+    assert migrations[place + 1].key == "book_game_read_v1"
 
 
 def test_the_readiness_marker_is_the_table():
@@ -699,7 +701,8 @@ def test_017_is_pinned_after_016_with_its_table_as_the_marker():
     data = GAME_MIGRATION_PATH.read_bytes()
     assert b"\r" not in data
     assert hashlib.sha256(data).hexdigest() == BOOK_GAME_READ_MIGRATION.sha256
-    assert reviewed_migrations.REVIEWED_MIGRATIONS[-1] is BOOK_GAME_READ_MIGRATION
+    migrations = reviewed_migrations.REVIEWED_MIGRATIONS
+    assert migrations[migrations.index(BOOK_GAME_READ_MIGRATION) - 1] is BOOK_READ_MIGRATION
     assert BOOK_GAME_READ_MIGRATION.filename == "017_book_game_read.sql"
     assert [(marker.kind, marker.name) for marker in BOOK_GAME_READ_MIGRATION.exclusive_markers] == [
         ("relation", "public.book_game_read"),

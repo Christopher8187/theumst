@@ -178,8 +178,9 @@ def test_missing_key_is_401_without_touching_the_database(monkeypatch):
 
 def test_an_unknown_kind_is_a_programming_error(monkeypatch):
     cursor = Cursor(regular_key())
+    # 'search' and 'graph' are kinds since 0.0.19; a name no route counts as is still refused.
     with pytest.raises(ValueError, match="Unknown API request kind"):
-        authenticate(monkeypatch, cursor, kind="search")
+        authenticate(monkeypatch, cursor, kind="searches")
     assert cursor.statements == []
 
 

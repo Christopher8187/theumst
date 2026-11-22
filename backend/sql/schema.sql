@@ -199,10 +199,11 @@ CREATE TABLE IF NOT EXISTS api_key (
 );
 
 -- One-minute request windows per key and kind (book reads, the game's
--- character calls), and accepted requests per key, UTC day and kind.
+-- character calls, and since 0.0.19 its agents' search and graph reads), and
+-- accepted requests per key, UTC day and kind.
 CREATE TABLE IF NOT EXISTS api_rate_window (
     api_key_id int NOT NULL REFERENCES api_key(api_key_id) ON DELETE CASCADE,
-    kind text NOT NULL CHECK (kind IN ('book', 'character')),
+    kind text NOT NULL CHECK (kind IN ('book', 'character', 'search', 'graph')),
     window_started_at timestamptz NOT NULL DEFAULT now(),
     request_count int NOT NULL DEFAULT 0 CHECK (request_count >= 0),
     PRIMARY KEY (api_key_id, kind)
@@ -211,7 +212,7 @@ CREATE TABLE IF NOT EXISTS api_rate_window (
 CREATE TABLE IF NOT EXISTS api_usage_daily (
     api_key_id int NOT NULL REFERENCES api_key(api_key_id) ON DELETE CASCADE,
     day date NOT NULL,
-    kind text NOT NULL CHECK (kind IN ('book', 'character')),
+    kind text NOT NULL CHECK (kind IN ('book', 'character', 'search', 'graph')),
     request_count bigint NOT NULL DEFAULT 0 CHECK (request_count >= 0),
     PRIMARY KEY (api_key_id, day, kind)
 );
@@ -654,6 +655,13 @@ CREATE INDEX IF NOT EXISTS email_change_token_user_recent_idx
 CREATE INDEX IF NOT EXISTS api_key_active_hash_idx
     ON api_key (key_hash) WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS knowledge_section_idx ON knowledge (section_id, type);
+-- 0.0.19 (migration 018): the game agents' reads over every book.
+CREATE INDEX IF NOT EXISTS knowledge_active_crystal_idx
+    ON knowledge (knowledge_crystal_id) WHERE is_active;
+CREATE INDEX IF NOT EXISTS knowledge_active_source_key_idx
+    ON knowledge (source_key) WHERE is_active;
+CREATE INDEX IF NOT EXISTS grimoire_hidden_idx
+    ON grimoire (grimoire_id) WHERE (source_metadata->>'demo') IS DISTINCT FROM 'true';
 CREATE INDEX IF NOT EXISTS semantic_projection_knowledge_idx
     ON semantic_projection (knowledge_id, language_id);
 CREATE INDEX IF NOT EXISTS semantic_projection_relation_idx

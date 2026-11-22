@@ -101,10 +101,13 @@ def test_limits_in_sql_match_the_api():
         "sex IN ('female', 'male')",
     ):
         assert check in MIGRATION and check in character
+    # 013 made the two kinds; 018 (0.0.19) widens both checks to the game agents' 'search' and 'graph', and
+    # test_game_agent_reads_schema.py compares 018 with schema.sql.
     kinds = "kind IN ('book', 'character')"
-    assert dependencies.API_REQUEST_KINDS == ("book", "character")
+    assert dependencies.API_REQUEST_KINDS[:2] == ("book", "character")
     assert MIGRATION.count(kinds) == 2
-    assert kinds in create_table(SCHEMA, "api_rate_window") and kinds in create_table(SCHEMA, "api_usage_daily")
+    fresh = "kind IN ('book', 'character', 'search', 'graph')"
+    assert fresh in create_table(SCHEMA, "api_rate_window") and fresh in create_table(SCHEMA, "api_usage_daily")
 
 
 # Constraints the migration names explicitly carry the names PostgreSQL gives

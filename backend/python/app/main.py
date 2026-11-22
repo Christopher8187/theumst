@@ -14,7 +14,8 @@ from .config import get_settings
 from .database import initialize_database
 from .dependencies import AccessRefused, access_refused_response
 from .reviewed_migrations import assert_database_schema_ready
-from .routers import admin, api_keys, auth, content, demo, frontend, game, health, news, public_api, superadmin, users
+from .routers import (admin, api_keys, auth, content, demo, frontend, game, game_graph, game_search, health, news,
+                      public_api, superadmin, users)
 from .services.news import delivery_loop, ensure_news_delivery_configured
 from .services.qdrant import qdrant_service
 
@@ -103,6 +104,10 @@ def create_app(*, initialize_services: bool = True) -> FastAPI:
     application.include_router(superadmin.router)
     application.include_router(public_api.router)
     application.include_router(game.router)
+    # 0.0.19: UMST's agents' reads over every book, under /api/game/search and /api/game/graph. Both take
+    # the game's key and answer its error shape through game's handlers.
+    application.include_router(game_search.router)
+    application.include_router(game_graph.router)
     game.install_error_handlers(application)
     application.add_exception_handler(AccessRefused, access_refused_response)
     application.include_router(frontend.router)

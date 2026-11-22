@@ -45,6 +45,12 @@ def test_expected_routes_and_sql_is_superadmin_only():
         "/api/game/characters/{character_id}/open", "/api/game/characters/{character_id}/heartbeat",
         "/api/game/characters/{character_id}/close", "/api/game/characters/{character_id}/data",
         "/api/game/characters/{character_id}",
+        # 0.0.19: UMST's agents' reads over every book.
+        "/api/game/search/objects", "/api/game/search/neighbours", "/api/game/search/latcher-candidates",
+        "/api/game/search/crystals",
+        "/api/game/graph/object", "/api/game/graph/crystal", "/api/game/graph/uses", "/api/game/graph/used-by",
+        "/api/game/graph/closure", "/api/game/graph/section", "/api/game/graph/around", "/api/game/graph/pages",
+        "/api/game/graph/match",
     ):
         assert path in paths
 

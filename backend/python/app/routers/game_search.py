@@ -2,8 +2,7 @@
 
 Four routes for the game's key, for the UMST agents' book tools: search by meaning and by words merged with
 the crystal hiding, an object's neighbours, the latcher's candidates, and which crystal a statement may
-belong to. ROUTES-search.md at the lane's root, and docs/game-search.md once merged, give the shapes. The
-work is in services/game_search.py.
+belong to. docs/game-agents.md gives the shapes. The work is in services/game_search.py.
 
 A key reads here as it reads books: any active regular key of an account with Web Demo access, master keys
 refused, each call counted once in the key's per-minute allowance of kind 'search', no tighter limit. Only
@@ -14,12 +13,12 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
-from ..dependencies import DEMO_ACCESS_POINT, AccessRefused, authenticate_api_key
+from ..dependencies import DEMO_ACCESS_POINT
 from ..services import game_search
-from .game import GameError, _install_id
+from .game import GameError, _install_id, _invalid, _key, _no_store
 
 SEARCH_KIND = "search"
 
@@ -34,10 +33,6 @@ LATCHER_COUNT_MAX = 100
 CRYSTALS_MAX = 20
 SOURCE_KEY_MAX = 512
 _INT_MAX = 2_147_483_647
-
-
-def _no_store(response: Response) -> None:
-    response.headers["Cache-Control"] = "no-store"
 
 
 router = APIRouter(
@@ -70,26 +65,9 @@ class CrystalsBody(BaseModel):
 
 
 def _search_key(request: Request) -> dict[str, Any]:
-    """The calling key, counted once as kind 'search'; it needs Web Demo access and may not be a master key."""
-    try:
-        return authenticate_api_key(request, kind=SEARCH_KIND, master_allowed=False,
-                                    access_point=DEMO_ACCESS_POINT)
-    except AccessRefused as exc:
-        raise GameError(403, exc.code, str(exc.detail)) from None
-    except HTTPException as exc:
-        headers = dict(exc.headers or {})
-        if exc.status_code == 429:
-            retry = headers.get("Retry-After")
-            raise GameError(429, "rate_limited", str(exc.detail), headers=headers,
-                            retry_after=int(retry) if retry else None) from None
-        if exc.status_code == 403:
-            raise GameError(403, "master_key_not_allowed", "Use a regular key of this account, not a master key",
-                            headers=headers) from None
-        raise GameError(exc.status_code, "invalid_key", str(exc.detail), headers=headers) from None
-
-
-def _invalid(detail: str, field: str) -> GameError:
-    return GameError(422, "invalid_request", detail, errors=[{"field": field, "message": detail}])
+    """The calling key, counted once as kind 'search'; it needs Web Demo access and may not be a master key.
+    game._key maps the key's refusals to the game's codes, as for the graph reads."""
+    return _key(request, kind=SEARCH_KIND, access_point=DEMO_ACCESS_POINT)
 
 
 def _unavailable(exc: Exception) -> GameError:

@@ -479,7 +479,8 @@ def api(monkeypatch, library):
             raise AccessRefused(access_point)
         return {"api_key_id": 41, "key_type": "regular"}
 
-    monkeypatch.setattr(search_router, "authenticate_api_key", fake_authenticate)
+    # The routes ask game._key, the game's own key check, as the graph reads do.
+    monkeypatch.setattr(game, "authenticate_api_key", fake_authenticate)
     application = FastAPI()
     application.include_router(search_router.router)
     game.install_error_handlers(application)

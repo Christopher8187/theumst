@@ -118,8 +118,10 @@ def _raw_api_key(request: Request) -> str:
 
 
 # Book reads (/api/v1) and the game's calls (/api/game) are counted apart, so a
-# long game session never uses up a key's book allowance.
-API_REQUEST_KINDS = ("book", "character")
+# long game session never uses up a key's book allowance. Since 0.0.19 the game
+# agents' search (/api/game/search) and graph reads (/api/game/graph) have kinds
+# of their own (migration 018).
+API_REQUEST_KINDS = ("book", "character", "search", "graph")
 RATE_WINDOW_SECONDS = 60
 
 

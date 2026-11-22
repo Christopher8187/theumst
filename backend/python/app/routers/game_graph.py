@@ -8,8 +8,8 @@ by their source key. Nothing about books is kept on the PC, and nothing sent her
 Every route takes the game's key, as every /api/game call does, and needs Web Demo access. Each call
 counts once as the `graph` kind of the key's per-minute allowance, the tier's number, as `book` and
 `character` do. Only active objects of the books the Web Demo shows are read, inside each query
-(services/game_graph.py). Errors are /api/game's {"code", "detail"}. ROUTES-graph.md in the lane's
-folder, and docs/game-accounts.md after the merge, give the shapes.
+(services/game_graph.py). Errors are /api/game's {"code", "detail"}. docs/game-agents.md gives the
+shapes.
 """
 from __future__ import annotations
 
