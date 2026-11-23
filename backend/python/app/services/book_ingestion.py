@@ -16,7 +16,7 @@ from fastapi import HTTPException, UploadFile
 from psycopg2.extras import execute_values
 
 from ..database import transaction
-from . import book_read, storage
+from . import book_read, storage, word_index_fill
 from .graph_sidecar import (
     GRAPH_SIDECAR_FORMAT,
     GraphSidecarValidationError,
@@ -1137,6 +1137,8 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
         for collection, point_ids in stale_by_collection.items():
             if qdrant_service.collection_exists(collection):
                 qdrant_service.delete_many(collection=collection, point_ids=point_ids)
+        # The book's words, once its objects are committed: a re-upload's old objects lose theirs.
+        word_index_result = word_index_fill.fill_words(grimoire_id)
 
         model_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
         ensured_collections: set[tuple[str, int, str]] = set()
@@ -1204,4 +1206,5 @@ async def ingest_book_archive(upload: UploadFile) -> dict[str, Any]:
         },
         "book_read": book_read_result.receipt(),
         "book_game_read": book_game_read_result.receipt(),
+        "word_index": word_index_result,
     }

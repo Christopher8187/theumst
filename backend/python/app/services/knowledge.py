@@ -15,7 +15,7 @@ from ..schemas import (
     SectionReference,
     SemanticEmbeddingInput,
 )
-from . import book_read
+from . import book_read, word_index_fill
 from .qdrant import qdrant_service
 
 
@@ -345,6 +345,8 @@ def submit_knowledge(payload: KnowledgeSubmission) -> dict[str, Any]:
         # The new object, and any new section, change the book's whole reads before this commits.
         book_read.refresh_all(cur, grimoire_id)
 
+    # Its words in the game's search, once it is committed (0.0.20).
+    word_index_result = word_index_fill.fill_words(grimoire_id, [knowledge_id])
     indexed, failed = _index_pending_embeddings(pending_points)
     return {
         "knowledge_id": knowledge_id,
@@ -353,6 +355,7 @@ def submit_knowledge(payload: KnowledgeSubmission) -> dict[str, Any]:
         "section_id": section_id,
         "embeddings_indexed": indexed,
         "embeddings_failed": failed,
+        "word_index": word_index_result,
     }
 
 
