@@ -125,15 +125,44 @@ class FakeGraph:
         return {"section_id": section_id, "grimoire_id": row["grimoire_id"],
                 "book_title": self.books[row["grimoire_id"]]["title"]}
 
+    def _members_of(self, crystal_id, books=None):
+        ids = [i for i, row in self.objects_by_id.items() if row["crystal_id"] == crystal_id and self._visible(i)
+               and (books is None or row["grimoire_id"] in books)]
+        ids.sort(key=lambda i: (self.objects_by_id[i]["grimoire_id"], self.objects_by_id[i]["order"], i))
+        return [{"crystal_id": crystal_id, "knowledge_id": i, "grimoire_id": self.objects_by_id[i]["grimoire_id"],
+                 "type": self.objects_by_id[i]["type"], "default": self.objects_by_id[i]["default"]} for i in ids]
+
+    def _read(self, rows):
+        """Counts the member rows a query would hand back: what C56 is about."""
+        self.member_rows = getattr(self, "member_rows", 0) + len(rows)
+        return rows
+
     def members(self, crystal_ids):
         self.calls.append("members")
+        return self._read([row for crystal_id in crystal_ids for row in self._members_of(crystal_id)])
+
+    def book_members(self, crystal_ids, books):
+        self.calls.append("book_members")
+        return self._read([row for crystal_id in crystal_ids for row in self._members_of(crystal_id, set(books))])
+
+    def first_members(self, crystal_ids):
+        self.calls.append("first_members")
         rows = []
         for crystal_id in crystal_ids:
-            ids = [i for i, row in self.objects_by_id.items() if row["crystal_id"] == crystal_id and self._visible(i)]
-            ids.sort(key=lambda i: (self.objects_by_id[i]["grimoire_id"], self.objects_by_id[i]["order"], i))
-            rows += [{"crystal_id": crystal_id, "knowledge_id": i, "grimoire_id": self.objects_by_id[i]["grimoire_id"],
-                      "type": self.objects_by_id[i]["type"], "default": self.objects_by_id[i]["default"]} for i in ids]
-        return rows
+            every = self._members_of(crystal_id)
+            rows += [row for row in every if row["type"] != "reference"][:1]
+            rows += [row for row in every if row["type"] == "reference"][:1]
+        return self._read(rows)
+
+    def members_page(self, crystal_id, reader_grimoire_id, offset, limit):
+        self.calls.append("members_page")
+        rows = sorted(self._members_of(crystal_id),
+                      key=lambda row: (not row["default"], row["grimoire_id"] != reader_grimoire_id))
+        return self._read(rows[offset:offset + limit])
+
+    def member_count(self, crystal_id):
+        self.calls.append("member_count")
+        return len(self._members_of(crystal_id))
 
     def pages(self, knowledge_id):
         return self.scans.get(knowledge_id, ([], None))
@@ -391,7 +420,10 @@ DEMO = "source_metadata->>'demo' = 'true'"
     lambda s: s.section_objects(18, 3, 10),
     lambda s: s.sections(18),
     lambda s: s.section(3),
-    lambda s: s.members([9]),
+    lambda s: s.book_members([9], [18]),
+    lambda s: s.first_members([9]),
+    lambda s: s.members_page(9, 18, 0, 500),
+    lambda s: s.member_count(9),
     lambda s: s.pages(1),
     lambda s: s.match(["k"]),
 ])
@@ -411,7 +443,8 @@ def test_queries_bind_their_values():
     source.find(source_key="scope-1:2", grimoire_id=25)
     sql, params = cur.statements[1]
     assert "k.source_key = %s AND s.grimoire_id = %s" in sql and params == ("scope-1:2", 25)
-    assert source.objects([]) == {} and source.arrows([], "dependency", "in") == [] and source.members([]) == []
+    assert source.objects([]) == {} and source.arrows([], "dependency", "in") == []
+    assert source.book_members([], [18]) == [] and source.book_members([9], []) == [] and source.first_members([]) == []
     assert len(cur.statements) == 2
 
 
@@ -778,3 +811,55 @@ def test_the_object_route_takes_max_chars_and_page(client):
     assert door_size(first.json()) <= 40000
     whole = client.get("/api/game/graph/object?knowledge_id=13&page=1", headers=HEADERS).json()
     assert len(whole["component"]) == 43 and whole["more"] is False
+
+
+# --- 0.0.20: reads that do not grow with the number of books (C56) ---------------------------------
+
+def in_many_books(books=300):
+    """graph() with `books` more visible books, each holding a member of 11's crystal (9011, "Connected")."""
+    g = graph()
+    for n in range(books):
+        g.book(1000 + n, f"Book {n}")
+        g.sec(10000 + n, 1000 + n, "1", "Chapter")
+        g.obj(20000 + n, 1000 + n, 10000 + n, "definition", 9011, name=f"Connected {n}", order=1)
+    return g
+
+
+def test_the_walk_reads_what_it_follows_not_every_books_members():
+    few, many = graph(), in_many_books(300)
+    for start in (13, 52):
+        answers = []
+        for g in (few, many):
+            g.member_rows = 0
+            answers.append(game_graph.closure(g, game_graph.resolve(g, knowledge_id=start), reader_grimoire_id=R))
+        assert crystals_of(answers[0]) == crystals_of(answers[1])
+        assert [c["followed"] for c in answers[0]["crystals"]] == [c["followed"] for c in answers[1]["crystals"]]
+        # 0.0.19 read every member of 9011 at each walk: 300 rows more for the 300 books that hold it
+        assert many.member_rows - few.member_rows == 0
+
+
+def test_a_crystal_reads_a_slice_of_its_members_not_all_of_them():
+    g = wide(users=0, members=2000)
+    g.member_rows = 0
+    first = game_graph.crystal(g, 9011, reader_grimoire_id=R, max_chars=25000)
+    assert first["crystal_size"] == 2002 and first["more"] is True
+    assert first["members"][0]["knowledge_id"] == 11
+    assert g.member_rows <= game_graph.ROWS_A_READ  # 0.0.19 read all 2,002
+    g.member_rows = 0
+    old = game_graph.crystal(g, 9011)  # no new parameter: 0.0.19's answer, from the first 500 alone
+    assert old["crystal_size"] == 2002 and old["truncated"] is True and len(old["members"]) == 500
+    assert g.member_rows == 500
+
+
+def test_the_member_queries_keep_their_books_and_order():
+    cur = RecordingCursor()
+    source = SqlGraph(cur)
+    source.book_members([9011, 9012], [25, 18, 25])
+    sql, params = cur.statements[0]
+    assert "s.grimoire_id = ANY(%s) AND k.knowledge_crystal_id = ANY(%s)" in sql and params == ([18, 25], [9011, 9012])
+    source.members_page(9011, 18, 500, 500)
+    sql, params = cur.statements[1]
+    assert "s.grimoire_id IS NOT DISTINCT FROM %s DESC" in sql and "OFFSET %s LIMIT %s" in sql
+    assert params == (9011, 18, 500, 500)
+    source.first_members([9011])
+    assert "DISTINCT ON (k.knowledge_crystal_id, k.type = 'reference')" in cur.statements[2][0]

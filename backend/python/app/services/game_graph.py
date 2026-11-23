@@ -107,9 +107,22 @@ class GraphSource(Protocol):
     def section(self, section_id: int) -> dict[str, Any] | None:
         """{section_id, grimoire_id, book_title} for a section of a visible book."""
 
-    def members(self, crystal_ids: Sequence[int]) -> list[dict[str, Any]]:
-        """Crystal members {crystal_id, knowledge_id, grimoire_id, type, default}, by crystal, then book,
-        then reader order."""
+    def book_members(self, crystal_ids: Sequence[int], books: Sequence[int]) -> list[dict[str, Any]]:
+        """The crystals' members {crystal_id, knowledge_id, grimoire_id, type, default} in `books`, by crystal, then
+        book, then reader order (0.0.20; 0.0.19 read every book's): what a closure's walk follows, read from those
+        books' sections, so it costs what the books hold, not what the crystals hold across every book."""
+
+    def first_members(self, crystal_ids: Sequence[int]) -> list[dict[str, Any]]:
+        """For each crystal its first proper member and its first reference, by book, then reader order: what a
+        walk follows when neither the reader's book nor the book it came through holds a proper member."""
+
+    def members_page(self, crystal_id: int, reader_grimoire_id: int | None, offset: int,
+                     limit: int) -> list[dict[str, Any]]:
+        """A slice of the crystal's members in every visible book, the preferred one first, then the reader's
+        book's, then by book and reader order (0.0.20)."""
+
+    def member_count(self, crystal_id: int) -> int:
+        """The crystal's active members in every visible book."""
 
     def pages(self, knowledge_id: int) -> tuple[list[dict[str, Any]], Any]:
         """The object's page scans {source_image_id, storage_key, url, metadata} in page order, and its
@@ -278,20 +291,65 @@ class SqlGraph:
         )
         return rows[0] if rows else None
 
-    def members(self, crystal_ids):
+    def book_members(self, crystal_ids, books):
+        if not crystal_ids or not books:
+            return []
+        # From the books' sections (section_book_parent_idx, knowledge_section_idx), not from the crystals.
+        return self._all(
+            f"""
+            SELECT k.knowledge_crystal_id AS crystal_id, k.knowledge_id, s.grimoire_id, k.type,
+                   k.is_default_in_crystal AS "default"
+            FROM section s
+            JOIN grimoire g ON g.grimoire_id = s.grimoire_id AND g.source_metadata->>'demo' = 'true'
+            JOIN knowledge k ON k.section_id = s.section_id AND k.is_active
+            WHERE s.grimoire_id = ANY(%s) AND k.knowledge_crystal_id = ANY(%s)
+            ORDER BY k.knowledge_crystal_id, s.grimoire_id, {_ORDER}
+            """,
+            [sorted(set(books)), list(crystal_ids)],
+        )
+
+    def first_members(self, crystal_ids):
         if not crystal_ids:
             return []
+        return self._all(
+            f"""
+            SELECT DISTINCT ON (k.knowledge_crystal_id, k.type = '{REFERENCE}')
+                   k.knowledge_crystal_id AS crystal_id, k.knowledge_id, s.grimoire_id, k.type,
+                   k.is_default_in_crystal AS "default"
+            FROM knowledge k
+            {_VISIBLE}
+            WHERE k.knowledge_crystal_id = ANY(%s) AND k.is_active
+            ORDER BY k.knowledge_crystal_id, k.type = '{REFERENCE}', s.grimoire_id, {_ORDER}
+            """,
+            [list(crystal_ids)],
+        )
+
+    def members_page(self, crystal_id, reader_grimoire_id, offset, limit):
         return self._all(
             f"""
             SELECT k.knowledge_crystal_id AS crystal_id, k.knowledge_id, s.grimoire_id, k.type,
                    k.is_default_in_crystal AS "default"
             FROM knowledge k
             {_VISIBLE}
-            WHERE k.knowledge_crystal_id = ANY(%s) AND k.is_active
-            ORDER BY k.knowledge_crystal_id, s.grimoire_id, {_ORDER}
+            WHERE k.knowledge_crystal_id = %s AND k.is_active
+            ORDER BY COALESCE(k.is_default_in_crystal, false) DESC, s.grimoire_id IS NOT DISTINCT FROM %s DESC,
+                     s.grimoire_id, {_ORDER}
+            OFFSET %s LIMIT %s
             """,
-            [list(crystal_ids)],
+            [crystal_id, reader_grimoire_id, offset, limit],
         )
+
+    def member_count(self, crystal_id):
+        rows = self._all(
+            f"""
+            SELECT count(*)::int AS size
+            FROM knowledge k
+            {_VISIBLE}
+            WHERE k.knowledge_crystal_id = %s AND k.is_active
+            """,
+            [crystal_id],
+        )
+        return int(rows[0]["size"]) if rows else 0
 
     def pages(self, knowledge_id):
         scans = self._all(
@@ -747,31 +805,50 @@ def crystal(source: GraphSource, crystal_id: int, *, reader_grimoire_id: int | N
     """Every member of the crystal in every visible book, the preferred one first, then the reader's book's
     (with reader_grimoire_id). With max_chars or page the members come a page at a time, at most
     CRYSTAL_MEMBERS_MOST a page and, with max_chars, within that many characters."""
-    rows = source.members([crystal_id])
-    if not rows:
+    if max_chars is not None or page is not None:
+        return _crystal_pages(source, crystal_id, reader_grimoire_id=reader_grimoire_id, max_chars=max_chars,
+                              page=page or 1)
+    # 0.0.20 (C56): the count and the first CRYSTAL_MEMBERS_MOST, in 0.0.19's order (the preferred member, then
+    # book, then reader order), not every member of every book.
+    size = source.member_count(crystal_id)
+    if not size:
         raise NotFound("No such crystal in a book the reader may see")
-    if reader_grimoire_id is not None:
-        rows.sort(key=lambda row: int(row["grimoire_id"]) != int(reader_grimoire_id))  # stable
-    rows.sort(key=lambda row: not row["default"])  # stable: book, then reader order, kept
-    size = len(rows)
-    if max_chars is None and page is None:
-        truncated = size > CRYSTAL_MEMBERS_MOST
-        rows = rows[:CRYSTAL_MEMBERS_MOST]
-        found = source.objects([int(row["knowledge_id"]) for row in rows])
-        members = [{**brief(found[int(row["knowledge_id"])]), "default": bool(row["default"])}
-                   for row in rows if int(row["knowledge_id"]) in found]
-        return {"crystal_id": crystal_id, "crystal_size": size, "members": members, "truncated": truncated}
+    rows = source.members_page(crystal_id, reader_grimoire_id, 0, CRYSTAL_MEMBERS_MOST)
+    truncated = size > CRYSTAL_MEMBERS_MOST
+    found = source.objects([int(row["knowledge_id"]) for row in rows])
+    members = [{**brief(found[int(row["knowledge_id"])]), "default": bool(row["default"])}
+               for row in rows if int(row["knowledge_id"]) in found]
+    return {"crystal_id": crystal_id, "crystal_size": size, "members": members, "truncated": truncated}
 
-    number = page or 1
-    default = {int(row["knowledge_id"]): bool(row["default"]) for row in rows}
+
+def _crystal_pages(source: GraphSource, crystal_id: int, *, reader_grimoire_id: int | None, max_chars: int | None,
+                   page: int) -> dict[str, Any]:
+    """crystal() a page at a time (0.0.20). The members are read in order ROWS_A_READ at a time, only as far as the
+    page asked needs (C56: a crystal in many books is not read whole for its first page)."""
+    size = source.member_count(crystal_id)
+    if not size:
+        raise NotFound("No such crystal in a book the reader may see")
+    number = page
     titles: dict[int, str] = {}
 
     def entries() -> Iterator[tuple[dict[str, Any], int]]:
-        for knowledge_id, row in _rows_of(source, [int(row["knowledge_id"]) for row in rows]):
-            if max_chars is None:
-                yield {**brief(row), "default": default[knowledge_id]}, 0
-            else:
-                yield {**compact(row, titles, drop=("crystal_id", "crystal_size")), "default": default[knowledge_id]}, 0
+        offset = 0
+        while True:
+            rows = source.members_page(crystal_id, reader_grimoire_id, offset, ROWS_A_READ)
+            if not rows:
+                return
+            offset += len(rows)
+            found = source.objects([int(row["knowledge_id"]) for row in rows])
+            for row in rows:
+                hit = found.get(int(row["knowledge_id"]))
+                if hit is None:
+                    continue
+                if max_chars is None:
+                    yield {**brief(hit), "default": bool(row["default"])}, 0
+                else:
+                    yield {**compact(hit, titles, drop=("crystal_id", "crystal_size")), "default": bool(row["default"])}, 0
+            if len(rows) < ROWS_A_READ:
+                return
 
     frame = {"crystal_id": crystal_id, "crystal_size": size, "members": [], "truncated": False,
              "page": number, "more": False}
@@ -889,9 +966,20 @@ def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "do
     gave_up: dict[str, Any] | None = None
     rows_by_id: dict[int, dict[str, Any]] = {}
     while frontier:
+        # 0.0.20 (C56): only the members in the reader's book and in the books the walk came through are read;
+        # a crystal with no proper member there reads its first proper member and its first reference alone.
         members: dict[int, list[dict[str, Any]]] = {}
-        for row in source.members(frontier):
+        books = {reader} | {found[crystal_id].via_book for crystal_id in frontier}
+        for row in source.book_members(frontier, sorted(books)):
             members.setdefault(int(row["crystal_id"]), []).append(row)
+        lacking = [crystal_id for crystal_id in frontier
+                   if not any(row["type"] != REFERENCE and int(row["grimoire_id"]) in (reader, found[crystal_id].via_book)
+                              for row in members.get(crystal_id, []))
+                   and not (crystal_id not in start_ids
+                            and any(int(row["grimoire_id"]) == reader for row in members.get(crystal_id, [])))]
+        first: dict[int, list[dict[str, Any]]] = {}
+        for row in source.first_members(lacking):
+            first.setdefault(int(row["crystal_id"]), []).append(row)
         follow_ends: list[tuple[int, int]] = []
         for crystal_id in frontier:
             node = found[crystal_id]
@@ -902,9 +990,11 @@ def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "do
             if node.reader_reference and crystal_id not in start_ids:
                 node.shown = int(mine[0]["knowledge_id"])
                 continue
-            proper = [row for row in members.get(crystal_id, []) if row["type"] != REFERENCE]
-            via = [row for row in proper if int(row["grimoire_id"]) == node.via_book]
-            follow = proper_mine or via or proper[:1] or members.get(crystal_id, [])[:1]
+            via = [row for row in members.get(crystal_id, [])
+                   if row["type"] != REFERENCE and int(row["grimoire_id"]) == node.via_book]
+            fallback = first.get(crystal_id, [])
+            proper = [row for row in fallback if row["type"] != REFERENCE]
+            follow = proper_mine or via or proper[:1] or fallback[:1]
             node.followed = [int(row["knowledge_id"]) for row in follow]
             node.shown = node.followed[0] if node.followed else node.reached
             follow_ends += [(int(row["grimoire_id"]), int(row["knowledge_id"])) for row in follow]

@@ -653,27 +653,41 @@ def text_pieces(text: str, *, pieces: int = LATCHER_PIECES, size: int = LATCHER_
 
 
 def _name_matches(text: str, scope: Scope) -> tuple[Ranked, dict[int, str]]:
-    """Objects of any visible book whose whole name the text mentions, longest names first."""
+    """Objects of any visible book whose whole name the text mentions: longest names first, then those whose words
+    the text shares most (the BM25 word ranking of the whole text), at most NAME_MATCH_LIMIT.
+
+    0.0.20 (C56): every batch of names is asked, each for its best NAME_MATCH_LIMIT by that ranking. 0.0.19 took the
+    first 256 matches in the store's order and stopped there, which past a few hundred books are the oldest books'
+    objects named, say, "Group", however far they are from the text."""
     grams = word_index.name_ngrams(text, limit=NAME_NGRAMS_MAX)
+    sparse = word_index.query_vector([text])
     named: dict[int, str] = {}
+    scores: dict[int, float] = {}
     for start in range(0, len(grams), NAME_NGRAMS_A_CALL):
-        if len(named) >= NAME_MATCH_LIMIT:
-            break
-        points, _ = qdrant_service.scroll_points(
-            collection=word_index.COLLECTION,
-            filter=scope_filter(scope, [{"key": "name_key",
-                                         "match": {"any": grams[start:start + NAME_NGRAMS_A_CALL]}}]),
-            limit=NAME_MATCH_LIMIT,
-            with_payload=["knowledge_id", "name_key"],
-        )
+        name_filter = scope_filter(scope, [{"key": "name_key",
+                                            "match": {"any": grams[start:start + NAME_NGRAMS_A_CALL]}}])
+        if sparse["indices"]:
+            points = qdrant_service.query_raw(collection=word_index.COLLECTION, body={
+                "query": sparse,
+                "using": word_index.SPARSE_NAME,
+                "filter": name_filter,
+                "limit": NAME_MATCH_LIMIT,
+                "with_payload": ["knowledge_id", "name_key"],
+            })
+        else:  # a text of stop words alone: nothing to rank by
+            points, _ = qdrant_service.scroll_points(collection=word_index.COLLECTION, filter=name_filter,
+                                                     limit=NAME_MATCH_LIMIT, with_payload=["knowledge_id", "name_key"])
         for point in points:
             payload = point.get("payload") or {}
             try:
-                named.setdefault(int(payload.get("knowledge_id", point.get("id"))),
-                                 str(payload.get("name_key") or ""))
+                knowledge_id = int(payload.get("knowledge_id", point.get("id")))
+                score = float(point.get("score") or 0.0)
             except (TypeError, ValueError):
                 continue
-    ordered = sorted(named, key=lambda kid: (-len(named[kid].split()), kid))
+            if knowledge_id not in named:
+                named[knowledge_id] = str(payload.get("name_key") or "")
+                scores[knowledge_id] = score if math.isfinite(score) else 0.0
+    ordered = sorted(named, key=lambda kid: (-len(named[kid].split()), -scores[kid], kid))[:NAME_MATCH_LIMIT]
     return [(kid, 1.0) for kid in ordered], named
 
 
