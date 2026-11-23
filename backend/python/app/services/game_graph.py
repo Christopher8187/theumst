@@ -28,7 +28,9 @@ from .book_read import contents_order
 
 # --- limits -------------------------------------------------------------------------------
 
-COMPONENT_MEMBERS = 24          # the game's MEMBERS (tutor_stage.gd), the object included
+COMPONENT_MEMBERS = 24          # the game's MEMBERS (tutor_stage.gd), the object included; 0.0.19's answer
+COMPONENT_WALK_MOST = 2000      # 0.0.20, with max_chars or page: the whole component, up to this safety limit
+LOAD_ITEMS_MOST = 100           # 0.0.20: a load's page without max_chars holds at most this many items
 DEPENDENCIES_MOST = 300
 ARROWS_MOST = 500
 CRYSTAL_MEMBERS_MOST = 500
@@ -382,7 +384,7 @@ def _shorten(item: dict[str, Any], room: int) -> dict[str, Any] | None:
         return item
     item = copy.deepcopy(item)
     item["cut"] = []
-    holders = [item] + [item["shown"]] * isinstance(item.get("shown"), dict)
+    holders = [item] + ([item["shown"]] if isinstance(item.get("shown"), dict) else [])
     for name in _TEXTS + _LISTS:
         for holder in holders:
             value = holder.get(name)
@@ -490,8 +492,14 @@ class _Joined:
     of: int
 
 
-def load(source: GraphSource, obj: Mapping[str, Any]) -> dict[str, Any]:
-    """The object in full, its support component in full, and what the component uses (history A4)."""
+def load(source: GraphSource, obj: Mapping[str, Any], *, max_chars: int | None = None,
+         page: int | None = None) -> dict[str, Any]:
+    """The object in full, its support component in full, and what the component uses (history A4).
+
+    Without max_chars and page the component stops at COMPONENT_MEMBERS, as in 0.0.19. With either (0.0.20) it is
+    the whole component, up to COMPONENT_WALK_MOST, and the answer comes in pages (see _load_pages)."""
+    if max_chars is not None or page is not None:
+        return _load_pages(source, obj, max_chars=max_chars, page=page or 1)
     book = int(obj["grimoire_id"])
     start = int(obj["knowledge_id"])
     joined, truncated = _component(source, book, start, {start: str(obj["type"])})
@@ -541,10 +549,88 @@ def load(source: GraphSource, obj: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _component(source: GraphSource, book: int, start: int, types: dict[int, str]) -> tuple[list[_Joined], bool]:
+def _load_pages(source: GraphSource, obj: Mapping[str, Any], *, max_chars: int | None, page: int) -> dict[str, Any]:
+    """The whole support component and what it uses, a page at a time (0.0.20). His words: "we should
+    automatically load the support component, i.e. the whole component" (history A4 item 3).
+
+    Page 1 gives the object in full, later pages name it. Every page gives component members in the walk's order,
+    then the dependencies in book order: within max_chars characters when it is given (an item too big alone is
+    cut, and says so in `cut`), else at most LOAD_ITEMS_MOST items. `component_size` and `dependencies_size` count
+    them all and `later` counts those on later pages, so the answer says what it does not hold."""
+    book = int(obj["grimoire_id"])
+    start = int(obj["knowledge_id"])
+    joined, truncated = _component(source, book, start, {start: str(obj["type"])}, COMPONENT_WALK_MOST)
+    member_ids = [start] + [item.knowledge_id for item in joined]
+    uses: dict[int, list[int]] = {}
+    for row in source.arrows([(book, member) for member in member_ids], "dependency", "in"):
+        other = int(row["other"])
+        if other in member_ids:
+            continue
+        users = uses.setdefault(other, [])
+        if int(row["end"]) not in users:
+            users.append(int(row["end"]))
+    places, total = source.positions(book, member_ids + list(uses))
+    plain = source.objects(member_ids)
+    head_row = source.objects([start], working=True).get(start)
+    if start not in plain or head_row is None:
+        raise NotFound("No such knowledge object in a book the reader may see")
+    chapters = _chapters(source, book, {int(row["section_id"]) for row in plain.values()})
+    members = [item for item in joined if item.knowledge_id in plain]
+    dependencies = sorted(uses, key=lambda other: (places.get(other, 1 << 30), other))
+    titles: dict[int, str] = {}
+
+    def shape(row: Mapping[str, Any], working: bool) -> dict[str, Any]:
+        out = brief(row) if max_chars is None else compact(row, titles)
+        if working:
+            out.update(working=row.get("working") or "", working_summary=row.get("working_summary") or "")
+        return out
+
+    def items() -> Iterator[tuple[dict[str, Any], int]]:
+        for first in range(0, len(members), ROWS_A_READ):
+            chunk = members[first:first + ROWS_A_READ]
+            rows = source.objects([item.knowledge_id for item in chunk], working=True)
+            for item in chunk:
+                row = rows.get(item.knowledge_id)
+                if row is not None:
+                    away, far = _away(item, row, head_row, places, chapters)
+                    yield {**shape(row, True), "why": item.why, "of": item.of, "far": far, "away": away}, 0
+        for knowledge_id, row in _rows_of(source, dependencies):
+            yield {**shape(row, False), "used_by": uses[knowledge_id]}, 0
+
+    if page == 1:
+        head: dict[str, Any] = {**shape(head_row, True), "position": places.get(start), "book_count": total}
+        if max_chars is not None:
+            head = _shorten(head, max_chars // 2) or reference(head_row, titles)
+    else:
+        head = reference(head_row, titles) if max_chars is not None else brief(head_row)
+    frame: dict[str, Any] = {
+        "object": head, "component": [], "component_size": len(members), "component_truncated": truncated,
+        "dependencies": [], "dependencies_size": len(dependencies), "dependencies_truncated": False,
+        "page": page, "more": False, "later": {"component": len(members), "dependencies": len(dependencies)},
+    }
+    if max_chars is None:
+        found = _page(items(), page, most=LOAD_ITEMS_MOST)
+    else:
+        titles.setdefault(book, str(head_row.get("book_title") or ""))
+        frame["books"] = {str(book): titles[book]}  # the component and what it uses are all in the object's book
+        room = _room(frame, max_chars)
+        found = _page(_fitted(items(), room, max_chars), page, room=room)
+    on_page = found.items
+    return {
+        **frame,
+        "component": [item for item in on_page if "why" in item],
+        "dependencies": [item for item in on_page if "used_by" in item],
+        "more": found.more,
+        "later": {"component": max(0, len(members) - found.end),
+                  "dependencies": len(dependencies) - max(0, found.end - len(members))},
+    }
+
+
+def _component(source: GraphSource, book: int, start: int, types: dict[int, str],
+               most: int = COMPONENT_MEMBERS) -> tuple[list[_Joined], bool]:
     """The support component of start, start left out, level by level as the game's tutor_stage.gd
     walks it: for each member, what supports it, what it supports, its detached proofs, and what it
-    proves when it is one. At most COMPONENT_MEMBERS, start included; the bool says the walk stopped there."""
+    proves when it is one. At most `most`, start included; the bool says the walk stopped there."""
     held = [start]
     joined: list[_Joined] = []
     frontier = [start]
@@ -570,7 +656,7 @@ def _component(source: GraphSource, book: int, start: int, types: dict[int, str]
         for item in found:
             if item.knowledge_id in held:
                 continue
-            if len(held) >= COMPONENT_MEMBERS:
+            if len(held) >= most:
                 truncated = True
                 break
             held.append(item.knowledge_id)

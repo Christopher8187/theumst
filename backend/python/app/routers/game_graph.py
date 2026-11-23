@@ -101,14 +101,15 @@ def _answer(read, *args, **kwargs) -> dict[str, Any]:
 
 @router.get("/object")
 def get_object(request: Request, knowledge_id: KnowledgeId = None, source_key: SourceKey = None,
-               grimoire_id: BookId = None):
-    """One object in full with its support component in full and what the component uses (history A4)."""
+               grimoire_id: BookId = None, max_chars: MaxChars = None, page: Page = None):
+    """One object in full with its support component in full and what the component uses (history A4).
+    With max_chars or page (0.0.20) the whole component, a page at a time."""
     _named(knowledge_id, source_key)
     _reader(request)
     with transaction() as (_, cur):
         source = SqlGraph(cur)
         obj = _object(source, knowledge_id, source_key, grimoire_id)
-        return _answer(game_graph.load, source, obj)
+        return _answer(game_graph.load, source, obj, max_chars=max_chars, page=page)
 
 
 @router.get("/crystal")

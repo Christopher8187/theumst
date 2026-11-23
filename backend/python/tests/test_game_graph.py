@@ -715,3 +715,66 @@ def test_the_closure_route_takes_objects_and_leave_out(client):
     assert many.status_code == 422
     capped = client.get(base + "&objects=13,52&max_chars=2500", headers=HEADERS)
     assert capped.status_code == 200 and door_size(capped.json()) <= 2500
+
+
+# --- 0.0.20: the whole support component, the cut being the size only (C60) ----------------------
+
+def supported(lemmas=40, working="w"):
+    """graph() with `lemmas` more supporting lemmas of 13, each with a working."""
+    g = graph()
+    for n in range(lemmas):
+        g.obj(300 + n, R, 111, "supporting_lemma", 9300 + n, name=f"Step {n}", statement=LONG, working=working,
+              order=100 + n)
+        g.supports(300 + n, 13)
+    return g
+
+
+def test_the_load_gives_the_whole_component_past_24_members():
+    g = supported(40, working=LONG * 3)
+    obj = game_graph.resolve(g, knowledge_id=13)
+    old = game_graph.load(g, obj)
+    assert len(old["component"]) == 23 and old["component_truncated"] is True  # 0.0.19, as the tutor's MEMBERS
+    pages = all_pages(lambda page: game_graph.load(g, obj, max_chars=40000, page=page))
+    assert all(door_size(answer) <= 40000 for answer in pages) and len(pages) > 1
+    members = [m["knowledge_id"] for answer in pages for m in answer["component"]]
+    assert len(members) == len(set(members)) == 43 == pages[0]["component_size"]
+    assert set(members) == {12, 31, 14} | {300 + n for n in range(40)}
+    assert pages[0]["component_truncated"] is False
+    dependencies = [d["knowledge_id"] for answer in pages for d in answer["dependencies"]]
+    assert dependencies == [10, 11] and pages[0]["dependencies_size"] == 2
+    # each page says how much is still to come
+    first = pages[0]
+    assert first["later"]["component"] == 43 - len(first["component"])
+    assert pages[-1]["later"] == {"component": 0, "dependencies": 0}
+    assert first["object"]["working"] == "*Proof.* w13" and "book_title" not in first["object"]
+    assert pages[1]["object"]["knowledge_id"] == 13 and "working" not in pages[1]["object"]
+
+
+def test_a_long_working_is_cut_and_the_load_says_so():
+    g = supported(2, working="step " * 30000)
+    obj = game_graph.resolve(g, knowledge_id=13)
+    pages = all_pages(lambda page: game_graph.load(g, obj, max_chars=20000, page=page))
+    assert all(door_size(answer) <= 20000 for answer in pages)
+    cut = [m for answer in pages for m in answer["component"] if m.get("cut")]
+    assert {m["knowledge_id"] for m in cut} == {300, 301}
+    assert all(m["cut"] == ["working"] and m["working"].endswith("[cut]") for m in cut)
+
+
+def test_a_crystal_member_too_big_alone_is_cut():
+    g = graph()
+    g.obj(71, M, 200, "definition", 9011, name="Wordy", statement="word " * 20000, order=71)
+    pages = all_pages(lambda page: game_graph.crystal(g, 9011, max_chars=4000, page=page))
+    assert all(door_size(answer) <= 4000 for answer in pages)
+    wordy = [m for answer in pages for m in answer["members"] if m["knowledge_id"] == 71]
+    assert wordy[0]["cut"] == ["statement"] and wordy[0]["statement"].endswith("[cut]")
+
+
+def test_the_object_route_takes_max_chars_and_page(client):
+    client.graph.__dict__.update(supported(40).__dict__)
+    old = client.get("/api/game/graph/object?knowledge_id=13", headers=HEADERS).json()
+    assert len(old["component"]) == 23 and "component_size" not in old
+    first = client.get("/api/game/graph/object?knowledge_id=13&max_chars=40000", headers=HEADERS)
+    assert first.status_code == 200 and first.json()["component_size"] == 43
+    assert door_size(first.json()) <= 40000
+    whole = client.get("/api/game/graph/object?knowledge_id=13&page=1", headers=HEADERS).json()
+    assert len(whole["component"]) == 43 and whole["more"] is False
