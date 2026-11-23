@@ -10,12 +10,18 @@ only calls those methods, so the unit tests run it over an in-memory graph.
 Arrows are the graph sidecar's (knowledge_graph_edge), kept per book: in `dependency` the target
 uses the source, in `supports` the source supports the target. Crystals join books. An object's
 place in its book is the reader order of the whole-book read (book_read._OBJECTS).
+
+Since 0.0.20 the closure, the crystal, uses and used-by take `max_chars` and `page`: an answer then stays
+within max_chars characters as the door hands it to an agent, and what does not fit comes on the next page.
+A request without them answers as 0.0.19 did.
 """
 from __future__ import annotations
 
+import copy
+import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping, Protocol, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Protocol, Sequence
 from urllib.parse import quote
 
 from .book_read import contents_order
@@ -36,6 +42,10 @@ WORDS_MOST = 10000
 GIVE_UP_TIMES = 10              # history A7.5 step 12: past ten times the budget, give up
 CLOSURE_CRYSTALS_MOST = 4000    # a safety limit for one processor
 CLOSURE_DEPTH_MOST = 64
+CHARS_LEAST = 2000              # max_chars, 0.0.20: an answer's size as the door hands it on
+CHARS_MOST = 200000
+PAGE_MOST = 100000
+ROWS_A_READ = 500               # rows read at a time while a list is cut into pages
 
 SUPPORT_TYPES = ("supporting_lemma", "supporting_exercise")
 # What a detached proof may prove: the game's PROVABLE (star_model.gd).
@@ -50,6 +60,14 @@ class NotFound(Exception):
 
 class Ambiguous(Exception):
     """A source key names objects in more than one book."""
+
+
+class TooSmall(Exception):
+    """max_chars cannot hold even the answer's frame and one item."""
+
+    def __init__(self, needed: int):
+        super().__init__(f"max_chars is too small for this answer; send at least {needed}")
+        self.needed = needed
 
 
 # --- the source ---------------------------------------------------------------------------
@@ -326,6 +344,141 @@ def resolve(source: GraphSource, *, knowledge_id: int | None = None, source_key:
     return rows[0]
 
 
+# --- answers that fit, and their pages (0.0.20) ---------------------------------------------------
+
+CUT_MARK = " [cut]"
+_TEXTS = ("working", "working_summary", "statement")       # cut in this order when an item alone is too big
+_LISTS = ("next", "followed", "reader_members", "used_by")
+_REFERENCE_KEYS = ("knowledge_id", "source_key", "grimoire_id", "label", "name", "type", "crystal_id")
+
+
+def chars(value: Any) -> int:
+    """A value's size as the door hands it to an agent: JSON with ", " and ": " between, characters as they are."""
+    return len(json.dumps(value, ensure_ascii=False))
+
+
+def compact(row: Mapping[str, Any], titles: dict[int, str], *, drop: Sequence[str] = ()) -> dict[str, Any]:
+    """brief(row) without its book's title, which the answer gives once under `books`, and without `drop`."""
+    out = brief(row)
+    titles[int(out["grimoire_id"])] = out.pop("book_title")
+    for key in drop:
+        out.pop(key, None)
+    return out
+
+
+def reference(row: Mapping[str, Any], titles: dict[int, str]) -> dict[str, Any]:
+    """An object named, not given: what a compact answer says of the object asked about."""
+    out = brief(row)
+    titles[int(out["grimoire_id"])] = out["book_title"]
+    return {key: out[key] for key in _REFERENCE_KEYS}
+
+
+def _shorten(item: dict[str, Any], room: int) -> dict[str, Any] | None:
+    """The item within room characters: its long texts cut, workings first, then the statement, each ending in
+    CUT_MARK, then its long lists of ids, with `cut` naming what was cut; None when even that does not fit."""
+    if chars(item) <= room:
+        return item
+    item = copy.deepcopy(item)
+    item["cut"] = []
+    holders = [item] + [item["shown"]] * isinstance(item.get("shown"), dict)
+    for name in _TEXTS + _LISTS:
+        for holder in holders:
+            value = holder.get(name)
+            if not value or not isinstance(value, (str, list)):
+                continue
+            if name not in item["cut"]:
+                item["cut"].append(name)
+            over = chars(item) - room
+            if over <= 0:
+                return item
+            if isinstance(value, str):  # each character cut takes at least one off the JSON
+                keep = len(value) - over - len(CUT_MARK)
+                holder[name] = value[:keep] + CUT_MARK if keep > 0 else CUT_MARK.strip()
+            else:  # each id cut takes at least three ("1, ")
+                holder[name] = value[:max(0, len(value) - (over + 2) // 3 - 1)]
+            if chars(item) <= room:
+                return item
+    return item if chars(item) <= room else None
+
+
+@dataclass
+class _Page:
+    items: list[dict[str, Any]]
+    first: int                      # the place of its first item in the whole list, from 0
+    end: int                        # the place after its last
+    more: bool = False              # an item follows it
+    books: dict[str, str] = field(default_factory=dict)
+    words: int = 0
+
+
+def _page(entries: Iterable[tuple[dict[str, Any], int]], number: int, *, room: int | None = None,
+          budget: int | None = None, most: int | None = None, titles: Mapping[int, str] | None = None,
+          book: Callable[[dict[str, Any]], int] | None = None) -> _Page:
+    """Page `number` (from 1) of the entries, each (item, words). Pages follow each other and each holds at least one
+    item; an item joins the page while the page's characters stay within room (each item with the ", " before it,
+    and its book's title the first time the page names that book), its words within budget, and its items at most
+    `most`. A page past the last is empty."""
+    def cost(item: dict[str, Any], books: Mapping[str, str]) -> int:
+        if room is None:
+            return 0
+        size = chars(item) + 2
+        if book is not None and titles is not None and str(book(item)) not in books:
+            size += chars({str(book(item)): titles.get(book(item), "")})
+        return size
+
+    at, used, index = 1, 0, -1
+    page = _Page([], 0, 0)
+    for index, (item, words_) in enumerate(entries):
+        size = cost(item, page.books)
+        if page.items and ((room is not None and used + size > room)
+                           or (budget is not None and page.words + words_ > budget)
+                           or (most is not None and len(page.items) >= most)):
+            if at == number:
+                page.more = True
+                return page
+            at, used, page = at + 1, 0, _Page([], index, index)
+            size = cost(item, page.books)
+        page.items.append(item)
+        page.end = index + 1
+        page.words += words_
+        used += size
+        if book is not None and titles is not None:
+            page.books.setdefault(str(book(item)), titles.get(book(item), ""))
+    if at == number:
+        return page
+    return _Page([], index + 1, index + 1)
+
+
+def _room(frame: Mapping[str, Any], max_chars: int) -> int:
+    """What is left of max_chars for the items once the answer's frame is written."""
+    room = max_chars - chars(frame)
+    if room < 64:
+        raise TooSmall(chars(frame) + 64)
+    return room
+
+
+def _fitted(items: Iterable[tuple[dict[str, Any], int]], room: int, max_chars: int, *,
+            titles: Mapping[int, str] | None = None, book: Callable[[dict[str, Any]], int] | None = None
+            ) -> Iterator[tuple[dict[str, Any], int]]:
+    """Each item shortened, when it must be, so that it fits a page alone."""
+    for item, words_ in items:
+        own = 2 + (chars({str(book(item)): titles.get(book(item), "")}) if book and titles is not None else 0)
+        short = _shorten(item, room - own)
+        if short is None:
+            raise TooSmall(max_chars + chars(item) + own - room)
+        yield short, words_
+
+
+def _rows_of(source: GraphSource, ids: Sequence[int]) -> Iterator[tuple[int, dict[str, Any]]]:
+    """(id, row) for the ids in order, read ROWS_A_READ at a time, ids not visible left out."""
+    for start in range(0, len(ids), ROWS_A_READ):
+        chunk = ids[start:start + ROWS_A_READ]
+        found = source.objects(chunk)
+        for knowledge_id in chunk:
+            if knowledge_id in found:
+                yield knowledge_id, found[knowledge_id]
+
+
 # --- 1. one object with its load ---------------------------------------------------------
 
 @dataclass
@@ -501,36 +654,84 @@ def _section_title(row: Mapping[str, Any] | None) -> str:
 
 # --- 2. a crystal's members ----------------------------------------------------------------
 
-def crystal(source: GraphSource, crystal_id: int) -> dict[str, Any]:
-    """Every member of the crystal in every visible book, the preferred one first."""
+def crystal(source: GraphSource, crystal_id: int, *, reader_grimoire_id: int | None = None,
+            max_chars: int | None = None, page: int | None = None) -> dict[str, Any]:
+    """Every member of the crystal in every visible book, the preferred one first, then the reader's book's
+    (with reader_grimoire_id). With max_chars or page the members come a page at a time, at most
+    CRYSTAL_MEMBERS_MOST a page and, with max_chars, within that many characters."""
     rows = source.members([crystal_id])
     if not rows:
         raise NotFound("No such crystal in a book the reader may see")
+    if reader_grimoire_id is not None:
+        rows.sort(key=lambda row: int(row["grimoire_id"]) != int(reader_grimoire_id))  # stable
     rows.sort(key=lambda row: not row["default"])  # stable: book, then reader order, kept
     size = len(rows)
-    truncated = size > CRYSTAL_MEMBERS_MOST
-    rows = rows[:CRYSTAL_MEMBERS_MOST]
-    found = source.objects([int(row["knowledge_id"]) for row in rows])
-    members = [{**brief(found[int(row["knowledge_id"])]), "default": bool(row["default"])}
-               for row in rows if int(row["knowledge_id"]) in found]
-    return {"crystal_id": crystal_id, "crystal_size": size, "members": members, "truncated": truncated}
+    if max_chars is None and page is None:
+        truncated = size > CRYSTAL_MEMBERS_MOST
+        rows = rows[:CRYSTAL_MEMBERS_MOST]
+        found = source.objects([int(row["knowledge_id"]) for row in rows])
+        members = [{**brief(found[int(row["knowledge_id"])]), "default": bool(row["default"])}
+                   for row in rows if int(row["knowledge_id"]) in found]
+        return {"crystal_id": crystal_id, "crystal_size": size, "members": members, "truncated": truncated}
+
+    number = page or 1
+    default = {int(row["knowledge_id"]): bool(row["default"]) for row in rows}
+    titles: dict[int, str] = {}
+
+    def entries() -> Iterator[tuple[dict[str, Any], int]]:
+        for knowledge_id, row in _rows_of(source, [int(row["knowledge_id"]) for row in rows]):
+            if max_chars is None:
+                yield {**brief(row), "default": default[knowledge_id]}, 0
+            else:
+                yield {**compact(row, titles, drop=("crystal_id", "crystal_size")), "default": default[knowledge_id]}, 0
+
+    frame = {"crystal_id": crystal_id, "crystal_size": size, "members": [], "truncated": False,
+             "page": number, "more": False}
+    if max_chars is None:
+        found = _page(entries(), number, most=CRYSTAL_MEMBERS_MOST)
+        return {**frame, "members": found.items, "truncated": found.more, "more": found.more}
+    frame["books"] = {}
+    room = _room(frame, max_chars)
+    book = lambda item: int(item["grimoire_id"])  # noqa: E731
+    found = _page(_fitted(entries(), room, max_chars, titles=titles, book=book), number, room=room,
+                  most=CRYSTAL_MEMBERS_MOST, titles=titles, book=book)
+    return {**frame, "members": found.items, "truncated": found.more, "more": found.more, "books": found.books}
 
 
 # --- 3. what an object uses, and what uses it ----------------------------------------------
 
-def arrows(source: GraphSource, obj: Mapping[str, Any], direction: str) -> dict[str, Any]:
-    """What obj uses (direction 'uses') or what uses it ('used_by'), in book order."""
+def arrows(source: GraphSource, obj: Mapping[str, Any], direction: str, *, max_chars: int | None = None,
+           page: int | None = None) -> dict[str, Any]:
+    """What obj uses (direction 'uses') or what uses it ('used_by'), in book order. With max_chars or page they
+    come a page at a time, at most ARROWS_MOST a page and, with max_chars, within that many characters."""
     book = int(obj["grimoire_id"])
     side = "in" if direction == "uses" else "out"
     others = list(dict.fromkeys(int(row["other"]) for row in
                                 source.arrows([(book, int(obj["knowledge_id"]))], "dependency", side)))
     places, _ = source.positions(book, others) if others else ({}, 0)
     others.sort(key=lambda other: (places.get(other, 1 << 30), other))
-    truncated = len(others) > ARROWS_MOST
-    others = others[:ARROWS_MOST]
-    rows = source.objects(others)
-    results = [brief(rows[other]) for other in others if other in rows]
-    return {"object": brief(obj), "results": results, "count": len(results), "truncated": truncated}
+    if max_chars is None and page is None:
+        truncated = len(others) > ARROWS_MOST
+        others = others[:ARROWS_MOST]
+        rows = source.objects(others)
+        results = [brief(rows[other]) for other in others if other in rows]
+        return {"object": brief(obj), "results": results, "count": len(results), "truncated": truncated}
+
+    number = page or 1
+    titles: dict[int, str] = {}
+    if max_chars is None:
+        found = _page(((brief(row), 0) for _, row in _rows_of(source, others)), number, most=ARROWS_MOST)
+        return {"object": brief(obj), "results": found.items, "count": len(found.items), "truncated": found.more,
+                "page": number, "more": found.more}
+    head = reference(obj, titles)
+    # an arrow's two ends are in one book, so every result is in the object's book, named once under `books`
+    frame = {"object": head, "results": [], "count": len(others), "truncated": False,
+             "page": number, "more": False, "books": {str(book): titles[book]}}
+    room = _room(frame, max_chars)
+    items = ((compact(row, {}), 0) for _, row in _rows_of(source, others))
+    found = _page(_fitted(items, room, max_chars), number, room=room, most=ARROWS_MOST)
+    return {**frame, "results": found.items, "count": len(found.items), "truncated": found.more,
+            "more": found.more}
 
 
 # --- 4. closures over crystals ---------------------------------------------------------------
@@ -562,12 +763,17 @@ class _Crystal:
 
 
 def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "down",
-            reader_grimoire_id: int | None = None, budget: int = WORDS_DEFAULT) -> dict[str, Any]:
+            reader_grimoire_id: int | None = None, budget: int = WORDS_DEFAULT,
+            max_chars: int | None = None, page: int | None = None) -> dict[str, Any]:
     """The closure over crystals from obj's crystal (history A7.5, round 3's xbook.py reader_first and
     r3stop.py): at each crystal follow the reader's book's proper members, else the proper members of
     the book the walk came through, else one proper member; list and do not walk a crystal the reader's
     book only references. Nearest first inside `budget` words, the rest counted by depth; past
-    GIVE_UP_TIMES the budget, or CLOSURE_CRYSTALS_MOST crystals, give up and say why."""
+    GIVE_UP_TIMES the budget, or CLOSURE_CRYSTALS_MOST crystals, give up and say why.
+
+    With max_chars or page (0.0.20) the crystals come in pages: each page nearest first inside the budget and,
+    with max_chars, within that many characters, so page 2 shows the crystals past the first budget; `counted`
+    counts those after the page, and `more` says a page follows."""
     reader = int(reader_grimoire_id if reader_grimoire_id is not None else obj["grimoire_id"])
     side = "in" if direction == "down" else "out"
     start = int(obj["crystal_id"])
@@ -659,35 +865,85 @@ def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "do
         depth += 1
 
     ordered = sorted(found.values(), key=lambda node: (node.depth, node.order))
-    crystals: list[dict[str, Any]] = []
-    counted: dict[int, dict[str, int]] = {}
-    shown_words = 0
-    full = True
-    for node in ordered:
-        row = rows_by_id.get(node.shown or node.reached)
-        if full and row is not None and (not crystals or shown_words + node.words <= budget):
-            shown_words += node.words
-            crystals.append({
-                "crystal_id": node.crystal_id, "crystal_size": int(row.get("crystal_size") or 0),
-                "depth": node.depth, "walked": node.walked, "transfers": node.transfers,
-                "shown": brief(row), "reader_members": node.reader_members,
-                "reader_reference": node.reader_reference, "followed": node.followed, "next": node.next,
-            })
-            continue
-        full = False
-        entry = counted.setdefault(node.depth, {"depth": node.depth, "crystals": 0, "words": 0})
-        entry["crystals"] += 1
-        entry["words"] += node.words
-    return {
-        "object": brief(obj),
-        "direction": direction,
-        "reader_grimoire_id": reader,
-        "start_crystal_id": start,
-        "crystals": crystals,
-        "counted": [counted[depth] for depth in sorted(counted)],
-        "words": {"shown": shown_words, "walked": sum(node.words for node in found.values()), "budget": budget},
-        "gave_up": gave_up,
+    walked_total = sum(node.words for node in found.values())
+    paged = max_chars is not None or page is not None
+    titles: dict[int, str] = {}
+
+    def entry(node: _Crystal, row: Mapping[str, Any]) -> dict[str, Any]:
+        shown = brief(row) if max_chars is None else compact(row, titles, drop=("crystal_id", "crystal_size"))
+        return {
+            "crystal_id": node.crystal_id, "crystal_size": int(row.get("crystal_size") or 0),
+            "depth": node.depth, "walked": node.walked, "transfers": node.transfers,
+            "shown": shown, "reader_members": node.reader_members,
+            "reader_reference": node.reader_reference, "followed": node.followed, "next": node.next,
+        }
+
+    def counted_of(nodes: Iterable[_Crystal]) -> list[dict[str, int]]:
+        counted: dict[int, dict[str, int]] = {}
+        for node in nodes:
+            item = counted.setdefault(node.depth, {"depth": node.depth, "crystals": 0, "words": 0})
+            item["crystals"] += 1
+            item["words"] += node.words
+        return [counted[depth] for depth in sorted(counted)]
+
+    # A crystal whose shown object has no row (it cannot be read) is never shown, only counted.
+    showable = [node for node in ordered if rows_by_id.get(node.shown or node.reached) is not None]
+    unshowable = [node for node in ordered if rows_by_id.get(node.shown or node.reached) is None]
+    if not paged:
+        # 0.0.19: in full while inside the budget; from the first that does not fit, every crystal counted
+        crystals: list[dict[str, Any]] = []
+        shown_words = 0
+        full = True
+        rest: list[_Crystal] = []
+        for node in ordered:
+            row = rows_by_id.get(node.shown or node.reached)
+            if full and row is not None and (not crystals or shown_words + node.words <= budget):
+                shown_words += node.words
+                crystals.append(entry(node, row))
+                continue
+            full = False
+            rest.append(node)
+        return {
+            "object": brief(obj),
+            "direction": direction,
+            "reader_grimoire_id": reader,
+            "start_crystal_id": start,
+            "crystals": crystals,
+            "counted": counted_of(rest),
+            "words": {"shown": shown_words, "walked": walked_total, "budget": budget},
+            "gave_up": gave_up,
+        }
+
+    # 0.0.20: pages, each nearest first inside the budget and, with max_chars, within that many characters.
+    number = page or 1
+    head = brief(obj) if max_chars is None else reference(obj, titles)
+    frame = {
+        "object": head, "direction": direction, "reader_grimoire_id": reader, "start_crystal_id": start,
+        "crystals": [], "counted": counted_of(ordered),
+        "words": {"shown": walked_total, "walked": walked_total, "budget": budget},
+        "gave_up": gave_up, "page": number, "more": False,
     }
+    items = [(entry(node, rows_by_id[node.shown or node.reached]), node.words) for node in showable]
+    if max_chars is None:
+        found_page = _page(items, number, budget=budget)
+        books: dict[str, str] | None = None
+    else:
+        frame["books"] = {str(key): title for key, title in titles.items() if key == int(obj["grimoire_id"])}
+        room = _room(frame, max_chars)
+        book = lambda item: int(item["shown"]["grimoire_id"])  # noqa: E731
+        found_page = _page(_fitted(items, room, max_chars, titles=titles, book=book), number, room=room,
+                           budget=budget, titles=titles, book=book)
+        books = {**frame["books"], **found_page.books}
+    answer = {
+        **frame,
+        "crystals": found_page.items,
+        "counted": counted_of(showable[found_page.end:] + unshowable),
+        "words": {"shown": found_page.words, "walked": walked_total, "budget": budget},
+        "more": found_page.more,
+    }
+    if books is not None:
+        answer["books"] = books
+    return answer
 
 
 # --- 5. a section in book order, and the objects around one --------------------------------

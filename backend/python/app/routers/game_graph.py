@@ -34,6 +34,9 @@ router = APIRouter(
 KnowledgeId = Annotated[int | None, Query(ge=1, le=2_147_483_647)]
 SourceKey = Annotated[str | None, Query(min_length=1, max_length=SOURCE_KEY_MAX_CHARACTERS)]
 BookId = Annotated[int | None, Query(ge=1, le=2_147_483_647)]
+# 0.0.20: an answer's size as the door hands it on, and which page of a long answer.
+MaxChars = Annotated[int | None, Query(ge=game_graph.CHARS_LEAST, le=game_graph.CHARS_MOST)]
+Page = Annotated[int | None, Query(ge=1, le=game_graph.PAGE_MOST)]
 
 
 class MatchItem(BaseModel):
@@ -70,6 +73,8 @@ def _answer(read, *args, **kwargs) -> dict[str, Any]:
         return read(*args, **kwargs)
     except game_graph.NotFound as exc:
         raise GameError(404, "not_found", str(exc)) from None
+    except game_graph.TooSmall as exc:
+        raise _invalid(str(exc), "max_chars") from None
 
 
 @router.get("/object")
@@ -86,7 +91,8 @@ def get_object(request: Request, knowledge_id: KnowledgeId = None, source_key: S
 
 @router.get("/crystal")
 def get_crystal(request: Request, crystal_id: KnowledgeId = None, knowledge_id: KnowledgeId = None,
-                source_key: SourceKey = None, grimoire_id: BookId = None):
+                source_key: SourceKey = None, grimoire_id: BookId = None, reader_grimoire_id: BookId = None,
+                max_chars: MaxChars = None, page: Page = None):
     """A crystal's members in every visible book, by the crystal's id or one of its members."""
     if crystal_id is not None and (knowledge_id is not None or source_key is not None):
         raise _invalid("Send crystal_id, or one of knowledge_id and source_key", "crystal_id")
@@ -97,30 +103,31 @@ def get_crystal(request: Request, crystal_id: KnowledgeId = None, knowledge_id: 
         source = SqlGraph(cur)
         if crystal_id is None:
             crystal_id = int(_object(source, knowledge_id, source_key, grimoire_id)["crystal_id"])
-        return _answer(game_graph.crystal, source, crystal_id)
+        return _answer(game_graph.crystal, source, crystal_id, reader_grimoire_id=reader_grimoire_id,
+                       max_chars=max_chars, page=page)
 
 
-def _arrows(request: Request, direction: str, knowledge_id, source_key, grimoire_id):
+def _arrows(request: Request, direction: str, knowledge_id, source_key, grimoire_id, max_chars, page):
     _named(knowledge_id, source_key)
     _reader(request)
     with transaction() as (_, cur):
         source = SqlGraph(cur)
         obj = _object(source, knowledge_id, source_key, grimoire_id)
-        return _answer(game_graph.arrows, source, obj, direction)
+        return _answer(game_graph.arrows, source, obj, direction, max_chars=max_chars, page=page)
 
 
 @router.get("/uses")
 def get_uses(request: Request, knowledge_id: KnowledgeId = None, source_key: SourceKey = None,
-             grimoire_id: BookId = None):
+             grimoire_id: BookId = None, max_chars: MaxChars = None, page: Page = None):
     """What the object uses directly, in book order."""
-    return _arrows(request, "uses", knowledge_id, source_key, grimoire_id)
+    return _arrows(request, "uses", knowledge_id, source_key, grimoire_id, max_chars, page)
 
 
 @router.get("/used-by")
 def get_used_by(request: Request, knowledge_id: KnowledgeId = None, source_key: SourceKey = None,
-                grimoire_id: BookId = None):
+                grimoire_id: BookId = None, max_chars: MaxChars = None, page: Page = None):
     """What uses the object directly, in book order."""
-    return _arrows(request, "used_by", knowledge_id, source_key, grimoire_id)
+    return _arrows(request, "used_by", knowledge_id, source_key, grimoire_id, max_chars, page)
 
 
 @router.get("/closure")
@@ -132,6 +139,8 @@ def get_closure(
     direction: Literal["down", "up"] = "down",
     reader_grimoire_id: BookId = None,
     words: Annotated[int, Query(ge=game_graph.WORDS_LEAST, le=game_graph.WORDS_MOST)] = game_graph.WORDS_DEFAULT,
+    max_chars: MaxChars = None,
+    page: Page = None,
 ):
     """The closure over crystals, down or up, across books, nearest first inside a budget of words."""
     _named(knowledge_id, source_key)
@@ -140,7 +149,7 @@ def get_closure(
         source = SqlGraph(cur)
         obj = _object(source, knowledge_id, source_key, grimoire_id)
         return _answer(game_graph.closure, source, obj, direction=direction,
-                       reader_grimoire_id=reader_grimoire_id, budget=words)
+                       reader_grimoire_id=reader_grimoire_id, budget=words, max_chars=max_chars, page=page)
 
 
 @router.get("/section")

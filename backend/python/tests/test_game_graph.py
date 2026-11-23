@@ -8,6 +8,7 @@ checks on theumst.com run each route once against the 28 books.
 """
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
 
 import pytest
@@ -513,3 +514,143 @@ def test_the_key_is_checked_before_any_read(client):
     response = client.get("/api/game/graph/object?knowledge_id=13", headers={"X-API-Key": "no-demo"})
     assert response.status_code == 403
     assert client.graph.calls == []
+
+
+# --- 0.0.20: answers that fit, and pages (C33) ------------------------------------------------
+
+LONG = ("Let $X$ be a topological space and $f\\colon X\\to Y$ a continuous map onto a Hausdorff space $Y$; "
+        "if every open cover of $X$ has a finite subcover, then the image $f(X)$ is compact and closed in $Y$, "
+        "and $f$ is a closed map whenever $X$ is compact.")
+
+
+def wide(users=300, members=0):
+    """graph() with `users` objects of book 18 that each use 10, each its own crystal with a long statement, and
+    `members` more members of 11's crystal in book 25."""
+    g = graph()
+    for n in range(users):
+        g.obj(1000 + n, R, 111, "theorem", 20000 + n, name=f"Consequence {n}", label=f"Theorem 9.{n}",
+              statement=LONG, order=5000 + n)
+        g.uses(1000 + n, 10)
+    for n in range(members):
+        g.obj(5000 + n, M, 200, "definition", 9011, name=f"Connected, copy {n}", statement=LONG, order=10 + n)
+    return g
+
+
+def door_size(answer):
+    """What the door hands an agent: json.dumps(answer, ensure_ascii=False)."""
+    return len(json.dumps(answer, ensure_ascii=False))
+
+
+def all_pages(read):
+    """Every page of a paged read, from page 1 until `more` is false."""
+    pages = [read(1)]
+    while pages[-1]["more"]:
+        pages.append(read(len(pages) + 1))
+    return pages
+
+
+def test_an_up_closure_at_5000_words_stays_under_its_character_cap():
+    g = wide()
+    obj = game_graph.resolve(g, knowledge_id=10)
+    whole = game_graph.closure(g, obj, direction="up", budget=5000)
+    assert door_size(whole) > 70000  # 0.0.19's answer, as in his run: too big for an agent
+    pages = all_pages(lambda page: game_graph.closure(g, obj, direction="up", budget=5000, max_chars=30000,
+                                                      page=page))
+    assert len(pages) > 2 and all(door_size(answer) <= 30000 for answer in pages)
+    assert [answer["page"] for answer in pages] == list(range(1, len(pages) + 1))
+    ids = [c["crystal_id"] for answer in pages for c in answer["crystals"]]
+    assert len(ids) == len(set(ids)) == 6 + 300
+    assert ids[:len(whole["crystals"])] != [] and ids[0] == 9010
+
+
+def test_closure_pages_cover_every_crystal_once_nearest_first():
+    g = wide(users=120)
+    obj = game_graph.resolve(g, knowledge_id=10)
+    pages = all_pages(lambda page: game_graph.closure(g, obj, direction="up", budget=5000, max_chars=20000,
+                                                      page=page))
+    first = pages[0]
+    ids = [c["crystal_id"] for answer in pages for c in answer["crystals"]]
+    assert len(ids) == len(set(ids))
+    assert set(ids) == {9010, 9011, 9012, 9013, 9014, 9031} | {20000 + n for n in range(120)}
+    depths = [c["depth"] for answer in pages for c in answer["crystals"]]
+    assert depths == sorted(depths)
+    assert all(door_size(answer) <= 20000 for answer in pages)
+    # `counted` counts what comes after the page, so the last page counts nothing
+    assert pages[-1]["counted"] == []
+    assert sum(c["crystals"] for c in first["counted"]) == len(ids) - len(first["crystals"])
+    # compact: a book's title once under `books`, not in every shown object; the object asked about only named
+    assert "book_title" not in first["crystals"][0]["shown"] and first["books"][str(R)] == "Topological Spaces"
+    assert first["object"] == {"knowledge_id": 10, "source_key": "k10", "grimoire_id": R, "label": "Definition 1.1",
+                               "name": "Topology", "type": "definition", "crystal_id": 9010}
+    plain = game_graph.closure(g, obj, direction="up", budget=10000, page=1)
+    assert plain["page"] == 1 and "books" not in plain and "book_title" in plain["crystals"][0]["shown"]
+
+
+def test_closure_page_two_without_max_chars_shows_what_lies_past_the_budget():
+    g = graph()
+    obj = game_graph.resolve(g, knowledge_id=52)
+    one = game_graph.closure(g, obj, reader_grimoire_id=R, budget=10)
+    assert [c["crystal_id"] for c in one["crystals"]] == [9052]
+    two = game_graph.closure(g, obj, reader_grimoire_id=R, budget=10, page=2)
+    assert [c["crystal_id"] for c in two["crystals"]] == [9053, 9054]
+    assert two["more"] is True and sum(c["crystals"] for c in two["counted"]) == 2
+    past = game_graph.closure(g, obj, reader_grimoire_id=R, budget=10, page=9)
+    assert past["crystals"] == [] and past["more"] is False
+
+
+def test_a_crystal_with_many_members_comes_in_pages_with_the_readers_book_first():
+    g = wide(users=0, members=700)
+    whole = game_graph.crystal(g, 9011)
+    assert whole["truncated"] is True and len(whole["members"]) == 500  # 0.0.19
+    assert door_size(whole) > 100000
+    pages = all_pages(lambda page: game_graph.crystal(g, 9011, reader_grimoire_id=R, max_chars=25000, page=page))
+    first = pages[0]
+    assert first["members"][0]["knowledge_id"] == 11  # the reader's book first (no preferred member here)
+    assert "book_title" not in first["members"][0] and "crystal_id" not in first["members"][0]
+    assert set(first["books"]) <= {str(R), str(M)}
+    assert len(pages) > 2 and all(door_size(answer) <= 25000 for answer in pages)
+    ids = [m["knowledge_id"] for answer in pages for m in answer["members"]]
+    assert len(ids) == len(set(ids)) == 702
+
+
+def test_used_by_comes_in_pages_within_the_cap():
+    g = wide(users=650)
+    obj = game_graph.resolve(g, knowledge_id=10)
+    assert game_graph.arrows(g, obj, "used_by")["truncated"] is True  # 0.0.19 stops at 500
+    pages = all_pages(lambda page: game_graph.arrows(g, obj, "used_by", max_chars=15000, page=page))
+    assert all(door_size(answer) <= 15000 for answer in pages)
+    ids = [r["knowledge_id"] for answer in pages for r in answer["results"]]
+    assert len(ids) == len(set(ids)) == 650 + 3  # 11, 12 and 31 use 10 too
+    assert pages[0]["books"] == {str(R): "Topological Spaces"}
+
+
+def test_an_object_too_big_alone_is_cut_and_says_so():
+    g = graph()
+    g.obj(70, R, 111, "theorem", 9070, name="Huge", statement="word " * 20000, order=70)
+    g.uses(70, 10)
+    obj = game_graph.resolve(g, knowledge_id=10)
+    pages = all_pages(lambda page: game_graph.closure(g, obj, direction="up", budget=10000, max_chars=5000,
+                                                      page=page))
+    assert all(door_size(answer) <= 5000 for answer in pages)
+    huge = [c for answer in pages for c in answer["crystals"] if c["crystal_id"] == 9070]
+    assert huge[0]["cut"] == ["statement"] and huge[0]["shown"]["statement"].endswith("[cut]")
+    with pytest.raises(game_graph.TooSmall):
+        game_graph.closure(g, obj, direction="up", max_chars=100)
+
+
+def test_routes_take_max_chars_and_page(client):
+    client.graph.__dict__.update(wide().__dict__)
+    path = "/api/game/graph/closure?knowledge_id=10&direction=up&words=5000"
+    whole = client.get(path, headers=HEADERS).json()
+    assert door_size(whole) > 70000 and "page" not in whole
+    capped = client.get(path + "&max_chars=30000", headers=HEADERS)
+    assert capped.status_code == 200 and door_size(capped.json()) <= 30000 and capped.json()["more"] is True
+    second = client.get(path + "&max_chars=30000&page=2", headers=HEADERS).json()
+    assert second["page"] == 2 and door_size(second) <= 30000
+    assert not {c["crystal_id"] for c in second["crystals"]} & {c["crystal_id"] for c in capped.json()["crystals"]}
+    for route in ("crystal?crystal_id=9011", "uses?knowledge_id=13", "used-by?knowledge_id=10"):
+        answer = client.get(f"/api/game/graph/{route}&max_chars=3000&page=1", headers=HEADERS)
+        assert answer.status_code == 200 and door_size(answer.json()) <= 3000 and answer.json()["page"] == 1
+    small = client.get(path + "&max_chars=1999", headers=HEADERS)
+    assert small.status_code == 422 and small.json()["errors"][0]["field"].endswith("max_chars")
+    assert client.get(path + "&page=0", headers=HEADERS).status_code == 422
