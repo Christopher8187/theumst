@@ -2,6 +2,8 @@
 
 Since 0.0.19 UMST's agents ask theumst.com about every book through thirteen routes for the game's key: four under `/api/game/search` (`routers/game_search.py`, `services/game_search.py`) and nine under `/api/game/graph` (`routers/game_graph.py`, `services/game_graph.py`). The agents' tools, the door, run on the reader's PC and keep nothing about books: whatever reaches across books is asked here and answered here. The PC sends words or an object's id and gets back a short list of objects. No vector ever leaves theumst.com. [Game accounts](game-accounts.md) owns the game's keys, characters, books and notes; this page owns these thirteen routes.
 
+0.0.20 adds parameters, each optional: [`max_chars` and `page`](#pages-and-a-cap-on-characters) on five graph routes, the whole support component on the object route, [`objects` and `leave_out`](#closures-over-crystals) on the closure, `reader_grimoire_id` on the crystal route and `grimoire_id` on neighbours. A request without them answers as in 0.0.19, with one exception: neighbours by a `source_key` that two books share now answers 409 instead of the first book's neighbours.
+
 ## Common to every route
 
 - **Key**: the game's key, or any other active regular key of the account, in `X-API-Key` or `Authorization: Bearer`, as for the game's books. The account needs Web Demo access. A master key is refused. `X-Install-Id` is checked as on every `/api/game` call and changes nothing here.
@@ -19,8 +21,8 @@ Since 0.0.19 UMST's agents ask theumst.com about every book through thirteen rou
 | 403 | `demo_access_required` | all | the account has no Web Demo access; nothing counted |
 | 404 | `not_found` | neighbours, graph | the object or section does not exist, is inactive, or is in a book the reader may not see |
 | 409 | `no_vector` | neighbours | the object has no stored statement vector |
-| 409 | `ambiguous` | graph | a `source_key` without `grimoire_id` names objects in two books; send `grimoire_id` |
-| 422 | `invalid_request` | all | a field missing, too long or out of range, or a malformed `X-Install-Id`; `errors` names the field |
+| 409 | `ambiguous` | neighbours, graph | a `source_key` without `grimoire_id` names objects in two books; send `grimoire_id` |
+| 422 | `invalid_request` | all | a field missing, too long or out of range, or a malformed `X-Install-Id`; `max_chars` too small for even the answer's frame and one item, which `detail` says with the least that fits; `errors` names the field |
 | 429 | `rate_limited` | all | over the key's minute; `retry_after` and `Retry-After` |
 | 503 | `search_unavailable` | search, which crystal, latcher | neither ranking could run; `detail` says why in one plain sentence |
 
@@ -38,7 +40,7 @@ The routes give objects in one flat shape. A search hit:
  "found_by": ["meaning", "words"], "rank": 1, "scores": {"meaning": 0.8312, "words": 14.07, "fused": 0.03279}}
 ```
 
-- `source_key` is the object's `object_source_key`; the door matches the build's own copy of a book by it. `label` is the label the source prints (`Theorem 2.4.1`), `name` the object's heading, each `""` when it has none. `type` is the object's type in its book (`theorem`, `definition`, `exercise`, `proof`, ...).
+- `source_key` is the object's `object_source_key`, the same key in a build's own copy of the book. The [match route](#matching-by-source-key) turns keys into theumst.com's ids; in 0.0.20 nothing calls it. `label` is the label the source prints (`Theorem 2.4.1`), `name` the object's heading, each `""` when it has none. `type` is the object's type in its book (`theorem`, `definition`, `exercise`, `proof`, ...).
 - `crystal_size` is m, the crystal's active members in every book the reader may see. `crystal_shown` is how many of its members this answer shows: at most max(1, floor(log3 m)), so a crystal of 1 to 8 members shows 1, 9 to 26 show 2, 27 to 80 show 3. The others are hidden from a search; the graph's crystal route lists them all.
 - `found_by` lists the rankings that found the hit: `meaning` (the books' vectors), `words` (BM25 over label, name and statement) and, on the latcher's route, `label` and `name`. `scores.meaning` is the cosine of the query's vector and the object's stored statement vector, `scores.words` the BM25 score, each null when that ranking did not find it, and `scores.fused` the merged score, the sum of 1/(60 + rank) over the rankings that found it. `rank` is the hit's place in the answer, from 1, after the crystal hiding.
 
@@ -50,7 +52,7 @@ Search by meaning turns the words into a vector through theumst.com's embedding 
 
 The query's text is built as the pipeline built each stored text: `name. statement` with spaces collapsed, after the instruction line the pipeline put before every text it embedded, `Instruct: Given a mathematical statement, retrieve statements of the same result\nQuery:` (`game_search.QUERY_INSTRUCTION`, joined with nothing between). The instruction must always come first. Measured on 22 November 2026 on 20 stored statements of 20 books: with the instruction first, OpenRouter's vectors match the stored ones at cosine 0.99978 to 0.99989 (mean 0.99986); the plain `name. statement` gives about 0.93 (0.933 to 0.942). Keywords join only the search by words, since the stored texts have none.
 
-Search by words is BM25 over each object's label, name and statement in the [word index](architecture/data.md), filled by `python -m scripts.fill_word_index` ([operations](operations.md#word-index)). The two rankings merge by reciprocal rank, then the crystal hiding keeps a crystal's best-ranked members.
+Search by words is BM25 over each object's label, name and statement in the [word index](architecture/data.md): since 0.0.20 each upload writes its book's words and each submission its object's, and `python -m scripts.fill_word_index` fills the books uploaded before ([operations](operations.md#word-index)). The two rankings merge by reciprocal rank, then the crystal hiding keeps a crystal's best-ranked members.
 
 Every search answer says which rankings ran:
 
@@ -83,9 +85,9 @@ The answer is `{"results": [hit], "count", "rankings", "notice"}`. With `books` 
 
 ### Neighbours
 
-`GET /api/game/search/neighbours?knowledge_id=3619&count=10`, or `?source_key=...&count=10`
+`GET /api/game/search/neighbours?knowledge_id=3619&count=10`, or `?source_key=...&grimoire_id=7&count=10`
 
-Exactly one of `knowledge_id` and `source_key`; `count` 1 to 50, default 10. The nearest objects of any book the reader may see, by the object's own stored statement vector, the object itself left out. Nothing is turned into a vector, so it needs no embedding settings and no word index. No crystal hiding: a neighbour list is what is nearest, and each hit still gives its crystal and size.
+Exactly one of `knowledge_id` and `source_key`; `grimoire_id` (0.0.20) names the book of a `source_key`, which two books may share: without it such a key answers 409 `ambiguous`. `count` 1 to 50, default 10. The nearest objects of any book the reader may see, by the object's own stored statement vector, the object itself left out. Nothing is turned into a vector, so it needs no embedding settings and no word index. No crystal hiding: a neighbour list is what is nearest, and each hit still gives its crystal and size.
 
 ```json
 {"object": { /* the object: a hit's fields up to crystal_size */ },
@@ -104,7 +106,7 @@ Exactly one of `knowledge_id` and `source_key`; `count` 1 to 50, default 10. The
 `text` is a note's text or a found problem, 1 to 20,000 characters, never stored. `grimoire_id` is optional: the book whose labels the text may cite. `count` is 1 to 100, default 30. In order:
 
 1. **Labels** the text cites, such as "Theorem 3.2", "Lemma 2.1" or "Exercise 10.4(b)", matched to the labels of `grimoire_id`'s objects with their prefix, so "Lemma 2.1" is not "Theorem 2.1".
-2. **Names** the text contains: an object of any visible book whose whole name appears in the text, a one-word name only from five letters, longer names first. It needs the word index.
+2. **Names** the text contains: an object of any visible book whose whole name appears in the text, a one-word name only from five letters, longer names first, then among names of one length those whose label, name and statement share most words with the text (BM25), at most 256. It needs the word index. Before 0.0.20 the 256 were the first in the word index's order, so a common name such as "Group" gave the oldest books' objects.
 3. **Search**: the text is cut at sentence ends into at most 8 pieces covering it, and each piece is searched by meaning and by words, all pieces in one call to the embedding provider.
 4. The lists merge by rank, labels and names first, with the crystal hiding.
 
@@ -132,6 +134,17 @@ Every graph route reads PostgreSQL only and touches no vector. A route that take
  "type": "theorem", "crystal_id": 26895, "crystal_size": 8}
 ```
 
+### Pages and a cap on characters
+
+Since 0.0.20 the object, crystal, uses, used-by and closure routes take `max_chars` (2,000 to 200,000) and `page` (1 to 100,000, default 1). Without either, each answers as in 0.0.19. With either:
+
+- The answer comes a page at a time. Every page has `page` and `more` (a later page exists); a page past the last is empty with `more: false`. Pages follow each other: page 2 starts where page 1 stopped.
+- With `max_chars`, the answer is at most that many characters as `json.dumps(answer, ensure_ascii=False)` counts them, what the door hands an agent. Its shape is then compact: a book's title is given once, under `"books": {"<grimoire_id>": "<title>"}`, and left out of each object; the object asked about is only named (`knowledge_id`, `source_key`, `grimoire_id`, `label`, `name`, `type`, `crystal_id`), except on the object route's page 1; a closure crystal's `shown` and a crystal's members leave out `crystal_id` and `crystal_size`, which the crystal itself gives.
+- An item too big for a page alone is shortened: its working, then its working's summary, then its statement are cut, each ending in ` [cut]`, then its lists; `"cut": ["working", ...]` names what was cut. A `max_chars` too small for even that answers 422 with the least that fits.
+- Without `max_chars`, a page holds at most 500 crystal members, uses or used-by results, or 100 items of an object's load, and a closure page holds what fits the word budget.
+
+A list of ids is sent as repeated parameters (`objects=1&objects=2`) or with commas (`objects=1,2`).
+
 ### One object with its load
 
 `GET /api/game/graph/object?knowledge_id=44630`, or `?source_key=...&grimoire_id=18`: what the tutor loads at a claim.
@@ -150,13 +163,15 @@ Every graph route reads PostgreSQL only and touches no vector. A route that take
 - `dependencies`: what any member of the component, the object included, uses directly by the `dependency` arrows, less the members, in book order, without workings; `used_by` names the members that use it. At most 300 (`dependencies_truncated`).
 - `position` and `book_count`: the object's place in its book's reader order, from 1, and the book's count.
 
+With `max_chars` or `page` (0.0.20) the load is the whole support component, not 24 objects: up to 2,000 members, found as above, then what they use, all in pages. Page 1 gives the object in full (with `max_chars`, cut to at most half of it if it must be), later pages name it. Each page gives members first, then dependencies, and adds `component_size`, `dependencies_size` (all of them, on every page) and `later: {"component": n, "dependencies": m}`, how many are on later pages. `component_truncated` is true only past 2,000 members; `dependencies_truncated` is false.
+
 ### A crystal's members
 
-`GET /api/game/graph/crystal?crystal_id=26895`, or by one member's `knowledge_id` or `source_key`: `{"crystal_id", "crystal_size", "members": [object with "default"], "truncated"}`. Every active member in every book the reader may see: the crystal's preferred member first, then by book and book order, at most 500. The search's hidden members are all here.
+`GET /api/game/graph/crystal?crystal_id=26895`, or by one member's `knowledge_id` or `source_key`: `{"crystal_id", "crystal_size", "members": [object with "default"], "truncated"}`. Every active member in every book the reader may see: the crystal's preferred member first, then by book and book order, at most 500. The search's hidden members are all here. With `reader_grimoire_id` (0.0.20) the reader's book's members come right after the preferred one. With `max_chars` or `page`, every member comes in pages of at most 500, in the same order, and `truncated` equals `more`.
 
 ### What an object uses, and what uses it
 
-`GET /api/game/graph/uses` and `GET /api/game/graph/used-by`, by object: `{"object", "results": [object], "count", "truncated"}`. The direct `dependency` arrows of the object's own book, in book order, at most 500. Each result carries its crystal, so an agent steps to another book through the crystal route.
+`GET /api/game/graph/uses` and `GET /api/game/graph/used-by`, by object: `{"object", "results": [object], "count", "truncated"}`. The direct `dependency` arrows of the object's own book, in book order, at most 500. Each result carries its crystal, so an agent steps to another book through the crystal route. With `max_chars` or `page`, all of them come in pages of at most 500; `count` is the page's count and `truncated` equals `more`.
 
 ### Closures over crystals
 
@@ -178,6 +193,13 @@ The walk's nodes are crystals, starting at the start's crystal. At each crystal 
 - `shown` stands for the crystal: the reader's book's proper member if there is one; for a crystal the reader's book only references, that reference; else the first member the walk followed; else the member it reached.
 - `reader_members` are the crystal's members in the reader's book, references included; empty when the reader's book lacks it. The door joins them with the reader's marks on the PC: fully seen is known, seen and pseudoseen get a reminder, unseen is a gap. `reader_reference` says the reader's book holds it only as a reference.
 - `followed` are the members whose arrows were followed, `next` the crystals those arrows reach, so an agent can cancel a branch; both are empty for a crystal not walked. `transfers` counts the changes of book on the way to it. `gave_up` is null or `{"reason", "depth"}`.
+
+Since 0.0.20:
+
+- `objects` (1 to 100 knowledge ids) in place of `knowledge_id` or `source_key` starts one walk from all of them: their crystals are all at depth 0, so a crystal several of them rest on is found and counted once, the shared closure of a set of questions. The answer has `objects` and `start_crystal_ids` (lists) in place of `object` and `start_crystal_id`. An id that is not shown answers 404 naming it. `reader_grimoire_id` defaults to the first object's book.
+- `leave_out` (up to 500 crystal ids) cancels branches: such a crystal is never entered and is missing from every `next`, so what only it led to is left out, while what a kept crystal leads to stays. A start's own crystal is never left out. The answer repeats them in `left_out`. Commas keep a long list inside the address's length limit.
+- With `page`, page 2 holds the crystals nearest after page 1's, again inside the word budget, and so on; `counted` counts the crystals after the page. With `max_chars` each page also stays inside that many characters.
+- The walk reads a crystal's members only in the reader's book and in the books it came through, else the crystal's first proper member and first reference, so a closure costs what those books hold, not what every book holds. The crystal route reads its members a page at a time.
 
 ### A section, and the objects around one
 
@@ -209,7 +231,7 @@ The scans of the pages the object appeared on, in page order; `GET <url>` with t
 
 ### Matching by source key
 
-`POST /api/game/graph/match` with `{"objects": [{"source_key": "scope-...", "grimoire_id": 25}]}`, 1 to 200 entries, `grimoire_id` optional in each. The answer keeps the order asked, `{"objects": [{"source_key", "grimoire_id", "knowledge_id"}]}`; `knowledge_id` is null where no active object of a visible book matches, or where two books match and no `grimoire_id` was sent.
+`POST /api/game/graph/match` with `{"objects": [{"source_key": "scope-...", "grimoire_id": 25}]}`, 1 to 200 entries, `grimoire_id` optional in each. The answer keeps the order asked, `{"objects": [{"source_key", "grimoire_id", "knowledge_id"}]}`; `knowledge_id` is null where no active object of a visible book matches, or where two books match and no `grimoire_id` was sent. In 0.0.20 nothing in the door or the game calls this route: the door sends `knowledge_id`, or `source_key` with `grimoire_id`, to each route itself. It stays for a build that keeps its own copy of a book.
 
 ## Checking migration 018
 
