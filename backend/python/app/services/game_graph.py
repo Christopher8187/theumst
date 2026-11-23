@@ -46,6 +46,8 @@ CHARS_LEAST = 2000              # max_chars, 0.0.20: an answer's size as the doo
 CHARS_MOST = 200000
 PAGE_MOST = 100000
 ROWS_A_READ = 500               # rows read at a time while a list is cut into pages
+STARTS_MOST = 100               # objects one closure may start from (0.0.20)
+LEAVE_OUT_MOST = 500            # crystals one closure may leave out (0.0.20); with commas they fit a URL
 
 SUPPORT_TYPES = ("supporting_lemma", "supporting_exercise")
 # What a detached proof may prove: the game's PROVABLE (star_model.gd).
@@ -764,7 +766,8 @@ class _Crystal:
 
 def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "down",
             reader_grimoire_id: int | None = None, budget: int = WORDS_DEFAULT,
-            max_chars: int | None = None, page: int | None = None) -> dict[str, Any]:
+            max_chars: int | None = None, page: int | None = None,
+            starts: Sequence[Mapping[str, Any]] | None = None, leave_out: Iterable[int] = ()) -> dict[str, Any]:
     """The closure over crystals from obj's crystal (history A7.5, round 3's xbook.py reader_first and
     r3stop.py): at each crystal follow the reader's book's proper members, else the proper members of
     the book the walk came through, else one proper member; list and do not walk a crystal the reader's
@@ -773,12 +776,28 @@ def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "do
 
     With max_chars or page (0.0.20) the crystals come in pages: each page nearest first inside the budget and,
     with max_chars, within that many characters, so page 2 shows the crystals past the first budget; `counted`
-    counts those after the page, and `more` says a page follows."""
+    counts those after the page, and `more` says a page follows.
+
+    With starts (0.0.20, history A7.5 items 5 and 9) one walk starts from every start's crystal at depth 0, so a
+    crystal several of them rest on is found and counted once: the shared closure of a set of questions. A
+    crystal in leave_out (a cancelled branch) is never entered, so what only it led to is left out, while what
+    another kept crystal leads to stays. A start's own crystal is never left out."""
+    starts_given = starts is not None
+    starts = list(starts) if starts else [obj]
+    obj = starts[0]
+    leave_out = list(leave_out or ())
     reader = int(reader_grimoire_id if reader_grimoire_id is not None else obj["grimoire_id"])
     side = "in" if direction == "down" else "out"
     start = int(obj["crystal_id"])
-    found: dict[int, _Crystal] = {start: _Crystal(start, 0, int(obj["grimoire_id"]), 0, int(obj["knowledge_id"]), 0)}
-    frontier = [start]
+    found: dict[int, _Crystal] = {}
+    for item in starts:
+        crystal_id = int(item["crystal_id"])
+        if crystal_id not in found:
+            found[crystal_id] = _Crystal(crystal_id, 0, int(item["grimoire_id"]), 0, int(item["knowledge_id"]),
+                                         len(found))
+    start_ids = list(found)
+    cancelled = {int(crystal_id) for crystal_id in leave_out} - set(start_ids)
+    frontier = list(start_ids)
     depth = 0
     walked_words = 0
     gave_up: dict[str, Any] | None = None
@@ -794,7 +813,7 @@ def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "do
             proper_mine = [row for row in mine if row["type"] != REFERENCE]
             node.reader_members = [int(row["knowledge_id"]) for row in mine]
             node.reader_reference = bool(mine) and not proper_mine
-            if node.reader_reference and crystal_id != start:
+            if node.reader_reference and crystal_id not in start_ids:
                 node.shown = int(mine[0]["knowledge_id"])
                 continue
             proper = [row for row in members.get(crystal_id, []) if row["type"] != REFERENCE]
@@ -834,7 +853,7 @@ def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "do
             for member in node.followed:
                 for row in by_end.get(member, []):
                     other_crystal = int(row["other_crystal_id"])
-                    if other_crystal == crystal_id:
+                    if other_crystal == crystal_id or other_crystal in cancelled:
                         continue
                     if other_crystal not in node.next:
                         node.next.append(other_crystal)
@@ -866,7 +885,8 @@ def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "do
 
     ordered = sorted(found.values(), key=lambda node: (node.depth, node.order))
     walked_total = sum(node.words for node in found.values())
-    paged = max_chars is not None or page is not None
+    several = starts_given
+    paged = max_chars is not None or page is not None or several or bool(cancelled) or bool(leave_out)
     titles: dict[int, str] = {}
 
     def entry(node: _Crystal, row: Mapping[str, Any]) -> dict[str, Any]:
@@ -916,19 +936,24 @@ def closure(source: GraphSource, obj: Mapping[str, Any], *, direction: str = "do
 
     # 0.0.20: pages, each nearest first inside the budget and, with max_chars, within that many characters.
     number = page or 1
-    head = brief(obj) if max_chars is None else reference(obj, titles)
+    heads = [brief(item) if max_chars is None else reference(item, titles) for item in starts]
+    named: dict[str, Any] = ({"objects": heads, "start_crystal_ids": start_ids} if several
+                             else {"object": heads[0], "start_crystal_id": start})
     frame = {
-        "object": head, "direction": direction, "reader_grimoire_id": reader, "start_crystal_id": start,
+        **named, "direction": direction, "reader_grimoire_id": reader,
         "crystals": [], "counted": counted_of(ordered),
         "words": {"shown": walked_total, "walked": walked_total, "budget": budget},
         "gave_up": gave_up, "page": number, "more": False,
     }
+    if leave_out:
+        frame["left_out"] = sorted(cancelled)
     items = [(entry(node, rows_by_id[node.shown or node.reached]), node.words) for node in showable]
     if max_chars is None:
         found_page = _page(items, number, budget=budget)
         books: dict[str, str] | None = None
     else:
-        frame["books"] = {str(key): title for key, title in titles.items() if key == int(obj["grimoire_id"])}
+        head_books = {int(item["grimoire_id"]) for item in starts}
+        frame["books"] = {str(key): title for key, title in titles.items() if key in head_books}
         room = _room(frame, max_chars)
         book = lambda item: int(item["shown"]["grimoire_id"])  # noqa: E731
         found_page = _page(_fitted(items, room, max_chars, titles=titles, book=book), number, room=room,

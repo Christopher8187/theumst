@@ -37,6 +37,28 @@ BookId = Annotated[int | None, Query(ge=1, le=2_147_483_647)]
 # 0.0.20: an answer's size as the door hands it on, and which page of a long answer.
 MaxChars = Annotated[int | None, Query(ge=game_graph.CHARS_LEAST, le=game_graph.CHARS_MOST)]
 Page = Annotated[int | None, Query(ge=1, le=game_graph.PAGE_MOST)]
+# 0.0.20: ids sent as repeated parameters (objects=1&objects=2), as one list with commas (objects=1,2), or both.
+IdList = Annotated[list[str] | None, Query(max_length=game_graph.STARTS_MOST)]
+_INT_MAX = 2_147_483_647
+
+
+def _ids(values: list[str] | None, field: str, most: int) -> list[int] | None:
+    """The ids of a list parameter, in order, each once; 422 for anything else."""
+    if values is None:
+        return None
+    out: list[int] = []
+    for value in values:
+        for part in value.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if not part.isdigit() or not 1 <= int(part) <= _INT_MAX:
+                raise _invalid(f"{field} holds ids from 1 to {_INT_MAX}", field)
+            if int(part) not in out:
+                out.append(int(part))
+    if len(out) > most:
+        raise _invalid(f"{field} holds at most {most} ids", field)
+    return out
 
 
 class MatchItem(BaseModel):
@@ -141,15 +163,38 @@ def get_closure(
     words: Annotated[int, Query(ge=game_graph.WORDS_LEAST, le=game_graph.WORDS_MOST)] = game_graph.WORDS_DEFAULT,
     max_chars: MaxChars = None,
     page: Page = None,
+    objects: IdList = None,
+    leave_out: Annotated[list[str] | None, Query(max_length=game_graph.LEAVE_OUT_MOST)] = None,
 ):
-    """The closure over crystals, down or up, across books, nearest first inside a budget of words."""
-    _named(knowledge_id, source_key)
+    """The closure over crystals, down or up, across books, nearest first inside a budget of words. With
+    objects (0.0.20), one walk from several objects; with leave_out, crystals of cancelled branches are not
+    entered."""
+    starts = _ids(objects, "objects", game_graph.STARTS_MOST)
+    cancelled = _ids(leave_out, "leave_out", game_graph.LEAVE_OUT_MOST) or []
+    if starts is not None:
+        if knowledge_id is not None or source_key is not None:
+            raise _invalid("Send objects, or one of knowledge_id and source_key", "objects")
+        if not starts:
+            raise _invalid("objects names at least one object", "objects")
+    else:
+        _named(knowledge_id, source_key)
     _reader(request)
     with transaction() as (_, cur):
         source = SqlGraph(cur)
-        obj = _object(source, knowledge_id, source_key, grimoire_id)
-        return _answer(game_graph.closure, source, obj, direction=direction,
-                       reader_grimoire_id=reader_grimoire_id, budget=words, max_chars=max_chars, page=page)
+        if starts is None:
+            first = _object(source, knowledge_id, source_key, grimoire_id)
+            rows = None
+        else:
+            found = source.objects(starts)
+            missing = [knowledge_id for knowledge_id in starts if knowledge_id not in found]
+            if missing:
+                raise GameError(404, "not_found", "No such knowledge object in a book the reader may see: "
+                                + ", ".join(str(knowledge_id) for knowledge_id in missing))
+            rows = [found[knowledge_id] for knowledge_id in starts]
+            first = rows[0]
+        return _answer(game_graph.closure, source, first, direction=direction,
+                       reader_grimoire_id=reader_grimoire_id, budget=words, max_chars=max_chars, page=page,
+                       starts=rows, leave_out=cancelled)
 
 
 @router.get("/section")

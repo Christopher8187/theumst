@@ -654,3 +654,64 @@ def test_routes_take_max_chars_and_page(client):
     small = client.get(path + "&max_chars=1999", headers=HEADERS)
     assert small.status_code == 422 and small.json()["errors"][0]["field"].endswith("max_chars")
     assert client.get(path + "&page=0", headers=HEADERS).status_code == 422
+
+
+# --- 0.0.20: one closure from several objects, cancelled branches left out (C57) ---------------
+
+def crystals_of(answer):
+    return [c["crystal_id"] for c in answer["crystals"]]
+
+
+def test_one_closure_from_two_objects_with_one_crystal_left_out():
+    g = graph()
+    starts = [game_graph.resolve(g, knowledge_id=13), game_graph.resolve(g, knowledge_id=52)]
+    both = game_graph.closure(g, starts[0], starts=starts, reader_grimoire_id=R)
+    # one walk: both starts at depth 0, the crystal they share (9011, "Connected") found once
+    assert crystals_of(both) == [9013, 9052, 9011, 9012, 9053, 9054, 9010]
+    assert [c["depth"] for c in both["crystals"]] == [0, 0, 1, 1, 1, 1, 2]
+    assert both["start_crystal_ids"] == [9013, 9052]
+    assert [o["knowledge_id"] for o in both["objects"]] == [13, 52] and "object" not in both
+    # cancel 9011: it is not entered, and 9010 stays because 9012 (kept) still leads to it
+    no_connected = game_graph.closure(g, starts[0], starts=starts, reader_grimoire_id=R, leave_out=[9011])
+    assert crystals_of(no_connected) == [9013, 9052, 9012, 9053, 9054, 9010]
+    assert 9011 not in no_connected["crystals"][0]["next"] and no_connected["left_out"] == [9011]
+    # cancel 9011 and 9012: nothing kept leads to 9010 any more, so it goes too
+    neither = game_graph.closure(g, starts[0], starts=starts, reader_grimoire_id=R, leave_out=[9011, 9012])
+    assert crystals_of(neither) == [9013, 9052, 9053, 9054]
+    # a start's own crystal is never left out
+    kept = game_graph.closure(g, starts[0], starts=starts, reader_grimoire_id=R, leave_out=[9052])
+    assert crystals_of(kept) == crystals_of(both) and kept["left_out"] == []
+
+
+def test_the_shared_closure_is_not_the_two_closures_glued():
+    g = graph()
+    a = game_graph.closure(g, game_graph.resolve(g, knowledge_id=13), reader_grimoire_id=R)
+    b = game_graph.closure(g, game_graph.resolve(g, knowledge_id=52), reader_grimoire_id=R)
+    starts = [game_graph.resolve(g, knowledge_id=13), game_graph.resolve(g, knowledge_id=52)]
+    both = game_graph.closure(g, starts[0], starts=starts, reader_grimoire_id=R)
+    glued = crystals_of(a) + crystals_of(b)
+    assert len(glued) > len(set(glued))  # asked one by one, the shared crystals come twice
+    assert sorted(crystals_of(both)) == sorted(set(glued))
+    assert both["words"]["walked"] < a["words"]["walked"] + b["words"]["walked"]
+
+
+def test_the_closure_route_takes_objects_and_leave_out(client):
+    base = "/api/game/graph/closure?reader_grimoire_id=18"
+    commas = client.get(base + "&objects=13,52&leave_out=9011", headers=HEADERS)
+    assert commas.status_code == 200, commas.text
+    assert crystals_of(commas.json()) == [9013, 9052, 9012, 9053, 9054, 9010]
+    repeated = client.get(base + "&objects=13&objects=52&leave_out=9011&leave_out=9012", headers=HEADERS)
+    assert crystals_of(repeated.json()) == [9013, 9052, 9053, 9054] and repeated.json()["left_out"] == [9011, 9012]
+    assert client.keys == [("graph", "demo", 1)] * 2
+    one = client.get(base + "&knowledge_id=13&leave_out=9012", headers=HEADERS).json()
+    assert one["object"]["knowledge_id"] == 13 and 9012 not in crystals_of(one)
+    missing = client.get(base + "&objects=13,60,99", headers=HEADERS)
+    assert missing.status_code == 404 and missing.json()["detail"].endswith(": 60, 99")
+    both = client.get(base + "&objects=13&knowledge_id=13", headers=HEADERS)
+    assert both.status_code == 422 and both.json()["errors"][0]["field"] == "objects"
+    bad = client.get(base + "&objects=13,x", headers=HEADERS)
+    assert bad.status_code == 422 and bad.json()["errors"][0]["field"] == "objects"
+    many = client.get(base + "&objects=" + ",".join(str(n) for n in range(1, 102)), headers=HEADERS)
+    assert many.status_code == 422
+    capped = client.get(base + "&objects=13,52&max_chars=2500", headers=HEADERS)
+    assert capped.status_code == 200 and door_size(capped.json()) <= 2500
