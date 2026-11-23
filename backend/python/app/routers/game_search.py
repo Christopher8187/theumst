@@ -97,15 +97,21 @@ def neighbours(
     knowledge_id: int | None = Query(default=None, ge=1, le=_INT_MAX),
     source_key: str | None = Query(default=None, min_length=1, max_length=SOURCE_KEY_MAX),
     count: int = Query(default=10, ge=1, le=COUNT_MAX),
+    grimoire_id: int | None = Query(default=None, ge=1, le=_INT_MAX),
 ):
-    """The objects of any visible book nearest one object's stored statement vector."""
+    """The objects of any visible book nearest one object's stored statement vector. With source_key, grimoire_id
+    names the book (0.0.20); a key in two books without it answers 409 ambiguous, as the graph routes do."""
     _search_key(request)
     if (knowledge_id is None) == (source_key is None):
         raise _invalid("Give exactly one of knowledge_id and source_key", "knowledge_id")
     try:
-        return game_search.neighbours(knowledge_id=knowledge_id, source_key=source_key, count=count)
+        return game_search.neighbours(knowledge_id=knowledge_id, source_key=source_key, grimoire_id=grimoire_id,
+                                      count=count)
     except game_search.ObjectNotFound:
         raise GameError(404, "not_found", "theumst.com shows no such object") from None
+    except game_search.Ambiguous:
+        raise GameError(409, "ambiguous",
+                        "This source key names objects in more than one book; send grimoire_id") from None
     except game_search.NoVector:
         raise GameError(409, "no_vector", "This object has no stored vector") from None
     except game_search.SearchUnavailable as exc:

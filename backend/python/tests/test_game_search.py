@@ -88,8 +88,12 @@ class FakeCursor:
             self.rows = [{"crystal_id": crystal, "size": size + EXTRA_MEMBERS.get(crystal, 0)}
                          for crystal, size in sizes.items()]
         elif "WHERE k.source_key = %s" in text:
-            self.rows = [{"knowledge_id": row["knowledge_id"]} for row in OBJECTS.values()
-                         if row["source_key"] == values[0] and visible(row)][:1]
+            book = values[1] if "AND s.grimoire_id = %s" in text else None
+            limit = 2 if "LIMIT 2" in text else 1
+            self.rows = [{"knowledge_id": row["knowledge_id"], "grimoire_id": row["grimoire_id"]}
+                         for _, row in sorted(OBJECTS.items())
+                         if row["source_key"] == values[0] and visible(row)
+                         and (book is None or row["grimoire_id"] == book)][:limit]
         elif "FROM semantic_projection sp" in text:
             point = STATEMENT_POINTS.get(values[0])
             self.rows = [{"embedding_id": point, "qdrant_collection": STORE, "vector_size": 4}] if point else []
@@ -399,6 +403,23 @@ def test_neighbours_by_source_key_and_refusals(library):
         game_search.neighbours(knowledge_id=9, count=2)
 
 
+def test_neighbours_by_a_source_key_in_two_books_needs_the_book(library, monkeypatch):
+    """0.0.20 (C76): before, the lowest id with the key won silently, whatever book the agent meant."""
+    monkeypatch.setitem(OBJECTS, 10, obj(10, 18, 600, "Extreme values", "A maximum is attained.",
+                                         source_key="scope-test:6"))
+    monkeypatch.setitem(STATEMENT_POINTS, 10, "00000000-0000-0000-0000-000000000010")
+    library.qdrant.dense = [(4, 0.9)]
+    with pytest.raises(game_search.Ambiguous):
+        game_search.neighbours(source_key="scope-test:6", count=2)
+    assert game_search.neighbours(source_key="scope-test:6", grimoire_id=12, count=2)["object"]["knowledge_id"] == 6
+    assert game_search.neighbours(source_key="scope-test:6", grimoire_id=18, count=2)["object"]["knowledge_id"] == 10
+    with pytest.raises(game_search.ObjectNotFound):
+        game_search.neighbours(source_key="scope-test:6", grimoire_id=7, count=2)
+    # a key in one book still needs no book
+    assert game_search.neighbours(source_key="scope-test:1", count=2)["object"]["knowledge_id"] == 1
+    assert_read_only(library)
+
+
 # --- 3. the latcher's candidates -----------------------------------------------------------------------
 
 def test_latcher_finds_labels_in_its_book_names_anywhere_then_search(library):
@@ -547,6 +568,19 @@ def test_neighbours_route_answers_404_409_and_200(api):
     assert api.client.get("/api/game/search/neighbours", params={"knowledge_id": 9}).json()["code"] == "no_vector"
     ok = api.client.get("/api/game/search/neighbours", params={"source_key": "scope-test:1", "count": 1})
     assert ok.status_code == 200 and ok.json()["results"][0]["knowledge_id"] == 2
+
+
+def test_neighbours_route_refuses_an_ambiguous_source_key_and_takes_grimoire_id(api, monkeypatch):
+    monkeypatch.setitem(OBJECTS, 10, obj(10, 18, 600, "Extreme values", "A maximum is attained.",
+                                         source_key="scope-test:6"))
+    monkeypatch.setitem(STATEMENT_POINTS, 10, "00000000-0000-0000-0000-000000000010")
+    api.library.qdrant.dense = [(2, 0.9)]
+    ambiguous = api.client.get("/api/game/search/neighbours", params={"source_key": "scope-test:6"})
+    assert ambiguous.status_code == 409 and ambiguous.json()["code"] == "ambiguous"
+    named = api.client.get("/api/game/search/neighbours", params={"source_key": "scope-test:6", "grimoire_id": 18})
+    assert named.status_code == 200 and named.json()["object"]["knowledge_id"] == 10
+    assert api.client.get("/api/game/search/neighbours",
+                          params={"source_key": "scope-test:6", "grimoire_id": 0}).status_code == 422
 
 
 def test_search_route_answers_503_when_no_ranking_can_run(api):

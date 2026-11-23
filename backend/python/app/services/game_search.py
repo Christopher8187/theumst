@@ -76,6 +76,10 @@ class NoVector(Exception):
     """The object has no stored statement vector."""
 
 
+class Ambiguous(Exception):
+    """A source key without a book names objects in more than one book."""
+
+
 class SearchUnavailable(Exception):
     """Neither ranking could answer."""
 
@@ -518,14 +522,15 @@ def search_objects(*, name: str, statement: str, keywords: Sequence[str], count:
 
 # --- 2. neighbours --------------------------------------------------------------------------------------
 
+# At most two rows: one names the object, two say the key is in two books (0.0.20; before, the lowest id won).
 _SOURCE_BY_KEY_SQL = """
-    SELECT k.knowledge_id
+    SELECT k.knowledge_id, s.grimoire_id
     FROM knowledge k
     JOIN section s ON s.section_id = k.section_id
     JOIN grimoire g ON g.grimoire_id = s.grimoire_id
-    WHERE k.source_key = %s AND k.is_active AND g.source_metadata->>'demo' = 'true'
+    WHERE k.source_key = %s AND k.is_active AND g.source_metadata->>'demo' = 'true' {book}
     ORDER BY k.knowledge_id
-    LIMIT 1
+    LIMIT 2
 """
 
 _STATEMENT_POINT_SQL = """
@@ -540,15 +545,24 @@ _STATEMENT_POINT_SQL = """
 """
 
 
-def neighbours(*, knowledge_id: int | None = None, source_key: str | None = None, count: int) -> dict[str, Any]:
+def neighbours(*, knowledge_id: int | None = None, source_key: str | None = None, grimoire_id: int | None = None,
+               count: int) -> dict[str, Any]:
+    """The objects nearest one object's stored statement vector. A source key is looked up in grimoire_id's book
+    when it is given; a key that names objects in two books without it is refused (Ambiguous), as on the graph
+    routes."""
     with transaction() as (_, cur):
         cur.execute("SET TRANSACTION READ ONLY")
         if source_key is not None:
-            cur.execute(_SOURCE_BY_KEY_SQL, (source_key,))
-            found = cur.fetchone()
+            if grimoire_id is None:
+                cur.execute(_SOURCE_BY_KEY_SQL.format(book=""), (source_key,))
+            else:
+                cur.execute(_SOURCE_BY_KEY_SQL.format(book="AND s.grimoire_id = %s"), (source_key, int(grimoire_id)))
+            found = cur.fetchall()
             if not found:
                 raise ObjectNotFound()
-            knowledge_id = int(found["knowledge_id"])
+            if len(found) > 1:
+                raise Ambiguous()
+            knowledge_id = int(found[0]["knowledge_id"])
         source = hit_rows(cur, [knowledge_id]).get(int(knowledge_id))
         if source is None:
             raise ObjectNotFound()
